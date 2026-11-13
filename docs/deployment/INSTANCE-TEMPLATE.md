@@ -18,7 +18,7 @@ Each client gets its own copy of everything below. Nothing is shared between cli
 
 These are the deployment requirements in `docs/architecture/kic-companion.md`, stated as checks for the KIC-05 gate:
 
-1. The operator's private key is readable only by the editor's account. The MCP server, the shim and the workspace cannot read it. **Test:** from each of those processes' accounts, reading the key file fails.
+1. The operator's private key and its ledger file are readable and writable only by the editor's account. The MCP server, the shim and the workspace cannot read it. **Test:** from each of those processes' accounts, reading the key file fails.
 2. The operator channel directory is writable by the MCP server and readable by the editor's account, and is not readable by the workspace or its tool sandbox.
 3. The campaign store is writable only by the MCP server and the operator tool.
 4. The MCP endpoint and the shim listen on a private interface, each behind its bearer token. **Test:** a request without the token is refused; a request with a foreign `Host` is refused.
@@ -37,7 +37,7 @@ Kept outside the template's source, in the instance:
 - The template is released as a tagged version of this repository. An instance records the tag it runs.
 - Contracts carry a schema name and version (`kic.programme-package/v0`, `schemaVersion`). A release that changes a stored shape must ship a migration for campaign files and say so in its notes. None exists yet because nothing has been released.
 - **Upgrade:** stop the MCP server; copy the data directory aside; switch to the new tag; `npm ci`; `npm run check`; start. Run the offline demo (`node src/cli/demo.ts`) as a smoke test.
-- **Rollback:** stop; switch back to the previous tag; restore the copied data directory; start. Campaign files written by a newer version may not be readable by an older one, which is why the copy is taken first.
+- **Rollback:** stop; switch back to the previous tag; restore the copied data directory; start. Campaign files written by a newer version may not be readable by an older one, which is why the copy is taken first. If decisions were recorded after the copy was taken, the operator tool will report the restored campaigns as rolled back, because its ledger remembers the later decisions. That is the control working. To carry on from the restored state, the editor runs `new-ledger --accept-current-state` after moving the old ledger aside, which accepts every decision log as it then stands; the decisions made after the copy are gone and must be made again.
 - With OpenBot, its own upgrade follows upstream's documented release-and-upgrade procedure, at a pinned release. The pinned release is changed deliberately, never by tracking the upstream branch.
 
 ## What KIC-05 would have to demonstrate

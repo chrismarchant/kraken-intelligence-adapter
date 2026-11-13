@@ -152,14 +152,20 @@
         "KIC-B2",
         "KIC-01-C2"
       ],
-      "status": "in_progress",
+      "status": "blocked",
       "evidence": [
-        "harness/state/reviews.json",
+        "harness/state/reviews.json (four entries)",
         "docs/review/2026-11-13-independent-agent-983487d.md",
         "docs/review/2026-11-13-mistral-large-4-983487d.md",
         "docs/review/2026-11-13-confirmation-review-aad2196.md",
-        "remediation commits aad2196 and 075b358"
-      ]
+        "docs/review/2026-11-13-focused-re-review-075b358.md",
+        "remediation commits aad2196, 075b358, 187f029"
+      ],
+      "stop": {
+        "level": "gate",
+        "reason": "Three review rounds returned changes-requested (983487d, aad2196, 075b358). The fixes in 187f029 are tested but not independently reviewed. A further round is owner decision OD-11.",
+        "since": "2026-11-13"
+      }
     },
     {
       "id": "KIC-D1",

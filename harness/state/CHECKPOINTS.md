@@ -16,8 +16,9 @@ COMPLETED:
   C  Synthetic campaign recorded from live Mistral Large 4 and replayed offline; live agent runs
      end to end with operator confirmation and release.
   D  Harness: task ledger, gates, three stop levels, commit-bound reviews, secret scan, CI (4 green runs).
-  Reviews: 983487d (two reviews, changes-requested), aad2196 (changes-requested), 075b358 (see GATE_STATE).
-OPEN: OD-1..OD-10. C1, C3. Exceptions in GATE_STATE.md.
+  Reviews: 983487d (two reviews), aad2196, 075b358: all changes-requested; every finding fixed and tested.
+  Final code commit 187f029 is NOT independently reviewed (three rounds was the session's limit).
+OPEN: OD-1..OD-11. C1, C3. Review requirement for KIC-01 not met (gate stop on REV-1). Exceptions in GATE_STATE.md.
 NEXT_ACTION: wait for the owner. Do NOT start new implementation: the session authorisation has ended.
   Runnable without the owner (harness queue): AEH-3 (install hook, needs a live session to verify),
   KIC-D9 (batch drafting). Everything else waits on OD-1, OD-7, OD-8, OD-9.

@@ -368,6 +368,138 @@
       ],
       "reportPath": "docs/review/2026-11-13-confirmation-review-aad2196.md",
       "at": "2026-11-13T02:24:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-075b358",
+      "gate": "KIC-01",
+      "commit": "075b358978249e9e8dd2b898b408ecc5730806ff",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-3",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff aad2196 075b358: src/workflow/**",
+        "src/store/store.ts",
+        "src/cli/operator.ts",
+        "src/mcp/runtime.ts",
+        "src/mcp/server.ts",
+        "src/gateway/**",
+        "src/evaluation/signals.ts",
+        "src/evaluation/jev.ts",
+        "src/util/runtime.ts",
+        "src/contracts/decision.ts",
+        "src/contracts/programme.ts",
+        "src/contracts/command.ts",
+        "tests/kic/signing.test.ts",
+        "tests/kic/processes.test.ts",
+        "tests/kic/concurrency.test.ts",
+        "docs/security/THREAT-MODEL.md",
+        "docs/deployment/INSTANCE-TEMPLATE.md"
+      ],
+      "skipped": [
+        {
+          "path": "harness/**, src/shim/**, rendering, prompts, other documents",
+          "reason": "outside the diff; deliberately not re-opened"
+        },
+        {
+          "path": "src/creators/**",
+          "reason": "skimmed: no I/O, no network"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "R1",
+          "severity": "high",
+          "summary": "Editor pinned only 12 characters of the content hash; a colliding second content could be swapped in",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R2",
+          "severity": "high",
+          "summary": "Unvalidated notice id used as a file name let a planted notice delete the operator's ledger",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R3",
+          "severity": "medium",
+          "summary": "A missing operator ledger read as empty, silently disabling rollback detection",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R4",
+          "severity": "medium",
+          "summary": "A record filed under another campaign's id was accepted",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R5",
+          "severity": "medium",
+          "summary": "The revision instruction was signed but not pinned by the editor's confirmation",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R6",
+          "severity": "medium",
+          "summary": "A lock naming a reused or own process id was never cleared",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R7",
+          "severity": "medium",
+          "summary": "Tokens generated on broken streams were not counted",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R8",
+          "severity": "low",
+          "summary": "Release signature covered only the package digest",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R9",
+          "severity": "low",
+          "summary": "Year exemption hid real figures",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R10",
+          "severity": "low",
+          "summary": "Invisible character behind an emoji or symbol inside a word survived",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R11",
+          "severity": "low",
+          "summary": "Ledger updated without a lock; could lag the store after a crash",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        },
+        {
+          "id": "R12",
+          "severity": "low",
+          "summary": "Release read the record twice",
+          "status": "fixed",
+          "remediationCommit": "187f029c64a12ec8b5d32a512c5883e7a88e170e"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-focused-re-review-075b358.md",
+      "at": "2026-11-13T11:05:00Z"
     }
   ]
 }

@@ -31,7 +31,7 @@ One instance per client. One data directory, one model key, one operator key. No
 | `src/creators/` | Typed creator evidence and a transparent weighted ranking with mandatory eligibility. Runs on fixtures only; contacts no one. |
 | `src/store/` | One JSON file per campaign. All writes go through `update`, serialised per campaign by an in-process mutex and a lock file that names its owner. A lock is taken over only when its owning process is gone. Writes go to a temporary file, are flushed and renamed. One machine only. |
 | `src/mcp/` | The MCP server and its stdio and HTTP entry points. |
-| `src/cli/operator.ts` | The editor's tool: `init`, `list`, `show`, `confirm`, `decline`, `release`. The only place a decision is recorded or a package released. It reads what a request is from the campaign record, and makes the editor name the action, subject and content hash before it signs. |
+| `src/cli/operator.ts` | The editor's tool: `init`, `list`, `show`, `confirm`, `decline`, `release`, `new-ledger`. The only place a decision is recorded or a package released. It reads what a request is from the campaign record, and makes the editor give back the action, the subject and the whole request digest before it signs. |
 
 ## Limits (defaults in `src/limits.ts`)
 
@@ -72,7 +72,7 @@ Operator tool: the same data and operator directories, plus `KIC_OPERATOR_KEY_FI
 
 ## Deployment requirements that code cannot enforce
 
-1. The operator's private key **and its ledger file** must be readable and writable only by the editor's tool: a different operating-system user, container or machine from the agent runtime and from the MCP server. If the key is readable elsewhere, every control falls. If the ledger is deleted, removal of decisions from the end of a log is no longer detected.
+1. The operator's private key **and its ledger file** must be readable and writable only by the editor's tool: a different operating-system user, container or machine from the agent runtime and from the MCP server. If the key is readable elsewhere, every control falls. If the ledger is deleted, the tool stops until a person restores it or starts a new one with `new-ledger --accept-current-state`, which trusts every decision log as it then stands.
 2. The operator channel directory should be unreadable and unwritable by the agent runtime. If it is not, the agent can see one-time codes and plant notices, but cannot record a decision (no key) and cannot change what the editor is shown (read from the record).
 3. The campaign store should not be writable by the agent runtime's own tools. A writer cannot forge, reorder or remove a decision without detection, and cannot make changed text count as approved, but can delete or corrupt records, and can make a preview from a log with its tail removed. A preview is not a release.
 4. The store, the MCP server and the operator tool run on one machine.

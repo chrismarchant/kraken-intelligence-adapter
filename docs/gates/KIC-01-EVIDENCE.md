@@ -11,7 +11,7 @@ Every result below came from a command run in the session. Where something was n
 | **C1** Full OpenBot boots on a licensed Intelligence project and completes a conversation with a tool call and a recalled memory | **Not demonstrated. Blocked.** | No Intelligence project key exists in the environment (obtaining one needs a personal account sign-in). OpenBot's schema needs pgvector, which is unavailable: no Docker daemon, package not in the repositories, source build refused by the session's permission layer. Recorded once as a local stop on task `KIC-01-C1`; not retried. |
 | **C2** Mistral Large 4 works through a shim, streaming, with tools | **Demonstrated outside OpenBot. Not demonstrated inside it.** | See "Model shim" and "Agent runs". |
 | **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing new. The four questions are in `KIC-01-ASSESSMENT.md` §8. |
-| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by three independent reviews.** The first two each found a way through; both were closed and re-tested. | See "Approval enforcement" and "Independent review". |
+| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by three independent reviews. Each review found a way through; each was closed and given a regression test. The last set of fixes has not been independently re-reviewed.** | See "Approval enforcement" and "Independent review". |
 
 ## What was built
 
@@ -33,7 +33,7 @@ Size: about 6,400 lines of product source and 3,600 lines of product tests.
 
 ## Tests
 
-`npm run check` at commit `075b358`: type check clean; **155 product tests pass; 82 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
+`npm run check` at commit `187f029`: type check clean; **163 product tests pass; 82 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
 
 GitHub Actions workflow `ci` succeeded on four pushes: runs 43343870467 (`90e6330`), 43346469381 (`983487d`), 43350445685 (`aad2196`) and 43411349457 (`075b358`).
 
@@ -75,7 +75,7 @@ Model cost of the recorded run (8 model steps): 13,045 prompt tokens and 38,742 
 | `streamText` with a tool executed and a final answer | Pass |
 | Control: the same client straight at the Mistral API, no shim | Fails as expected ("Invalid JSON response") |
 
-The live script was **not re-run** after the shim's security hardening (`1c7fedf`); the hardened shim was exercised live by the agent runs below instead.
+The script was run again at `aad2196` against the hardened shim, with the same results.
 
 ## Agent runs: CopilotKit agent + shim + Mistral + KIC MCP server + operator tool
 
@@ -93,7 +93,9 @@ Cost of the two runs: KIC's own generation, 7 model steps, 11,215 prompt and 40,
 
 Neither log contained a token or an authorization value.
 
-### Repeated at commit `075b358`, with the current operator tool
+### Repeated at commit `075b358`, with that commit's operator tool
+
+At that commit the editor confirmed with the action, the subject and twelve characters of the content hash. The third review showed twelve characters to be too few; the tool now requires the whole request digest. That later form is covered by automated tests, not by another live run.
 
 | Run | What happened |
 |---|---|
@@ -121,11 +123,13 @@ What the code guarantees, each covered by tests in `tests/kic/approval.test.ts`,
 - Nothing is selected, approved, rejected or revised except by a decision recorded with the operator's signing key. The agent-facing server holds only the public key and has no tool that records a decision; with the right one-time code it is still refused.
 - Decisions form a signed chain. Each carries its number in the log and the digest of the one before, inside the signature. A decision that is forged, unsigned, signed with another key, moved, repeated, re-pointed or removed from the middle makes the whole log untrusted, and nothing is planned, revised, assembled or signed on top of it.
 - Removing decisions from the end of the log is caught by the operator's own ledger, kept beside the key and outside the store. The operator tool then refuses to sign a decision or to release a package.
-- The editor is shown the request from the campaign record, never from the operator channel, and must name the action, the subject and the content hash they read. A decision is refused, and the request closed, if any of the three differs from the stored request or the current text.
+- The editor is shown the request from the campaign record, never from the operator channel, and must give back the whole 64-character digest of what they read: the request, its action, its subject, any revision instruction and the exact content. A decision is refused, and the request closed, if the stored request or the current text no longer produces that digest. A prefix of the digest is not accepted.
+- The operator channel can do no more than say that a request is waiting. Its files are accepted only with well-formed ids, and nothing in one can make the tool touch a file outside the channel.
+- The operator's ledger must exist. If it is missing, the tool stops; starting a new one is an explicit command.
 - The latest decision about a subject wins. A rejection, a request for revision, or the existence of a revision withdraws an approval, whatever the stored status says.
 - A draft cannot be approved unless it has been evaluated and passes the mandatory constraints, whatever it scores.
 - A programme cannot be planned without a selected narrative, or assembled without an approved post; pending posts need an explicit partial assembly.
-- What the agent-facing server assembles is a preview and says so. Only the operator tool releases a package, and the release is a signature over the package's digest; any change to a released package invalidates it.
+- What the agent-facing server assembles is a preview and says so. Only the operator tool releases a package. The release signature covers the package's digest, who released it, when, why, and the length of the decision log it was made on; any change to the package or to those facts invalidates it.
 - Concurrent writers cannot lose a decision: tested on both stores, on two store instances, on eight stores recovering from a crashed writer, and on four separate processes.
 
 ## Prompt injection: one live probe
@@ -141,9 +145,10 @@ Result: both drafts ignored all of it, cited the survey reference for their one 
 | `983487d` | Independent agent, Opus tier | changes-requested (1 critical, 3 high) | `docs/review/2026-11-13-independent-agent-983487d.md` |
 | `983487d` | Mistral Large 4, direct API | changes-requested | `docs/review/2026-11-13-mistral-large-4-983487d.md` |
 | `aad2196` | Second independent agent, Opus tier | changes-requested (2 high: decision rollback; forged operator notice) | `docs/review/2026-11-13-confirmation-review-aad2196.md` |
-| `075b358` | Third independent agent, Opus tier, scope limited to the nine findings and the remediation | see `harness/state/reviews.json` | filed when returned |
+| `075b358` | Third independent agent, Opus tier, scope limited to the nine findings and the remediation | changes-requested (2 high: a 12-character hash prefix could be collided; a planted notice could delete the operator's ledger) | `docs/review/2026-11-13-focused-re-review-075b358.md` |
+| `187f029` | **None.** The fixes for the third review's twelve findings each have a regression test, but no independent reviewer has read them. | — | — |
 
-Three rounds were set as the limit for this session. Each review is bound to the exact commit it read; `node harness/scripts/aeh.mjs check-reviews --commit <sha> --gate KIC-01` fails for any commit without an approving, independent review and with any blocking one.
+Three rounds were set as the limit for this session, and each round found real defects in the round before. The honest reading is that the approval controls have improved a great deal under attack and have not yet survived a review unbroken. Whether to commission a fourth, and by whom, is an owner decision (OD-11). Each review is bound to the exact commit it read; `node harness/scripts/aeh.mjs check-reviews --commit <sha> --gate KIC-01` fails for any commit without an approving, independent review and with any blocking one.
 
 The Mistral Code Review Bot and Codex were not used: the bot's block-content defect is unfixed on its default branch, and the Codex credential is rejected.
 
