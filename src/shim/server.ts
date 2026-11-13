@@ -2,6 +2,7 @@
 // Entry point: `node src/shim/server.ts` (npm run shim).
 import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { pipeline, Readable } from "node:stream";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { pathToFileURL } from "node:url";
@@ -15,30 +16,99 @@ export interface ShimConfig {
   maxBodyBytes: number;
   upstreamTimeoutMs: number;
   exposeReasoning: boolean;
-  /** If set, replaces the client's Authorization header upstream. */
+  /** Key injection mode: replaces the client's Authorization header upstream. Requires clientToken. */
   apiKey?: string;
+  /** If set, every /v1/* request must present `Authorization: Bearer <clientToken>`; it is never forwarded. */
+  clientToken?: string;
+  /** Extra Host header names accepted besides loopback names and `host`. */
+  allowedHosts?: string[];
   /** One line per request. Defaults to stderr. Never receives credentials or bodies. */
   log?: (line: string) => void;
 }
 
+const LOOPBACK_NAMES = ["127.0.0.1", "::1", "localhost"];
+const MIN_TOKEN_LENGTH = 24;
+
+function bareHost(h: string): string {
+  const t = h.trim().toLowerCase();
+  return t.startsWith("[") && t.endsWith("]") ? t.slice(1, -1) : t;
+}
+
+export function isLoopbackHost(h: string): boolean {
+  return LOOPBACK_NAMES.includes(bareHost(h));
+}
+
+/** Auth-mode rules shared by loadConfig and createShimServer. Messages never contain secret values. */
+function checkAuthRules(c: { host: string; apiKey?: string; clientToken?: string }): void {
+  if (c.clientToken !== undefined) {
+    if (c.clientToken.length < MIN_TOKEN_LENGTH || /\s/.test(c.clientToken)) {
+      throw new Error(`SHIM_CLIENT_TOKEN must be at least ${MIN_TOKEN_LENGTH} characters with no whitespace`);
+    }
+    if (!c.apiKey) {
+      throw new Error("SHIM_CLIENT_TOKEN is set but MISTRAL_API_KEY is not: with no injected key there is no provider credential to forward in its place. Set MISTRAL_API_KEY as well, or unset SHIM_CLIENT_TOKEN to run in pass-through mode");
+    }
+  }
+  if (c.apiKey && c.clientToken === undefined) {
+    throw new Error("MISTRAL_API_KEY is set (key injection mode): SHIM_CLIENT_TOKEN is required so that not every caller can spend the key");
+  }
+  if (!isLoopbackHost(c.host) && c.clientToken === undefined) {
+    throw new Error("SHIM_HOST is not a loopback address: SHIM_CLIENT_TOKEN is required");
+  }
+}
+
+function strictInt(name: string, v: string | undefined, d: number, min: number, max: number): number {
+  if (v === undefined || v === "") return d;
+  if (!/^\d+$/.test(v.trim())) throw new Error(`${name} must be a non-negative integer`);
+  const n = Number(v.trim());
+  if (!Number.isSafeInteger(n) || n < min || n > max) throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  return n;
+}
+
+function checkUpstream(raw: string): string {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error("SHIM_UPSTREAM is not a valid URL");
+  }
+  if (u.username || u.password) throw new Error("SHIM_UPSTREAM must not contain credentials");
+  if (u.protocol === "https:" || (u.protocol === "http:" && isLoopbackHost(u.hostname))) return raw.replace(/\/+$/, "");
+  throw new Error("SHIM_UPSTREAM must be an https: URL (http: is allowed only for a loopback host)");
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): ShimConfig {
-  const num = (v: string | undefined, d: number): number => {
-    const n = v === undefined || v === "" ? NaN : Number(v);
-    return Number.isFinite(n) && n >= 0 ? n : d;
-  };
-  const models = (env["SHIM_ALLOWED_MODELS"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const list = (v: string | undefined): string[] => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const models = list(env["SHIM_ALLOWED_MODELS"]);
   const cfg: ShimConfig = {
     host: env["SHIM_HOST"] || "127.0.0.1",
-    port: num(env["SHIM_PORT"], 8787),
-    upstream: (env["SHIM_UPSTREAM"] || "https://api.mistral.ai").replace(/\/+$/, ""),
+    port: strictInt("SHIM_PORT", env["SHIM_PORT"], 8787, 0, 65535),
+    upstream: checkUpstream(env["SHIM_UPSTREAM"] || "https://api.mistral.ai"),
     allowedModels: models.length > 0 ? models : null,
-    maxBodyBytes: num(env["SHIM_MAX_BODY_BYTES"], 2 * 1024 * 1024),
-    upstreamTimeoutMs: num(env["SHIM_UPSTREAM_TIMEOUT_MS"], 120000),
+    maxBodyBytes: strictInt("SHIM_MAX_BODY_BYTES", env["SHIM_MAX_BODY_BYTES"], 2 * 1024 * 1024, 1, Number.MAX_SAFE_INTEGER),
+    upstreamTimeoutMs: strictInt("SHIM_UPSTREAM_TIMEOUT_MS", env["SHIM_UPSTREAM_TIMEOUT_MS"], 120000, 1, Number.MAX_SAFE_INTEGER),
     exposeReasoning: /^(1|true|yes|on)$/i.test(env["SHIM_EXPOSE_REASONING"] ?? ""),
+    allowedHosts: list(env["SHIM_ALLOWED_HOSTS"]).map(bareHost),
   };
   if (env["MISTRAL_API_KEY"]) cfg.apiKey = env["MISTRAL_API_KEY"];
+  if (env["SHIM_CLIENT_TOKEN"]) cfg.clientToken = env["SHIM_CLIENT_TOKEN"];
+  checkAuthRules(cfg);
   return cfg;
 }
+
+type Route = { kind: "chat" } | { kind: "models" } | { kind: "wrong-method"; allow: string } | { kind: "none" };
+
+/** Fixed allowlist of forwardable requests. Everything else is refused before any upstream call. */
+function route(method: string, pathname: string): Route {
+  if (pathname === "/v1/chat/completions") return method === "POST" ? { kind: "chat" } : { kind: "wrong-method", allow: "POST" };
+  if (pathname === "/v1/models" || (pathname.startsWith("/v1/models/") && /^[A-Za-z0-9._:-]{1,128}$/.test(pathname.slice("/v1/models/".length)))) {
+    return method === "GET" ? { kind: "models" } : { kind: "wrong-method", allow: "GET" };
+  }
+  return { kind: "none" };
+}
+
+const sha256 = (v: string): Buffer => createHash("sha256").update(v, "utf8").digest();
+
+type AuthState = "ok" | "missing" | "bad" | "none";
 
 const FORWARD_REQUEST_HEADERS = ["content-type", "accept", "user-agent"];
 const DROP_RESPONSE_HEADERS = new Set([
@@ -99,14 +169,34 @@ function pickUsage(v: unknown, into: Usage): void {
 }
 
 export function createShimServer(config: ShimConfig): http.Server {
+  checkAuthRules(config);
   const log = config.log ?? ((line: string) => process.stderr.write(line + "\n"));
   const upstreamBase = config.upstream.replace(/\/+$/, "");
+  const hostAllow = new Set([...LOOPBACK_NAMES, bareHost(config.host), ...(config.allowedHosts ?? []).map(bareHost)]);
+  const tokenHash = config.clientToken !== undefined ? sha256(config.clientToken) : undefined;
+
+  function checkAuth(req: IncomingMessage): AuthState {
+    if (!tokenHash) return "none";
+    const h = req.headers["authorization"];
+    if (typeof h !== "string") return "missing";
+    const m = /^bearer +(\S+)$/i.exec(h.trim());
+    if (!m) return "bad";
+    return timingSafeEqual(sha256(m[1]!), tokenHash) ? "ok" : "bad";
+  }
+
+  function hostOk(req: IncomingMessage): boolean {
+    const h = req.headers["host"];
+    if (typeof h !== "string" || h === "") return false;
+    const m = /^(\[[^\]]+\]|[^:]+)(?::\d+)?$/.exec(h.trim());
+    return m !== null && hostAllow.has(bareHost(m[1]!));
+  }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const started = Date.now();
     const method = req.method ?? "GET";
     let pathname = "-";
     let model = "-";
+    let auth: AuthState = "none";
     let status = 0;
     const usage: Usage = {};
     const abort = new AbortController();
@@ -127,7 +217,7 @@ export function createShimServer(config: ShimConfig): http.Server {
       if (!res.writableFinished) abort.abort(); // client went away
       status = res.statusCode;
       const u = usage.total !== undefined ? ` tokens=${usage.prompt ?? "-"}/${usage.completion ?? "-"}/${usage.total}` : "";
-      log(`${method} ${pathname} ${status} ${Date.now() - started}ms model=${model}${u}`);
+      log(`${method} ${pathname} ${status} ${Date.now() - started}ms auth=${auth} model=${model}${u}`);
     });
 
     let url: URL;
@@ -139,6 +229,16 @@ export function createShimServer(config: ShimConfig): http.Server {
     }
     pathname = safeToken(url.pathname);
 
+    // DNS-rebinding and browser defence: this is a server-to-server endpoint only.
+    if (!hostOk(req)) {
+      sendError(res, 403, "Host not allowed", "forbidden");
+      return;
+    }
+    if (req.headers["origin"] !== undefined) {
+      sendError(res, 403, "Browser requests (Origin header) are not accepted", "forbidden");
+      return;
+    }
+
     if (url.pathname === "/healthz" && method === "GET") {
       const body = '{"ok":true}';
       res.writeHead(200, { "content-type": "application/json", "content-length": body.length });
@@ -146,6 +246,24 @@ export function createShimServer(config: ShimConfig): http.Server {
       return;
     }
     if (!url.pathname.startsWith("/v1/") || (req.url ?? "").startsWith("//")) {
+      sendError(res, 404, "Not found", "not_found");
+      return;
+    }
+
+    auth = checkAuth(req);
+    if (auth === "missing" || auth === "bad") {
+      res.setHeader("www-authenticate", "Bearer");
+      sendError(res, 401, "Missing or invalid shim client token", "authentication_error");
+      return;
+    }
+
+    const target = route(method, url.pathname);
+    if (target.kind === "wrong-method") {
+      res.setHeader("allow", target.allow);
+      sendError(res, 405, "Method not allowed", "method_not_allowed");
+      return;
+    }
+    if (target.kind === "none") {
       sendError(res, 404, "Not found", "not_found");
       return;
     }
@@ -162,7 +280,7 @@ export function createShimServer(config: ShimConfig): http.Server {
       }
     }
 
-    const isChat = method === "POST" && url.pathname === "/v1/chat/completions";
+    const isChat = target.kind === "chat";
     let wantsStream = false;
     if (isChat) {
       let parsed: unknown;
@@ -187,6 +305,7 @@ export function createShimServer(config: ShimConfig): http.Server {
       const v = req.headers[h];
       if (typeof v === "string") headers[h] = v;
     }
+    // Key injection mode: the client token authenticated to the shim and is never forwarded.
     if (config.apiKey) headers["authorization"] = `Bearer ${config.apiKey}`;
     else if (typeof req.headers["authorization"] === "string") headers["authorization"] = req.headers["authorization"];
 
@@ -287,7 +406,7 @@ if (isMain) {
     process.stderr.write(
       `shim listening on http://${cfg.host}:${port} upstream=${cfg.upstream} ` +
         `models=${cfg.allowedModels?.join(",") ?? "any"} reasoning=${cfg.exposeReasoning ? "exposed" : "dropped"} ` +
-        `key=${cfg.apiKey ? "env" : "client"}\n`,
+        `key=${cfg.apiKey ? "env" : "client"} client_auth=${cfg.clientToken ? "token" : "none"}\n`,
     );
   });
 }

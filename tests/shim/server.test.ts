@@ -51,7 +51,7 @@ for (const [name, file] of [["plain", "stream-plain.sse"], ["tool call", "stream
       if (name === "plain") assert.match(streamText(chunks), /café/);
       else assert.equal(chunks.find((c) => c.json?.choices?.[0]?.delta?.tool_calls)!.json!.choices[0].delta.tool_calls[0].function.name, "record_hook");
       await new Promise((r2) => setTimeout(r2, 20));
-      assert.match(shim.logs[0]!, /^POST \/v1\/chat\/completions 200 \d+ms model=mistral-large-4 tokens=\d+\/\d+\/\d+$/);
+      assert.match(shim.logs[0]!, /^POST \/v1\/chat\/completions 200 \d+ms auth=none model=mistral-large-4 tokens=\d+\/\d+\/\d+$/);
     } finally { await shim.close(); await mock.close(); }
   });
 }
@@ -171,13 +171,15 @@ test("authorization: client header forwarded; MISTRAL_API_KEY (config.apiKey) ov
     assert.equal(shim.logs.join("\n").includes("client-secret-123"), false);
     assert.equal(/bearer/i.test(shim.logs.join("\n")), false);
   } finally { await shim.close(); }
-  const shim2 = await startShim(mock.url, { apiKey: "env-key-999" });
+  // Key injection now requires a client token (F8); the token authenticates to the shim and is not forwarded.
+  const tok = "tok-" + "t".repeat(30);
+  const shim2 = await startShim(mock.url, { apiKey: "env-key-999", clientToken: tok });
   try {
-    await post(shim2.url, chatBody());
+    await post(shim2.url, chatBody(), { authorization: `Bearer ${tok}` });
     assert.equal(mock.requests[1]!.headers["authorization"], "Bearer env-key-999");
     await new Promise((r) => setTimeout(r, 20));
     const all = shim2.logs.join("\n");
-    assert.equal(all.includes("env-key-999") || all.includes("client-secret-123"), false);
+    assert.equal(all.includes("env-key-999") || all.includes("client-secret-123") || all.includes(tok), false);
   } finally { await shim2.close(); await mock.close(); }
 });
 
