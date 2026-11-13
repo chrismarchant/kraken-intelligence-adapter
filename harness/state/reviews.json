@@ -2439,6 +2439,93 @@
       ],
       "reportPath": "docs/review/2026-11-13-r2-delta-review-c83b0cb.md",
       "at": "2026-11-13T21:30:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-r1-evaluator-contract-c83b0cb",
+      "gate": "KIC-01",
+      "commit": "c83b0cbd0134eb224552b73e52a43b7111cde721",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-26",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "the evaluator (src/evaluation/**) and the uses of its result, at c83b0cb, against docs/spec/EVALUATOR-ACCEPTANCE-CONTRACT.md (PROPOSED) as at f01734c",
+        "R1 of the KIC-01 disposition"
+      ],
+      "skipped": [
+        {
+          "path": "the gate, the store, signing and the gateway except where they touch screening",
+          "reason": "out of scope"
+        },
+        {
+          "path": "the operator tool run with a key",
+          "reason": "forbidden to the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "V1",
+          "severity": "medium",
+          "summary": "Reasons reproduce text outside the allowed list and alter what they quote (EC-4.4); needs a code change",
+          "status": "open"
+        },
+        {
+          "id": "V2",
+          "severity": "low",
+          "summary": "Clock times in hashtags are not counted as figures, against P8(a)",
+          "status": "open"
+        },
+        {
+          "id": "V3",
+          "severity": "medium",
+          "summary": "Stand-in readings are applied to a whole text at once, against P3; a new unlisted class of misses",
+          "status": "open"
+        },
+        {
+          "id": "V4",
+          "severity": "medium",
+          "summary": "Text shown to editors and agents implies more than screening does (EC-5); needs code string changes",
+          "status": "open"
+        },
+        {
+          "id": "V5",
+          "severity": "low",
+          "summary": "The comparison document shows stored eligibility (EC-2.4)",
+          "status": "open"
+        },
+        {
+          "id": "V6",
+          "severity": "low",
+          "summary": "The contract's 'if and only if' and 'only these' are false: the code refuses more",
+          "status": "open"
+        },
+        {
+          "id": "V7",
+          "severity": "low",
+          "summary": "Screening time is quadratic on runs of number words, within the absolute bound",
+          "status": "open"
+        },
+        {
+          "id": "V8",
+          "severity": "low",
+          "summary": "A refusal for non-canonical text names no character",
+          "status": "open"
+        },
+        {
+          "id": "V9",
+          "severity": "low",
+          "summary": "Two statements of fact in the contract are wrong",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-r1-evaluator-contract-review-c83b0cb.md",
+      "at": "2026-11-13T21:50:00Z"
     }
   ]
 }

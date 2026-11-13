@@ -1,0 +1,49 @@
+   530 ms  "one " (long terms) failures=1 maxDetail=82
+   364 ms  "one " (short terms) failures=1 maxDetail=82
+   328 ms  "one-" (long terms) failures=1 maxDetail=82
+   218 ms  "one-" (short terms) failures=1 maxDetail=82
+   224 ms  "hundred and " (long terms) failures=3 maxDetail=103
+   165 ms  "hundred and " (short terms) failures=3 maxDetail=103
+   251 ms  "twenty five " (long terms) failures=1 maxDetail=82
+   187 ms  "twenty five " (short terms) failures=1 maxDetail=82
+   185 ms  "1," (long terms) failures=2 maxDetail=400
+   144 ms  "1," (short terms) failures=2 maxDetail=400
+   193 ms  "1." (long terms) failures=2 maxDetail=400
+   159 ms  "1." (short terms) failures=2 maxDetail=400
+   243 ms  "in 2026 " (long terms) failures=2 maxDetail=85
+   172 ms  "in 2026 " (short terms) failures=2 maxDetail=85
+   259 ms  "from 2019 to " (long terms) failures=2 maxDetail=85
+   182 ms  "from 2019 to " (short terms) failures=2 maxDetail=85
+   415 ms  "a I " (long terms) failures=1 maxDetail=82
+   343 ms  "a I " (short terms) failures=2 maxDetail=82
+   181 ms  "I l " (long terms) failures=1 maxDetail=82
+    90 ms  "I l " (short terms) failures=1 maxDetail=82
+   258 ms  "€€" (long terms) failures=1 maxDetail=82
+   129 ms  "€€" (short terms) failures=1 maxDetail=82
+   281 ms  "w!n " (long terms) failures=1 maxDetail=82
+   240 ms  "w!n " (short terms) failures=1 maxDetail=82
+   440 ms  "s c a m " (long terms) failures=1 maxDetail=82
+   363 ms  "s c a m " (short terms) failures=2 maxDetail=82
+   247 ms  "$1€|" (long terms) failures=1 maxDetail=82
+   152 ms  "$1€|" (short terms) failures=1 maxDetail=82
+   171 ms  "'s" (long terms) failures=1 maxDetail=82
+    98 ms  "'s" (short terms) failures=1 maxDetail=82
+   216 ms  "a'" (long terms) failures=1 maxDetail=82
+   129 ms  "a'" (short terms) failures=1 maxDetail=82
+   303 ms  "-a" (long terms) failures=1 maxDetail=82
+   282 ms  "-a" (short terms) failures=1 maxDetail=82
+   201 ms  "·" (long terms) failures=1 maxDetail=82
+   152 ms  "·" (short terms) failures=1 maxDetail=82
+   252 ms  "🚀 " (long terms) failures=1 maxDetail=82
+   183 ms  "🚀 " (short terms) failures=1 maxDetail=82
+   240 ms  "random-ish" (long terms) failures=1 maxDetail=82
+   188 ms  "random-ish" (short terms) failures=1 maxDetail=82
+growth "one " n=1000: 20 ms
+growth "one " n=2000: 49 ms
+growth "one " n=4000: 93 ms
+growth "one " n=8000: 247 ms
+growth random n=1000: 19 ms
+growth random n=2000: 39 ms
+growth random n=4000: 71 ms
+growth random n=8000: 147 ms
+worst 530 ms (bound 1500)

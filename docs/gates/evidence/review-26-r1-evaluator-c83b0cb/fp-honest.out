@@ -1,0 +1,151 @@
+REFUSED [double space after stop] "We reconcile weekly.  Then we report."
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [trailing space at line end] "We reconcile weekly. \nThen we report."
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [three blank lines] "Point one.\n\n\n\nPoint two."
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [CRLF] "Point one.\r\nPoint two."
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [tab] "Point one.\tPoint two."
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [ellipsis char] "Then it hit me…"
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [trademark] "Built on Excel™ exports."
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+ok      [registered (allowed)] "Built on Excel® exports."
+REFUSED [non-breaking space] "Price: 20 EUR"
+          unlisted-statistic: The figure "20" is not backed by a claim that cites a brief reference containing it
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [narrow nbsp before %] "Up 20 %"
+          unlisted-statistic: The figure "20" is not backed by a claim that cites a brief reference containing it
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [fi ligature] "ﬁnance teams"
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [half fraction] "½ of teams"
+          unlisted-statistic: The figure "1" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "2" is not backed by a claim that cites a brief reference containing it
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+          suspicious-characters: Contains 1 kind(s) of character a post may not use (U+2044): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+ok      [accented names] "Thanks to Zoë, José, Björn, François, Małgorzata and Ștefan."
+ok      [Vietnamese] "Cảm ơn Nguyễn."
+REFUSED [Greek name] "Thanks to Δημήτρης."
+          suspicious-characters: Contains 7 kind(s) of character a post may not use (U+0394, U+03B7, U+03BC, U+03AE, U+03C4, U+03C1, U+03C2): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [Cyrillic name] "Thanks to Анна."
+          suspicious-characters: Contains 3 kind(s) of character a post may not use (U+0410, U+043D, U+0430): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+ok      [Turkish dotted I] "Thanks to İlker."
+REFUSED [Chinese quote] "As they say, 一定."
+          suspicious-characters: Contains 2 kind(s) of character a post may not use (U+4E00, U+5B9A): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [Arabic name] "Thanks to محمد."
+          suspicious-characters: Contains 3 kind(s) of character a post may not use (U+0645, U+062D, U+062F): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [Hebrew] "שלום"
+          suspicious-characters: Contains 4 kind(s) of character a post may not use (U+05E9, U+05DC, U+05D5, U+05DD): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [rupee] "Costs ₹ less"
+          suspicious-characters: Contains 1 kind(s) of character a post may not use (U+20B9): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+ok      [Swiss franc / dollar] "Pricing in CHF and $."
+ok      [ellipsis three dots] "Then it hit me..."
+REFUSED [en dash range] "Teams of 10–20 people."
+          unlisted-statistic: The figure "10" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "20" is not backed by a claim that cites a brief reference containing it
+ok      [em dash] "One thing—clarity."
+ok      [curly quotes] "“It works,” she said."
+ok      [guillemets] "«It works»"
+ok      [German low quote] "„Es geht“"
+REFUSED [prime and double prime] "A 6′ 2″ board"
+          unlisted-statistic: The figure "6" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "2" is not backed by a claim that cites a brief reference containing it
+          suspicious-characters: Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)
+REFUSED [degree] "At 20°C"
+          unlisted-statistic: The figure "20" is not backed by a claim that cites a brief reference containing it
+REFUSED [multiplication] "A 3× gain"
+          unlisted-statistic: The figure "3" is not backed by a claim that cites a brief reference containing it
+ok      [arrow] "Input → output"
+ok      [rocket separate] "Launch day 🚀"
+ok      [rocket with VS] "Launch day ✅️"
+REFUSED [emoji attached] "Launch day🚀"
+          suspicious-characters: 1 emoji or picture symbols are written in the same word as letters or digits; set them apart with a space
+REFUSED [emoji attached after punct] "Done!🎉"
+          suspicious-characters: 1 emoji or picture symbols are written in the same word as letters or digits; set them apart with a space
+REFUSED [thumbs up skin tone] "Agreed 👍🏽"
+          suspicious-characters: Contains 1 kind(s) of character a post may not use (U+1F3FD): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+ok      [heart red with VS] "Thanks ❤️"
+REFUSED [flag] "Hello 🇬🇧"
+          suspicious-characters: Contains 2 kind(s) of character a post may not use (U+1F1EC, U+1F1E7): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [family ZWJ] "Team 👩‍💻"
+          suspicious-characters: Contains 2 kind(s) of character a post may not use (U+1F469, U+200D): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [laughing face (not listed)] "Ha 😂"
+          suspicious-characters: Contains 1 kind(s) of character a post may not use (U+1F602): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+ok      [check mark] "✔ Done"
+REFUSED [keycap] "Step 1️⃣"
+          unlisted-statistic: The figure "1" is not backed by a claim that cites a brief reference containing it
+          suspicious-characters: Contains 2 kind(s) of character a post may not use (U+FE0F, U+20E3): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed
+REFUSED [numbered list] "1. Map the process.\n2. Fix the data.\n3. Report."
+          unlisted-statistic: The figure "1" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "2" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "3" is not backed by a claim that cites a brief reference containing it
+          must-avoid-term: Contains "fix", which the brief rules out
+REFUSED [version string] "Upgrade to v2.4.1 today."
+          unlisted-statistic: The figure "2.4.1" is not backed by a claim that cites a brief reference containing it
+          must-avoid-term: Contains "AI", which the brief rules out
+REFUSED [phone] "Call +44 20 7946 0000."
+          unlisted-statistic: The figure "44" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "20" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "7946" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "0000" is not backed by a claim that cites a brief reference containing it
+REFUSED [date] "Join us on 12 March."
+          unlisted-statistic: The figure "12" is not backed by a claim that cites a brief reference containing it
+          must-avoid-term: Contains "us", which the brief rules out
+REFUSED [price] "From £49 a month."
+          unlisted-statistic: The figure "49" is not backed by a claim that cites a brief reference containing it
+ok      [percent] "62% of operations leads reconcile by hand."
+ok      [year date] "Since 2019 we have run this."
+REFUSED [Plan A] "Plan A I think is best."
+          must-avoid-term: Contains "AI", which the brief rules out
+          must-avoid-term: Contains "best", which the brief rules out
+ok      [scared] "Teams are scared of audits."
+REFUSED [Winter tag] "Body text." #Winter
+          must-avoid-term: Contains "win", which the brief rules out
+REFUSED [SaaSOps tag] "Body text." #SaaSOps
+          must-avoid-term: Contains "so", which the brief rules out
+ok      [Business tag] "Body text." #Business
+ok      [FocusGroup tag] "Body text." #FocusGroup
+ok      [ROIC] "ROIC rose."
+REFUSED [Fixed income] "Fixed costs fell."
+          must-avoid-term: Contains "fix", which the brief rules out
+ok      [thus] "Thus we act."
+REFUSED [sofa/also] "Also, so far."
+          must-avoid-term: Contains "so", which the brief rules out
+ok      [status quo] "The status quo."
+REFUSED [US the country] "Teams in the US."
+          must-avoid-term: Contains "us", which the brief rules out
+ok      [used] "We used it."
+REFUSED [Al name] "Thanks to Al Smith."
+          must-avoid-term: Contains "AI", which the brief rules out
+ok      [Hackney] "Our Hackney office."
+ok      [Bestway] "We use Bestway."
+REFUSED [winning] "Winning teams reconcile less."
+          must-avoid-term: Contains "win", which the brief rules out
+ok      [freely] "Share freely."
+ok      [iOS] "On iOS today."
+ok      [COVID] "Since COVID-19 teams changed."
+ok      [email address] "Write to ops@example.com"
+ok      [url] "See https://example.com/report"
+ok      [at sign handle] "Thanks @Maria"
+REFUSED [4.8/5 (backed fails)] "Rated 4.8/5 by teams."
+          unlisted-statistic: The figure "4.8" is not backed by a claim that cites a brief reference containing it
+          unlisted-statistic: The figure "5" is not backed by a claim that cites a brief reference containing it
+ok      [Q&A] "Join our Q&A."
+ok      [A/B test] "Run an A/B test."
+ok      [P&L] "Read the P&L."
+ok      [M&A] "M&A teams."
+REFUSED [S3 bucket] "Store it in S3."
+          unlisted-statistic: The figure "3" is not backed by a claim that cites a brief reference containing it
+REFUSED [H1] "In H1 we grew."
+          unlisted-statistic: The figure "1" is not backed by a claim that cites a brief reference containing it
+REFUSED [Web3] "Web3 hype."
+          unlisted-statistic: The figure "3" is not backed by a claim that cites a brief reference containing it
+REFUSED [G7] "The G7 met."
+          unlisted-statistic: The figure "7" is not backed by a claim that cites a brief reference containing it
+REFUSED [24h] "Within 24h."
+          unlisted-statistic: The figure "24" is not backed by a claim that cites a brief reference containing it
+REFUSED [1st] "Our 1st report."
+          unlisted-statistic: The figure "1" is not backed by a claim that cites a brief reference containing it

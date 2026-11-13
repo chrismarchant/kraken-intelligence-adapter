@@ -1,0 +1,20 @@
+// P2: accents and look-alikes, both readings of sharp s, thorn and eth; in body and hashtags.
+import { show } from "./lib.ts";
+show("accent", ["free"], "It is frée today.");
+show("accents everywhere", ["guarantee"], "Ĝüåřåñţęé it.");
+show("accent+ending", ["guarantee"], "guarañteed");
+show("Greek alpha", ["scam"], "No scαm here.");
+show("Cyrillic", ["free"], "It is frее.");
+show("sharp s as B", ["best"], "The ßest offer.");
+show("sharp s as ss", ["boss"], "Ask the boß.");
+show("thorn as p", ["price"], "Low þrice.");
+show("thorn as th", ["this"], "þis is it.");
+show("eth as o", ["done"], "We are ðone.");
+show("eth as d", ["deal"], "A ðeal.");
+show("dotless i", ["ai"], "Aı tools");
+show("ligature oe", ["oeuvre"], "œuvre");
+show("ae", ["aegis"], "ægis");
+show("hashtag accent", ["free"], "Body.", { hashtags: ["#FréeTrial"] });
+show("hashtag sharp s", ["best"], "Body.", { hashtags: ["#ßestDeal"] });
+show("capital sharp s", ["BEST"], "THE ẞEST");
+show("eth in hashtag 3 letter start", ["dog"], "x", { hashtags: ["#ðogDays"] });
