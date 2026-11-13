@@ -1744,6 +1744,72 @@
       ],
       "reportPath": "docs/review/2026-11-13-approval-path-delta-review-1f159a2.md",
       "at": "2026-11-13T15:40:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-b4-1f159a2",
+      "gate": "KIC-01",
+      "commit": "1f159a20109bb0759c54fdc262abd95aa2800294",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-18",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff a1affd2 1f159a2: src/store/**, src/gateway/**, src/mcp/**, evaluateDrafts and requestDecision in src/workflow/service.ts, exportProgramme in src/workflow/assemble.ts, src/limits.ts",
+        "tests/kic/scope-review-b.test.ts",
+        "tests/shim/spend.test.ts",
+        "delta review; relies on rev-2026-11-13-agent-b3-a1affd2 for unchanged code",
+        "claims (k), (l), (n), (o), (p)"
+      ],
+      "skipped": [
+        {
+          "path": "clip, src/contracts/**, src/evaluation/**, src/shim/normalize.ts",
+          "reason": "the other reviewer's scope"
+        },
+        {
+          "path": "src/mcp/http.ts",
+          "reason": "unchanged by the diff"
+        }
+      ],
+      "verdict": "approve-with-followups",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "low",
+          "summary": "A named pipe swapped in between the look and the read of a lock path blocks the read for ever (store writer only)",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "low",
+          "summary": "Two other reads of the lock file can block on a named pipe (store writer only)",
+          "status": "open"
+        },
+        {
+          "id": "3",
+          "severity": "medium",
+          "summary": "The lifetime limit on decision requests counts voided and expired requests and has no recovery; a campaign can be locked out of decisions",
+          "status": "open"
+        },
+        {
+          "id": "4",
+          "severity": "low",
+          "summary": "The usage cap applies per answer; two absurd answers charge twice the reservation",
+          "status": "open"
+        },
+        {
+          "id": "5",
+          "severity": "info",
+          "summary": "Test weaknesses: a hang where a failure is meant; the spend-settle helper waits for quiet, not for the expected totals",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-b4-1f159a2.md",
+      "at": "2026-11-13T15:50:00Z"
     }
   ]
 }
