@@ -36,3 +36,18 @@ Closed: N1 (for letters: every accepted letter folds to plain ASCII), N2, **N3**
 ## The reviewer on the tests
 
 All 19 tests added in `a1affd2` were run against the `1d8bafe` sources: every one fails there but one, which already passed. Weak: the tipping test is vacuous, since the claims alone are refused; one line of the bounds test is vacuous; no test covers the evasion the apostrophe rule opened, the over-matching of short terms, symbols, or evaluations fitting their own contract. The shim tests are sound.
+
+## Remediation in `efe9415` and `1f159a2` (added by the orchestrator)
+
+| # | Change | Regression test |
+|---|---|---|
+| 1 | The rule now covers every character, not only letters (`src/evaluation/characters.ts`). A draft may contain Latin letters as European languages, Vietnamese and pinyin write them; the digits 0 to 9; a space, a tab, a line end; keyboard marks; a short list of typographic marks; and emoji that are not drawn as letters. Anything else is refused. A regional indicator on its own is refused. An emoji may not be written against a letter or a digit. The sharp s and thorn are read both as what they are and as what they look like | `tests/kic/scope-review-a.test.ts` "1" (two tests), covering every example the reviewer gave |
+| 2 | Each allowed mark or digit that can stand in for a letter is read as that letter wherever it stands against one, at the start and end of a word as well as inside. A lower-case L beside a capital is read as a capital I, and a capital I after small letters as an L. Two or more single letters set apart are joined. **Not changed, and accepted as a limit:** two ordinary letters drawn to look like one ("rn" for "m", "vv" for "w", "cl" for "d") | "2"; "a ruled-out word written with keyboard symbols…" |
+| 3 | Only a closed list of contractions keeps its apostrophe | "3" |
+| 4 | Every string the evaluator writes is cut to the length its contract allows | "4": the reviewer's four cases, parsed against the contract |
+| 5 | Romanian, Vietnamese and pinyin letters and the capital sharp s are allowed | "1" |
+| 6 | Endings follow English spelling: one or two letters take the plural only; three letters ending consonant, vowel, consonant take the doubled forms only; a bare "-d" only after a final "e" in a word of four letters or more | "N4", with the reviewer's ten over-matches |
+| 7 | An event with no data line is passed on only if it is a comment or the fields that go with data; anything else ends the stream | `tests/shim/scope-review.test.ts` "7" |
+| 8 | An empty data event is passed on. Data that is neither empty nor valid JSON still ends the stream: it cannot be checked. Accepted as a limit | "8" |
+| 9 | `clip` settles text into canonical form before cutting, and its search is bounded | "9" |
+| 10 | Not changed. Accepted | — |

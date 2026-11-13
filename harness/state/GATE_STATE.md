@@ -101,7 +101,16 @@ Both were remediated in commit `1d8bafe969d3ebfa3cee42a9889cdab848443081`. What 
 | Part A (`independent-review-agent-13`), `docs/review/2026-11-13-review-a2-1d8bafe.md` | **changes-requested**: 1 high, 2 medium, 7 low. High: letters from the extended Latin blocks that pass for plain ones were neither folded nor refused (also true at `2537386`; no earlier review had found it). Medium: the "mostly Latin" rule could be tipped with unpublished text; **a regression** in the rewritten stream normaliser read a single CRLF as the end of an event and dropped valid events |
 | Part B (`independent-review-agent-14`), `docs/review/2026-11-13-review-b2-1d8bafe.md` | **changes-requested**: 2 medium, 4 low. The lock's mutual exclusion held under volume and forced tests. Medium: **a regression**, the new connection limit let 64 silent connections shut out callers with a token; clearing up after a removed lock could delete another process's unfinished file and fail an honest update |
 
-Both are remediated in commit `a1affd2c4e9677baa8d15a60fe330ceec13e3c08`: 19 further regression tests; 249 product and 83 harness tests pass; the secret scan is clean. **Reviews of that exact commit are commissioned, again one for each area. Until they are recorded here, `a1affd2` has no review and the review requirement is not met at any commit.**
+Both were remediated in commit `a1affd2c4e9677baa8d15a60fe330ceec13e3c08`.
+
+**Reviews of `a1affd2`:**
+
+| Review | Outcome |
+|---|---|
+| Part A (`independent-review-agent-15`), `docs/review/2026-11-13-review-a3-a1affd2.md` | **changes-requested**: 1 high, 3 medium, 5 low, 1 info. The letters and the stream normaliser were found sound (3,000 random streams against a reference parser, no mismatch). High, and older than this work: characters that are not letters but are drawn as letters (squared-letter emoji, mathematical symbols, combining small letters) were neither refused nor read as letters. Medium: plain look-alikes; **a regression** in the apostrophe rule; evaluator strings that could exceed their own contract and block a campaign |
+| Part B (`independent-review-agent-16`), `docs/review/2026-11-13-review-b3-a1affd2.md` | **approved, with follow-ups** (6 low, 1 info). The lock held in nine volume trials with real processes and about 1,500 kills: nothing lost, nothing duplicated, no worker failed. The HTTP shut-out is gone. The approval covers the store, gateway and MCP code at `a1affd2`, not the commit as a whole |
+
+Remediated in `efe9415` (part A) and `1f159a20109bb0759c54fdc262abd95aa2800294` (part B follow-ups): 262 product and 83 harness tests pass; the secret scan is clean. **Three reviews of `1f159a2` are commissioned: the evaluator and normaliser; a delta review of the store, gateway and MCP follow-ups; and a delta review of the approval path, because files it rests on have changed since `2537386`, the commit its approving reviews covered. Until they are recorded here, no commit meets the review requirement.**
 
 The entries for reviews A and B in the append-only review ledger show their findings as "open", as they were when recorded.
 

@@ -46,3 +46,15 @@ Closed: N2, N3 (the shut-out, at default settings), N4, N7 (by reading), F1 to F
 ## The reviewer on the tests
 
 Each new test, copied into a `1d8bafe` tree, fails there. Not flaky: the file passed five times in a row, and the four test files in scope passed three times with four processes hogging four cores. Gaps: the HTTP attacker in the test is slow; no test of a named pipe, of the tidy-up, of the fallback without hard links, of threads, or of a changed set of drafts in the no-op test (which is why finding 1 was missed).
+
+## Follow-ups in `1f159a2` (added by the orchestrator)
+
+| # | Change | Regression test |
+|---|---|---|
+| 1 | A repeated evaluation is a no-op only when it matches the latest evaluation stored for the post | `tests/kic/scope-review-b.test.ts` "1" |
+| 2 | The lock's path is looked at before it is opened and only an ordinary file is read. A record is opened without waiting and must be an ordinary file | "2", with real named pipes |
+| 3 | A reported completion figure is counted as at most three times the request's allowance, the whole call's reservation | "N5" |
+| 4 | A campaign may have at most 1,000 decision requests over its life | "4" |
+| 5 | Not changed. Accepted: a property of the machine's network stack under a flood | — |
+| 6 | A right with no readable holder is honoured only until it is old | "6" |
+| 7 | At most 50 previews of a programme are kept; the oldest are removed when a new one is written; a release is never removed | "7" |
