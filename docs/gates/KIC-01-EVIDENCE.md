@@ -11,7 +11,7 @@ Every result below came from a command run in the session. Where something was n
 | **C1** Full OpenBot boots on a licensed Intelligence project and completes a conversation with a tool call and a recalled memory | **Not demonstrated. Blocked.** | No Intelligence project key exists in the environment (obtaining one needs a personal account sign-in). OpenBot's schema needs pgvector, which is unavailable: no Docker daemon, package not in the repositories, source build refused by the session's permission layer. Recorded once as a local stop on task `KIC-01-C1`; not retried. |
 | **C2** Mistral Large 4 works through a shim, streaming, with tools | **Demonstrated outside OpenBot. Not demonstrated inside it.** | See "Model shim" and "Agent runs". |
 | **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing new. The four questions are in `KIC-01-ASSESSMENT.md` §8. |
-| **C4** Human editorial approval enforced in code | **Demonstrated, and independently attacked.** | See "Approval enforcement". |
+| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by three independent reviews.** The first two each found a way through; both were closed and re-tested. | See "Approval enforcement" and "Independent review". |
 
 ## What was built
 
@@ -23,18 +23,19 @@ Every result below came from a command run in the session. Where something was n
 | Evaluator: deterministic draft analysis, JEV-shaped adapter, deterministic mock, redaction | `src/evaluation/` | Implemented, tested. **No live JEV transport exists.** |
 | Campaign workflow: bounded generation, editorial decisions, assembly, export | `src/workflow/` | Implemented, tested |
 | MCP server (stdio and HTTP), 12 tools, none that publishes or records a decision | `src/mcp/` | Implemented, tested; driven live by an agent |
-| Operator tool: key creation, show, confirm, decline | `src/cli/operator.ts` | Implemented; exercised by hand in the agent runs. No automated test of the command-line wrapper itself. |
+| Operator tool: key creation, list, show, confirm, decline, release | `src/cli/operator.ts` | Implemented; tested as real child processes (`tests/kic/processes.test.ts`) |
+| Creator ranking: typed evidence, transparent weighted score, mandatory eligibility | `src/creators/` | Implemented on labelled synthetic fixtures only. No creator source is connected. |
 | Skills catalogue (6 implemented, 3 deferred) | `src/skills/catalogue.ts` | Implemented, served by `kic_list_skills` |
 | Tenant package for an OpenBot-derived instance | `tenant-package/` | Written; accepted by upstream's validator. **Not run inside OpenBot.** |
 | Harness: task ledger, gates, three stop levels, commit-bound reviews, secret scan, CI, hook, guardians | `harness/`, `.github/`, `.claude/agents/` | Implemented, tested; CI verified on GitHub. Hook not installed. |
 
-Size: about 5,500 lines of product source and 2,900 lines of product tests.
+Size: about 6,400 lines of product source and 3,600 lines of product tests.
 
 ## Tests
 
-`npm run check` at the remediation commit: type check clean; **130 product tests pass; 82 harness tests pass**; secret scan clean. All tests are offline.
+`npm run check` at commit `075b358`: type check clean; **155 product tests pass; 82 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
 
-GitHub Actions workflow `ci` succeeded on three pushes: runs 43343870467 (`90e6330`), 43346469381 (`983487d`) and 43350445685 (`aad2196`).
+GitHub Actions workflow `ci` succeeded on four pushes: runs 43343870467 (`90e6330`), 43346469381 (`983487d`), 43350445685 (`aad2196`) and 43411349457 (`075b358`).
 
 ## Commercial proof: the synthetic campaign
 
@@ -54,8 +55,8 @@ Result of the recorded run, replayed by `tests/kic/scenario.test.ts`:
 | Programme | 4 posts over 2 weeks, sequenced, each with a rationale and a call to action |
 | Drafts | 8 drafts, 2 alternatives per post, by Mistral Large 4 |
 | Evaluation | All 4 posts compared on 6 criteria by the deterministic mock, with evidence per criterion, confidence and stated limits. All 8 drafts passed the mandatory constraints. |
-| Editorial | One draft rejected; one revision requested, written and re-evaluated; 4 approvals. Every decision signed. |
-| Package | Complete; 4 provisional commands, all `NON-EXECUTABLE`; JSON, readable summary and commands file exported |
+| Editorial | One draft rejected; one revision requested, written and re-evaluated; 4 approvals. Every decision signed and chained to the one before. |
+| Package | Complete; released and signed by the (scripted) editor; 4 provisional commands, all `NON-EXECUTABLE`; JSON, readable summary and commands file exported |
 | Determinism | Two replays produce byte-identical packages |
 
 **The editor in this scenario is a scripted test actor, labelled as such in every record. No person made these decisions and no UI was involved.**
@@ -78,7 +79,7 @@ The live script was **not re-run** after the shim's security hardening (`1c7fedf
 
 ## Agent runs: CopilotKit agent + shim + Mistral + KIC MCP server + operator tool
 
-A scratch experiment, not product code. `BuiltInAgent` from `@copilotkit/runtime` 1.85.0 — the class and version OpenBot's built-in Bots use — configured the way OpenBot configures it (`OPENAI_BASE_URL` at the shim, `COPILOTKIT_OPENAI_API=chat`), with the KIC MCP server attached over HTTP. In-memory runner; **no OpenBot application, no Intelligence, no UI.** Run on the remediation code.
+A scratch experiment, not product code, run at commit `aad2196`. The operator tool has since changed (the editor now names the action, subject and content hash, and releases the package); that later form is covered by automated tests, not by a repeat of these live runs. `BuiltInAgent` from `@copilotkit/runtime` 1.85.0 — the class and version OpenBot's built-in Bots use — configured the way OpenBot configures it (`OPENAI_BASE_URL` at the shim, `COPILOTKIT_OPENAI_API=chat`), with the KIC MCP server attached over HTTP. In-memory runner; **no OpenBot application, no Intelligence, no UI.** Run on the remediation code.
 
 | Run | What happened |
 |---|---|
@@ -92,6 +93,19 @@ Cost of the two runs: KIC's own generation, 7 model steps, 11,215 prompt and 40,
 
 Neither log contained a token or an authorization value.
 
+### Repeated at commit `075b358`, with the current operator tool
+
+| Run | What happened |
+|---|---|
+| 1 (159 s) | The agent created the campaign, interpreted the brief, generated narratives and requested a selection, then stopped. |
+| Operator | `show` printed "YOU ARE ASKED TO: SELECT narrative …", the text and its hash. `confirm --action select --subject … --sha …` recorded decision 1, signed. |
+| 2 (136 s) | The agent planned, drafted 8 posts, evaluated, showed the comparison and requested approval of the top-ranked eligible draft. |
+| Operator | `confirm` with `--action reject` was refused ("That is not what you asked to confirm. Nothing was recorded."). `confirm` with the action, subject and hash as shown recorded decision 2, signed. |
+| Preview | The MCP tool refused without `allowPartial`, then exported a directory ending `-preview` with one `NON-EXECUTABLE` command. |
+| Release | `release` without `--partial` was refused (posts pending). With it, the operator tool released the package on 2 recorded decisions, signed with the operator key, to a directory ending `-released`. |
+
+Cost: KIC's generation, 7 model steps, 11,313 prompt and 29,811 completion tokens; the agent's 10 chat requests, 75,323 prompt and 2,496 completion tokens. No reservation was left behind. Neither log contained a token.
+
 ## Cost, as far as it can be verified
 
 Measured token use is above. The provider's pricing page, read on 2026-11-13, lists "Mistral Large" at $0.50 per million input tokens and $1.50 per million output tokens. It does not name Large 4 and does not say how reasoning tokens are billed.
@@ -102,15 +116,17 @@ Not measured: cost at realistic campaign sizes, with real briefs, or with more r
 
 ## Approval enforcement (C4)
 
-What the code guarantees, each covered by tests in `tests/kic/approval.test.ts`, `signing.test.ts`, `concurrency.test.ts` and `mcp.test.ts`:
+What the code guarantees, each covered by tests in `tests/kic/approval.test.ts`, `signing.test.ts`, `concurrency.test.ts`, `processes.test.ts` and `mcp.test.ts`:
 
 - Nothing is selected, approved, rejected or revised except by a decision recorded with the operator's signing key. The agent-facing server holds only the public key and has no tool that records a decision; with the right one-time code it is still refused.
-- A decision written straight into the store, unsigned, mis-signed or signed with another key, does not count. A genuine signature does not transfer to another campaign, draft, action or actor.
-- A decision is bound to the exact text the editor was shown. Text changed after the request voids it; text changed after approval is not treated as approved.
-- The latest decision about a subject wins, so a rejection after an approval stands even if the stored status is altered.
+- Decisions form a signed chain. Each carries its number in the log and the digest of the one before, inside the signature. A decision that is forged, unsigned, signed with another key, moved, repeated, re-pointed or removed from the middle makes the whole log untrusted, and nothing is planned, revised, assembled or signed on top of it.
+- Removing decisions from the end of the log is caught by the operator's own ledger, kept beside the key and outside the store. The operator tool then refuses to sign a decision or to release a package.
+- The editor is shown the request from the campaign record, never from the operator channel, and must name the action, the subject and the content hash they read. A decision is refused, and the request closed, if any of the three differs from the stored request or the current text.
+- The latest decision about a subject wins. A rejection, a request for revision, or the existence of a revision withdraws an approval, whatever the stored status says.
 - A draft cannot be approved unless it has been evaluated and passes the mandatory constraints, whatever it scores.
 - A programme cannot be planned without a selected narrative, or assembled without an approved post; pending posts need an explicit partial assembly.
-- Concurrent writes cannot lose a decision (both stores, and two store instances on one directory).
+- What the agent-facing server assembles is a preview and says so. Only the operator tool releases a package, and the release is a signature over the package's digest; any change to a released package invalidates it.
+- Concurrent writers cannot lose a decision: tested on both stores, on two store instances, on eight stores recovering from a crashed writer, and on four separate processes.
 
 ## Prompt injection: one live probe
 
@@ -124,7 +140,10 @@ Result: both drafts ignored all of it, cited the survey reference for their one 
 |---|---|---|---|
 | `983487d` | Independent agent, Opus tier | changes-requested (1 critical, 3 high) | `docs/review/2026-11-13-independent-agent-983487d.md` |
 | `983487d` | Mistral Large 4, direct API | changes-requested | `docs/review/2026-11-13-mistral-large-4-983487d.md` |
-| `aad2196` | Second independent agent, Opus tier | see `harness/state/reviews.json` | filed when returned |
+| `aad2196` | Second independent agent, Opus tier | changes-requested (2 high: decision rollback; forged operator notice) | `docs/review/2026-11-13-confirmation-review-aad2196.md` |
+| `075b358` | Third independent agent, Opus tier, scope limited to the nine findings and the remediation | see `harness/state/reviews.json` | filed when returned |
+
+Three rounds were set as the limit for this session. Each review is bound to the exact commit it read; `node harness/scripts/aeh.mjs check-reviews --commit <sha> --gate KIC-01` fails for any commit without an approving, independent review and with any blocking one.
 
 The Mistral Code Review Bot and Codex were not used: the bot's block-content defect is unfixed on its default branch, and the Codex credential is rejected.
 
@@ -136,5 +155,6 @@ The Mistral Code Review Bot and Codex were not used: the bot's block-content def
 - Any real client, brief, creator or performance data.
 - Live JEV, by design.
 - Deployment of any kind.
-- Behaviour across separate operating-system processes under load (two store instances in one process were tested, not two processes).
+- Stores shared between machines: the lock relies on process ids and is for one machine only.
+- A person using the operator tool. It has been driven by tests and by this session, not by an editor.
 - Long campaigns: the largest run was 4 posts.

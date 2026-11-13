@@ -2,6 +2,30 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (autonomous session: KIC companion built, three review rounds)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees (no base branch exists; no pull request possible)
+CURRENT_GATE: none accepted. KIC-01 evidence presented. Session authorisation of 2026-11-13 is used up.
+COMPLETED:
+  A  Mistral normalising shim, hardened; live with OpenBot's model client and the CopilotKit agent class.
+     Full OpenBot boot NOT attempted beyond KIC-00: no Intelligence key, no pgvector (local stop, once).
+  B  KIC MCP server (12 tools; none publishes; none records a decision), typed contracts, gateway,
+     mock JEV evaluator, bounded workflow, signed and chained editorial decisions, operator tool, release.
+  C  Synthetic campaign recorded from live Mistral Large 4 and replayed offline; live agent runs
+     end to end with operator confirmation and release.
+  D  Harness: task ledger, gates, three stop levels, commit-bound reviews, secret scan, CI (4 green runs).
+  Reviews: 983487d (two reviews, changes-requested), aad2196 (changes-requested), 075b358 (see GATE_STATE).
+OPEN: OD-1..OD-10. C1, C3. Exceptions in GATE_STATE.md.
+NEXT_ACTION: wait for the owner. Do NOT start new implementation: the session authorisation has ended.
+  Runnable without the owner (harness queue): AEH-3 (install hook, needs a live session to verify),
+  KIC-D9 (batch drafting). Everything else waits on OD-1, OD-7, OD-8, OD-9.
+  To resume: read docs/harness/RESTART.md; run `npm ci && npm run check`; `node harness/scripts/aeh.mjs status`.
+REFERENCES: docs/gates/KIC-01-EVIDENCE.md, docs/review/, docs/architecture/kic-companion.md,
+  docs/security/THREAT-MODEL.md, harness/state/reviews.json, harness/state/tasks.json
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (OD-1 reopened; KIC-01 assessment presented)
 
 ```

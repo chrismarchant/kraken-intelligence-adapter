@@ -26,11 +26,12 @@ One instance per client. One data directory, one model key, one operator key. No
 | `src/skills/` | Versioned prompts, the shapes the model must return, and the skills catalogue. |
 | `src/evaluation/` | `analyseDraft`: deterministic observations and mandatory constraints. `buildJevRequest`: one fan-out request in the decision model's shape, redacted, with the client's name removed. `MockJevTransport`: deterministic answers. `createJevTransport("jev")` throws. |
 | `src/workflow/service.ts` | The campaign workflow. Every model-backed step runs in three phases: reserve (under the campaign lock: check, build requests, charge the calls), call (outside the lock, bounded concurrency, cancellable), settle (under the lock: record cost, re-check state, apply or discard). |
-| `src/workflow/signing.ts` | Ed25519 signing and verification of editorial decisions. |
-| `src/workflow/assemble.ts` | Builds the programme package from validly approved material only, and exports it. |
-| `src/store/` | One JSON file per campaign. All writes go through `update`, serialised per campaign by an in-process mutex and a lock file, written to a temporary file, flushed and renamed. |
+| `src/workflow/signing.ts`, `ledger.ts` | Ed25519 signing of editorial decisions as a chain (each names its number and its predecessor's digest), verification of the whole log, and the operator's ledger of each log's head. |
+| `src/workflow/assemble.ts` | Builds a preview of the programme package from validly approved material only; `releaseProgramme` is the editor's signed sign-off; exports either. |
+| `src/creators/` | Typed creator evidence and a transparent weighted ranking with mandatory eligibility. Runs on fixtures only; contacts no one. |
+| `src/store/` | One JSON file per campaign. All writes go through `update`, serialised per campaign by an in-process mutex and a lock file that names its owner. A lock is taken over only when its owning process is gone. Writes go to a temporary file, are flushed and renamed. One machine only. |
 | `src/mcp/` | The MCP server and its stdio and HTTP entry points. |
-| `src/cli/operator.ts` | The editor's tool. The only place a decision is recorded. |
+| `src/cli/operator.ts` | The editor's tool: `init`, `list`, `show`, `confirm`, `decline`, `release`. The only place a decision is recorded or a package released. It reads what a request is from the campaign record, and makes the editor name the action, subject and content hash before it signs. |
 
 ## Limits (defaults in `src/limits.ts`)
 
@@ -42,13 +43,14 @@ One instance per client. One data directory, one model key, one operator key. No
 | Revision passes per draft | 2 |
 | Model calls in flight | 3 |
 | Model steps per campaign | 80 |
-| Completion tokens per campaign | 400,000 (checked against a step's nominal allowance before it starts) |
+| Completion tokens per campaign | 400,000. A step reserves three times its nominal allowance while in flight, which is the most its calls can use. |
+| Lifetime of an unsettled step's reservation | 30 minutes, then charged in full |
 | Time per model call | 180 s, then cancelled |
 | Provider requests per model call | 6, all retries included |
 | Decisions waiting for the editor | 25 |
 | Lifetime of a decision request | 30 minutes |
 
-A step that retries a cut-off answer can use up to twice its nominal allowance on that retry, so the token limit can be overshot by one step's worth. It cannot be overshot repeatedly: the next step is refused.
+One call can use at most three times its allowance: once at the allowance, and once at double if the answer was cut off. That worst case is what a step reserves, so steps started together cannot overspend between them. A consequence of the default limits: one drafting step can cover at most eleven posts (11 × 12,000 × 3 = 396,000); a longer programme is drafted in batches or with a higher limit.
 
 ## Configuration
 
@@ -66,14 +68,15 @@ Agent-facing server (`npm run mcp:http` or `mcp:stdio`):
 | `KIC_MCP_HOST`, `KIC_MCP_PORT`, `KIC_MCP_TOKEN` | HTTP endpoint. A token of at least 24 characters is required unless `KIC_MCP_ALLOW_UNAUTHENTICATED=1` on loopback. |
 | `KIC_MCP_ALLOWED_HOSTS`, `KIC_MCP_ALLOWED_ORIGINS` | Extra Host names and browser Origins to accept. |
 
-Operator tool: the same data and operator directories, plus `KIC_OPERATOR_KEY_FILE` (the private key).
+Operator tool: the same data and operator directories, plus `KIC_OPERATOR_KEY_FILE` (the private key). The tool keeps its ledger in `<key file>.ledger.json`.
 
 ## Deployment requirements that code cannot enforce
 
-1. The operator's private key must be readable only by the editor's tool: a different operating-system user, container or machine from the agent runtime and from the MCP server.
-2. The operator channel directory should likewise be unreadable by the agent runtime. If it is readable, the agent can see notices and one-time codes, but still cannot record a decision without the key.
-3. The campaign store must not be writable by the agent runtime's own tools. A writer could not forge an approval, but could delete or corrupt records.
-4. The MCP HTTP endpoint should be reachable only from the workspace that uses it.
+1. The operator's private key **and its ledger file** must be readable and writable only by the editor's tool: a different operating-system user, container or machine from the agent runtime and from the MCP server. If the key is readable elsewhere, every control falls. If the ledger is deleted, removal of decisions from the end of a log is no longer detected.
+2. The operator channel directory should be unreadable and unwritable by the agent runtime. If it is not, the agent can see one-time codes and plant notices, but cannot record a decision (no key) and cannot change what the editor is shown (read from the record).
+3. The campaign store should not be writable by the agent runtime's own tools. A writer cannot forge, reorder or remove a decision without detection, and cannot make changed text count as approved, but can delete or corrupt records, and can make a preview from a log with its tail removed. A preview is not a release.
+4. The store, the MCP server and the operator tool run on one machine.
+5. The MCP HTTP endpoint should be reachable only from the workspace that uses it.
 
 ## With OpenBot
 

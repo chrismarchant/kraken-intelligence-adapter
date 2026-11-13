@@ -154,8 +154,11 @@
       ],
       "status": "in_progress",
       "evidence": [
-        "harness/state/reviews.json: two reviews of 983487d, both changes-requested",
-        "remediation aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        "harness/state/reviews.json",
+        "docs/review/2026-11-13-independent-agent-983487d.md",
+        "docs/review/2026-11-13-mistral-large-4-983487d.md",
+        "docs/review/2026-11-13-confirmation-review-aad2196.md",
+        "remediation commits aad2196 and 075b358"
       ]
     },
     {
@@ -164,8 +167,10 @@
       "gate": "KIC-01",
       "owner": "orchestrator",
       "deps": [],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "tests/kic/processes.test.ts: operator tool as child processes (init, list, show, confirm, decline, release, forged notice)"
+      ]
     },
     {
       "id": "KIC-D2",
@@ -173,8 +178,11 @@
       "gate": "KIC-01",
       "owner": "orchestrator",
       "deps": [],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "tests/kic/processes.test.ts: four processes, 100 updates on one campaign",
+        "tests/kic/concurrency.test.ts"
+      ]
     },
     {
       "id": "KIC-D3",
@@ -196,8 +204,12 @@
       "gate": "KIC-01",
       "owner": "orchestrator",
       "deps": [],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "src/creators/**",
+        "fixtures/creators/synthetic-creators.json",
+        "tests/kic/creators.test.ts"
+      ]
     },
     {
       "id": "KIC-D5",
@@ -219,13 +231,49 @@
       "gate": "KIC-01",
       "owner": "orchestrator",
       "deps": [],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "tests/shim/live.ts re-run at aad2196 against the hardened shim: cases a-f pass, control fails as expected"
+      ]
     },
     {
       "id": "AEH-3",
       "title": "Install and verify the global-stop hook in a live session",
       "gate": "AEH",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "KIC-D7",
+      "title": "Repeat the live agent runs with the current operator tool (confirm by action, subject and hash; release)",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "done",
+      "evidence": [
+        "docs/gates/KIC-01-EVIDENCE.md: agent runs repeated at 075b358 with confirm-by-hash and operator release"
+      ]
+    },
+    {
+      "id": "KIC-D8",
+      "title": "Quality comparison of reasoning effort low against medium on the synthetic campaign",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "blocked",
+      "evidence": [],
+      "stop": {
+        "level": "local",
+        "reason": "Owner decision OD-10, and a spend ceiling (OD-6).",
+        "since": "2026-11-13"
+      }
+    },
+    {
+      "id": "KIC-D9",
+      "title": "Batch drafting for programmes of more than eleven posts under the default token limit",
+      "gate": "KIC-01",
       "owner": "orchestrator",
       "deps": [],
       "status": "todo",

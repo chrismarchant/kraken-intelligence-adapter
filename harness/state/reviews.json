@@ -254,6 +254,120 @@
       ],
       "reportPath": "docs/review/2026-11-13-mistral-large-4-983487d.md",
       "at": "2026-11-13T01:45:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-aad2196",
+      "gate": "KIC-01",
+      "commit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-2",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/store/**",
+        "src/workflow/**",
+        "src/util/**",
+        "src/gateway/**",
+        "src/evaluation/signals.ts",
+        "src/evaluation/jev.ts (part)",
+        "src/mcp/**",
+        "src/cli/operator.ts",
+        "src/commands/provisional.ts",
+        "src/shim/server.ts",
+        "src/contracts/decision.ts",
+        "src/contracts/programme.ts",
+        "harness/scripts (diff)",
+        "tests/kic/support.ts",
+        "tests/kic/concurrency.test.ts",
+        "tenant-package/**"
+      ],
+      "skipped": [
+        {
+          "path": "src/cli/scenario.ts, src/cli/demo.ts",
+          "reason": "small diffs, not security-relevant"
+        },
+        {
+          "path": "tests/kic/rendering, evaluation, mcp tests",
+          "reason": "relied on them passing plus own probes"
+        },
+        {
+          "path": "src/shim/normalize.ts",
+          "reason": "unchanged"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "high",
+          "summary": "Signed decisions could be rolled back by reordering or deleting them; revision requests did not revoke approval",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N2",
+          "severity": "high",
+          "summary": "Operator tool displayed and acted on an unauthenticated notice file",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N3",
+          "severity": "medium",
+          "summary": "Unsafe stale-lock takeover",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N4",
+          "severity": "low",
+          "summary": "Orphaned fresh lock blocked writers past their timeout",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N5",
+          "severity": "medium",
+          "summary": "Tokens neither reserved nor projected at worst case",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N6",
+          "severity": "medium",
+          "summary": "Remaining eligibility gaps and unusable false positives",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N7",
+          "severity": "low",
+          "summary": "Lexical path containment check",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N8",
+          "severity": "low",
+          "summary": "Key creation could leave half a pair; malformed notice blocked the tool",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        },
+        {
+          "id": "N9",
+          "severity": "low",
+          "summary": "Unsigned mode not marked on commands and tool result",
+          "status": "fixed",
+          "remediationCommit": "075b358978249e9e8dd2b898b408ecc5730806ff"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-confirmation-review-aad2196.md",
+      "at": "2026-11-13T02:24:00Z"
     }
   ]
 }
