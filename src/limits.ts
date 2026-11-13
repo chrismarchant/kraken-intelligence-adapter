@@ -26,6 +26,10 @@ export interface Limits {
   reservationTtlMs: number;
   /** Decision requests that may be waiting for a person at one time, per campaign. */
   maxPendingDecisions: number;
+  /** Decision requests over a campaign's whole life, whatever became of them. */
+  maxDecisionRequests: number;
+  /** Previews of one programme kept in the export directory at once. */
+  maxPreviewExports: number;
   /** LinkedIn's documented limit for an organic post body. */
   linkedinMaxChars: number;
 }
@@ -48,6 +52,8 @@ export const DEFAULT_LIMITS: Limits = Object.freeze({
   maxDecisionCodeAttempts: 5,
   reservationTtlMs: 30 * 60_000,
   maxPendingDecisions: 25,
+  maxDecisionRequests: 1000,
+  maxPreviewExports: 50,
   linkedinMaxChars: 3000,
 });
 

@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, rm } from "node:fs/promises";
 import { join, resolve, sep, basename } from "node:path";
 import { buildProvisionalCommand } from "../commands/provisional.ts";
 import type { CampaignRecord, EditorialDecision, HumanActor, PackagedPost, PostDraft, ProgrammePackage } from "../contracts/index.ts";
@@ -296,9 +296,10 @@ async function writeNew(path: string, content: string): Promise<void> {
 /**
  * Write the package, a readable summary and the provisional commands into a new directory
  * under `exportRoot`. Each export gets its own directory, named for the package's content,
- * so an earlier export is never overwritten. Files are private to the owner.
+ * so an earlier export is never overwritten. Files are private to the owner. With
+ * `maxExports`, the oldest previews of the programme are removed once there are more.
  */
-export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string): Promise<ExportResult> {
+export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string, options: { maxExports?: number } = {}): Promise<ExportResult> {
   const packageSha256 = packageDigest(pkg);
   await mkdir(resolve(exportRoot), { recursive: true, mode: 0o700 });
   const root = await realpath(resolve(exportRoot));
@@ -315,7 +316,6 @@ export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string)
     if (!found.isDirectory() || found.isSymbolicLink()) throw new WorkflowError("invalid-export-path", "Export path resolves outside the export directory.");
   }
   if ((await realpath(dir)) !== dir) throw new WorkflowError("invalid-export-path", "Export path resolves outside the export directory.");
-
   const packagePath = join(dir, "programme.json");
   const summaryPath = join(dir, "programme.md");
   const commandsPath = join(dir, "provisional-commands.NON-EXECUTABLE.json");
@@ -336,6 +336,19 @@ export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string)
       throw new WorkflowError("already-exported", `This exact package was already exported, to ${basename(dir)} in the export directory.`);
     }
     throw error;
+  }
+  // Where a limit is given, only that many previews of a programme are kept: the oldest are
+  // removed once a new one is written. A preview costs no budget, so without a limit a caller
+  // could fill the disk one preview at a time. Previews are named by the time they were made,
+  // so their names sort by age. A released package is never removed here.
+  if (options.maxExports !== undefined) {
+    const programmeDir = resolve(root, pkg.programmeId);
+    const previews = (await readdir(programmeDir)).filter((entry) => entry.endsWith("-preview")).sort();
+    for (const old of previews.slice(0, Math.max(0, previews.length - options.maxExports))) {
+      const path = join(programmeDir, old);
+      const found = await lstat(path).catch(() => null);
+      if (found?.isDirectory() && !found.isSymbolicLink() && path !== dir) await rm(path, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
   return { programmeId: pkg.programmeId, directory: dir, packagePath, summaryPath, commandsPath, packageSha256, released: pkg.release !== null };
 }

@@ -254,7 +254,7 @@ export function createKicServer(deps: KicServerDeps): McpServer {
     ({ campaignId: id, allowPartial }) =>
       guard(async () => {
         const pkg = assembleProgramme(await service.getCampaign(id), { allowPartial: allowPartial ?? false, clock, limits: service.limits, verifier: service.verifier });
-        const written = await exportProgramme(pkg, deps.exportRoot);
+        const written = await exportProgramme(pkg, deps.exportRoot, { maxExports: service.limits.maxPreviewExports });
         // Where the files are is given relative to the export directory: the caller has no use
         // for the server's own paths, and no tool takes a path. The export's own directory is
         // the last two names of its path (the programme, then the export), whatever the

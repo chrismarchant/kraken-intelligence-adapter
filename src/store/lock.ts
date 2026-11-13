@@ -123,12 +123,15 @@ async function createInPlace(path: string, content: string): Promise<boolean> {
 
 /** The text of a file; null if it is not there; UNREADABLE if it is there and cannot be read. */
 async function readOrWhy(path: string): Promise<string | null | typeof UNREADABLE> {
+  // Looked at before it is opened. Only an ordinary file is read: opening a named pipe would
+  // wait for ever for a writer, and a link, a directory or a device is not a lock of ours.
+  const found = await lstat(path).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? null : UNREADABLE));
+  if (found === null) return null;
+  if (found === UNREADABLE || !found.isFile()) return UNREADABLE;
   try {
     return await readFile(path, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return UNREADABLE;
-    // Not there, or a link that leads nowhere. The second is still something at the path.
-    return (await lstat(path).then(() => true, () => false)) ? UNREADABLE : null;
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? null : UNREADABLE;
   }
 }
 const UNREADABLE: unique symbol = Symbol("unreadable");
@@ -255,8 +258,17 @@ export async function clearDeadLock(lockPath: string, ownerlessAfterMs: number):
     if (holder === null) return true; // the lock was removed and its files cleared; start again
     if (holder === UNREADABLE) return false;
     const [holderPid, holderInstance, holderStarted] = holder.trim().split(" ");
+    const remover = Number(holderPid);
+    if (!Number.isInteger(remover) || remover <= 0) {
+      // A right with no readable holder: empty, or damaged. Where hard links cannot be made, a
+      // remover killed between creating its right and writing it leaves one. It is treated as
+      // held until it is old, like a lock with no readable owner, and then as a dead holder's.
+      const age = await stat(right(n)).then((st) => Date.now() - st.mtimeMs, () => 0);
+      if (age < ownerlessAfterMs) return false;
+      continue;
+    }
     // A live holder is about to finish. Wait for it.
-    if (ownerAlive(Number(holderPid), holderInstance, holderStarted)) return false;
+    if (ownerAlive(remover, holderInstance, holderStarted)) return false;
     // A dead holder: the right passes to the next in line.
   }
   if (mine === null) return false;

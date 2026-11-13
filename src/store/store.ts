@@ -200,8 +200,10 @@ export class FileCampaignStore implements CampaignStore {
     try {
       // A record is an ordinary file. A link put in its place is not followed: it could point
       // anywhere the server's user can read.
-      const handle = await open(this.path(id), constants.O_RDONLY | constants.O_NOFOLLOW);
+      // Opened without waiting: a named pipe put in its place would otherwise hold the caller for ever.
+      const handle = await open(this.path(id), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       try {
+        if (!(await handle.stat()).isFile()) throw Object.assign(new Error("not a file"), { code: "ELOOP" });
         raw = await handle.readFile("utf8");
       } finally {
         await handle.close();

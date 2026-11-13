@@ -93,8 +93,7 @@ function reportedCount(value: unknown, most: number): number | null {
 
 /** Many times what any prompt this code builds can hold. */
 const MOST_PROMPT_TOKENS = 2_000_000;
-/** How many times a request's own allowance a reported completion may be counted as. */
-const MOST_COMPLETION_FACTOR = 10;
+
 
 /** Wait, or stop waiting at once if the call is cancelled. */
 function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
@@ -232,7 +231,8 @@ export class MistralGateway implements ModelGateway {
       // non-negative number would not fit the record, and the answer paid for would be lost.
       cost.usage.promptTokens += reportedCount(completion.usage?.prompt_tokens, MOST_PROMPT_TOKENS) ?? 0;
       // An answer that does not say what it cost is charged at its whole allowance, never at nothing.
-      const charged = reportedCount(completion.usage?.completion_tokens, MOST_COMPLETION_FACTOR * maxTokens) ?? maxTokens;
+      // No single answer is counted as more than the whole call may use, however much it reports.
+      const charged = reportedCount(completion.usage?.completion_tokens, MAX_TOKEN_FACTOR * request.maxTokens) ?? maxTokens;
       cost.usage.completionTokens += charged;
       cost.usage.reasoningTokens += reportedCount(completion.usage?.completion_tokens_details?.reasoning_tokens, charged) ?? 0;
 

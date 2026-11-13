@@ -427,8 +427,10 @@ test("N5: an absurd usage figure is counted as the most a request could have use
     new Response(JSON.stringify({ model: "mistral-large-4", choices: [{ finish_reason: "stop", message: { content: '{"theme":"t","score":1}' } }], usage }), { status: 200, headers: { "content-type": "application/json" } });
   const run = async (usage: unknown) => (await new MistralGateway({ fetch: (async () => reply(usage)) as typeof fetch, backoffMs: 1, apiKey: "placeholder" }).generateJson(request)).usage;
   // The request's allowance is 1,000 tokens.
-  assert.deepEqual(await run({ prompt_tokens: 1e17, completion_tokens: 1e17, completion_tokens_details: { reasoning_tokens: 1e17 } }), { promptTokens: 2_000_000, completionTokens: 10_000, reasoningTokens: 10_000 });
-  assert.deepEqual(await run({ prompt_tokens: 12, completion_tokens: 9007199254740000 }), { promptTokens: 12, completionTokens: 10_000, reasoningTokens: 0 });
+  // No answer is counted as more than the whole call may use: three times its allowance.
+  assert.deepEqual(await run({ prompt_tokens: 1e17, completion_tokens: 1e17, completion_tokens_details: { reasoning_tokens: 1e17 } }), { promptTokens: 2_000_000, completionTokens: 3000, reasoningTokens: 3000 });
+  assert.deepEqual(await run({ prompt_tokens: 12, completion_tokens: 9007199254740000 }), { promptTokens: 12, completionTokens: 3000, reasoningTokens: 0 });
+  for (const absurd of [1e300, Number.MAX_VALUE, 2 ** 53 + 2]) assert.equal((await run({ prompt_tokens: absurd, completion_tokens: absurd })).completionTokens, 3000);
   // An ordinary figure above the allowance is still counted in full.
   assert.deepEqual(await run({ prompt_tokens: 12, completion_tokens: 1500 }), { promptTokens: 12, completionTokens: 1500, reasoningTokens: 0 });
 });
@@ -444,4 +446,116 @@ test("N6: evaluating again what has not changed changes nothing in the record", 
   assert.equal(after.audit.length, before.audit.length, "no audit entry was added");
   assert.deepEqual(after.evaluations, before.evaluations);
   assert.deepEqual(again, before.evaluations.filter((e) => e.slot === 1), "the caller is given the evaluation that is stored");
+});
+
+// ------------------------------------------------------------------------------------------
+// The review of the second remediation (docs/review/2026-11-13-review-b3-a1affd2.md).
+
+test("1: when a post's drafts go back to an earlier set, the evaluation of that set becomes the latest again", async () => {
+  const { service, evaluated, decide } = makeService();
+  const id = await evaluated();
+  const first = (await service.getCampaign(id)).drafts.filter((d) => d.slot === 1).map((d) => d.id).sort();
+  // Two more drafts for the post, evaluated with the first two, then rejected by the editor.
+  const more = await service.generateDrafts(id, { slots: [1], variants: 2 });
+  const added = more.filter((d) => d.slot === 1 && !first.includes(d.id)).map((d) => d.id);
+  assert.equal(added.length, 2);
+  await service.evaluateDrafts(id, { slots: [1] });
+  for (const draftId of added) await decide(id, { kind: "draft", id: draftId }, "reject");
+  const [again] = await service.evaluateDrafts(id, { slots: [1] });
+  assert.deepEqual(again!.candidates.map((c) => c.draftId).sort(), first, "the caller is given an evaluation of the drafts that are left");
+  const record = await service.getCampaign(id);
+  const shown = [...record.evaluations].reverse().find((e) => e.slot === 1)!;
+  assert.deepEqual(shown.candidates.map((c) => c.draftId).sort(), first, "and it is the latest stored, which is the one the editor is shown");
+  assert.ok(!shown.ranking.some((draftId) => added.includes(draftId)), "rejected drafts are not ranked");
+  // Asking once more changes nothing.
+  const revision = record.revision;
+  await service.evaluateDrafts(id, { slots: [1] });
+  assert.equal((await service.getCampaign(id)).revision, revision);
+});
+
+test("2: a named pipe at the lock's path, or in place of a record, does not hold a caller for ever", async (t) => {
+  const made = spawnSync("mkfifo", [join(scratch("probe"), "p")]);
+  if (made.status !== 0) return t.skip("needs mkfifo");
+  const dir = scratch("pipe");
+  const lock = join(dir, "state.lock");
+  spawnSync("mkfifo", [lock]);
+  const started = Date.now();
+  assert.equal(await acquireOwnedLock(lock, { timeoutMs: 300 }), null);
+  assert.ok(Date.now() - started < 2000, `gave up after ${Date.now() - started} ms`);
+
+  const storeDir = scratch("pipe-store");
+  const { service } = makeService({ store: new FileCampaignStore(storeDir) });
+  const campaign = await service.createCampaign((await import("./support.ts")).syntheticBrief());
+  const record = join(storeDir, `${campaign.id}.json`);
+  renameSync(record, `${record}.aside`);
+  spawnSync("mkfifo", [record]);
+  const reading = Date.now();
+  await assert.rejects(new FileCampaignStore(storeDir).get(campaign.id), /not stored as an ordinary file/);
+  assert.ok(Date.now() - reading < 2000);
+});
+
+test("4: the decision requests a campaign may have over its life are limited", async () => {
+  const { service, evaluated, clock } = makeService({ limits: { maxDecisionRequests: 30 } });
+  const id = await evaluated();
+  const draftId = (await service.getCampaign(id)).drafts[0]!.id;
+  // The campaign has had one request already: the choice of narrative.
+  const already = (await service.getCampaign(id)).decisionRequests.length;
+  const ask = () => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action: "approve", proposedRationale: "Proposed by the test.", revisionInstruction: null, requestedBy: "test" });
+  let made = 0;
+  let refusedBy = "";
+  for (let i = 0; i < 60 && refusedBy === ""; i++) {
+    // Each batch of requests is left to expire, so the limit on those waiting at once never applies.
+    if (i % 20 === 0 && i > 0) clock.advance(31 * 60_000);
+    await ask().then(() => (made += 1), (error: Error) => (refusedBy = error.message));
+  }
+  assert.equal(made, 30 - already);
+  assert.match(refusedBy, /30 decision requests; the limit is 30/);
+});
+
+test("6: a right to remove a lock that names no holder is honoured only until it is old", async () => {
+  const dir = scratch("empty-right");
+  const lock = join(dir, "state.lock");
+  const content = deadOwner("ffffffffffffffffffffffff");
+  const right = `${lock}.break.${createHash("sha256").update(content).digest("hex").slice(0, 24)}.1`;
+  writeFileSync(lock, content);
+  writeFileSync(right, "");
+  // Fresh: it may be a remover still writing its name. The caller waits.
+  assert.equal(await acquireOwnedLock(lock, { timeoutMs: 150, ownerlessAfterMs: 60_000 }), null);
+  // Old: nobody is writing it. The next in line removes the dead lock.
+  const taken = await acquireOwnedLock(lock, { timeoutMs: 1000, ownerlessAfterMs: 1 });
+  assert.ok(taken);
+  await taken.release();
+  for (const value of ["0 x - remover\n", "garbage\n"]) {
+    writeFileSync(lock, content);
+    writeFileSync(right, value);
+    const again = await acquireOwnedLock(lock, { timeoutMs: 1000, ownerlessAfterMs: 1 });
+    assert.ok(again, JSON.stringify(value));
+    await again.release();
+  }
+});
+
+test("7: only so many previews of a programme are kept; the oldest go, and a release is never removed", async () => {
+  const { exportProgramme } = await import("../../src/workflow/assemble.ts");
+  const harness = makeService();
+  const id = await harness.evaluated();
+  const record = await harness.service.getCampaign(id);
+  await harness.decide(id, { kind: "draft", id: record.drafts[0]!.id }, "approve");
+  const root = scratch("previews");
+  const fs = await import("node:fs");
+  const directories: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    harness.clock.advance(1000);
+    const pkg = harness.assemble(await harness.service.getCampaign(id), true);
+    directories.push((await exportProgramme(pkg, root, { maxExports: 3 })).directory);
+  }
+  const programmeDir = join(directories[0]!, "..");
+  // Something that is not a preview sits beside them and is left alone.
+  fs.mkdirSync(join(programmeDir, "20260101T000000000Z-000000000000-released"));
+  harness.clock.advance(1000);
+  await exportProgramme(harness.assemble(await harness.service.getCampaign(id), true), root, { maxExports: 3 });
+  const kept = readdirSync(programmeDir).sort();
+  assert.equal(kept.filter((name) => name.endsWith("-preview")).length, 3);
+  assert.ok(kept.includes("20260101T000000000Z-000000000000-released"));
+  assert.ok(!existsSync(directories[0]!), "the oldest preview was removed");
+  assert.ok(existsSync(directories[7]!), "a recent one was kept");
 });

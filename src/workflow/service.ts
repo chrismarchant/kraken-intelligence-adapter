@@ -902,10 +902,14 @@ export class CampaignService {
       // Evaluating again what has not changed changes nothing: not the record, and not its audit
       // trail. Evaluation makes no model call and draws on no budget, so a call that only
       // repeats an earlier one must not be able to make the record grow.
+      // "Has not changed" means the same as the latest evaluation stored for the post, which is
+      // the one the editor is shown. An older evaluation that happens to match is not enough: if
+      // a post's drafts have gone back to an earlier set, the evaluation of that set must become
+      // the latest again.
       const substance = (e: Evaluation) => JSON.stringify({ ...e, id: null, evaluatedAt: null });
-      const stored = new Set(before.evaluations.map(substance));
-      if (evaluations.every((e) => stored.has(substance(e)))) {
-        return evaluations.map((e) => before.evaluations.find((old) => substance(old) === substance(e)) as Evaluation);
+      const latest = (slot: number) => [...before.evaluations].reverse().find((e) => e.slot === slot);
+      if (evaluations.every((e) => { const shown = latest(e.slot); return shown !== undefined && substance(shown) === substance(e); })) {
+        return evaluations.map((e) => latest(e.slot) as Evaluation);
       }
       try {
         return await this.mutate(campaignId, (record) => {
@@ -1108,6 +1112,12 @@ export class CampaignService {
 
     const request = await this.mutate(input.campaignId, (record) => {
       const contentHash = this.checkDecision(record, input.subject, input.action);
+      // Requests are kept for the record and never removed, so their number over a campaign's
+      // life is limited as well as the number waiting at once. Asking for a decision makes no
+      // model call and draws on no budget.
+      if (record.decisionRequests.length >= this.limits.maxDecisionRequests) {
+        throw new LimitExceededError("maxDecisionRequests", `This campaign has had ${record.decisionRequests.length} decision requests; the limit is ${this.limits.maxDecisionRequests}.`);
+      }
       const waiting = record.decisionRequests.filter((r) => r.state === "pending" && Date.parse(r.expiresAt) >= Date.parse(requestedAt)).length;
       if (waiting >= this.limits.maxPendingDecisions) {
         throw new LimitExceededError("maxPendingDecisions", `${waiting} decisions are already waiting for the editor; the limit is ${this.limits.maxPendingDecisions}.`);
