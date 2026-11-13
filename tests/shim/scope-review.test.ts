@@ -81,11 +81,11 @@ test("F10: a non-streamed answer that is not valid JSON is refused, not passed o
 });
 
 test("F11: a long event arriving in many pieces is handled in time proportional to its size, and has a limit", async () => {
-  // One megabyte with no blank line, in 20,000 pieces: the reviewer's case took 12.7 s.
+  // One megabyte of data with no blank line, in 20,000 pieces: the reviewer's case took 12.7 s.
   const piece = "x".repeat(50);
   const started = Date.now();
-  const out = await run([...Array.from({ length: 20_000 }, () => piece), "\n\n"]);
-  assert.equal(out.length, 1_000_002);
+  const out = await run(['data: "', ...Array.from({ length: 20_000 }, () => piece), '"\n\n']);
+  assert.equal(out.length, 'data: ""\n\n'.length + 1_000_000);
   assert.ok(Date.now() - started < 4000, `took ${Date.now() - started} ms`);
 
   // An event with very many data lines: the reviewer's case took 1.9 s for 60,000.
@@ -161,4 +161,40 @@ test("N9: what is sent on is written out from what was read, so a repeated key c
   const out = normalizeSseEvent(event);
   assert.ok(!out.includes(THOUGHT));
   assert.deepEqual(JSON.parse(out.slice(5)), { choices: [{ index: 0, delta: { content: "a" } }] });
+});
+
+// ------------------------------------------------------------------------------------------
+// The review of the second remediation (docs/review/2026-11-13-review-a3-a1affd2.md).
+
+test("7: an answer sent under the label of an event stream, with no data line, is not passed on", async () => {
+  const body = JSON.stringify({ choices: [{ index: 0, message: { content: [thinking, { type: "text", text: "ok" }] } }] });
+  await assert.rejects(run([body]), /could not be read/);
+  await assert.rejects(run([`${body}\n\n`]), /could not be read/);
+  // Through the shim: the client is not given the reasoning.
+  const mock = await startMock((_req, res) => {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.end(body);
+  });
+  const shim = await startShim(mock.url);
+  try {
+    for (const stream of [true, false]) {
+      const text = await fetch(`${shim.url}/v1/chat/completions`, { method: "POST", headers: { authorization: "Bearer callers-own", "content-type": "application/json" }, body: chatBody({ stream }) })
+        .then((response) => response.text())
+        .catch(() => "");
+      assert.ok(!text.includes(THOUGHT), `stream ${stream}`);
+    }
+  } finally {
+    await shim.close();
+    await mock.close();
+  }
+});
+
+test("8: what the stream format allows and holds nothing is passed on: comments, fields without data, empty data", async () => {
+  const quiet = ": keep-alive\n\nevent: ping\n\nretry: 3000\n\ndata:\n\ndata: \n\nid: 4\n\n";
+  const answer = `data: ${chunk("hello")}\n\ndata: [DONE]\n\n`;
+  const out = await run([quiet, answer]);
+  assert.ok(out.startsWith(quiet));
+  assert.ok(out.includes('"content":"hello"') && out.endsWith("data: [DONE]\n\n"));
+  // Data that is neither empty nor JSON still ends the stream: it cannot be checked.
+  await assert.rejects(run(["event: ping\ndata: ping\n\n", answer]), /could not be read/);
 });

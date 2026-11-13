@@ -141,14 +141,21 @@ export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): s
   for (let i = 0; i < lines.length; i++) {
     if ((lines[i] as string).startsWith("data:")) dataLines.push(i);
   }
-  if (dataLines.length === 0) return event;
+  if (dataLines.length === 0) {
+    // No data: a comment, or the fields that go with data (event, id, retry). Anything else is
+    // not an event at all, a JSON answer sent under the wrong label for one, and cannot be
+    // normalised.
+    const known = lines.every((line) => line === "" || line.startsWith(":") || /^(?:event|id|retry|data)(?::|$)/.test(line));
+    return known ? event : DROPPED_EVENT;
+  }
   const payload = dataLines
     .map((i) => {
       const v = (lines[i] as string).slice(5);
       return v.startsWith(" ") ? v.slice(1) : v;
     })
     .join("\n");
-  if (payload.trim() === "[DONE]") return event;
+  // The end marker, and data that is empty, which the format allows and which holds nothing.
+  if (payload.trim() === "[DONE]" || payload.trim() === "") return event;
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -207,8 +214,8 @@ export function createSseNormalizer(opts: NormalizeOptions = {}): TransformStrea
     const out = normalizeSseEvent(event, opts);
     if (out === DROPPED_EVENT) {
       failed = true;
-      controller.error(new Error("An upstream event could not be read"));
-      return;
+      // Thrown, so that the stream ends in this error on both sides whichever step it came from.
+      throw new Error("An upstream event could not be read");
     }
     controller.enqueue(encoder.encode(out + separator));
   };
@@ -240,7 +247,7 @@ export function createSseNormalizer(opts: NormalizeOptions = {}): TransformStrea
         heldChars = 0;
         tail = "";
         failed = true;
-        controller.error(new Error("An upstream event exceeded the size the shim will hold"));
+        throw new Error("An upstream event exceeded the size the shim will hold");
       }
     },
     flush(controller) {

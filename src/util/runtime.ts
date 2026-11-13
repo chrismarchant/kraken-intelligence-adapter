@@ -145,6 +145,38 @@ function partOfEmoji(character: string, offset: number, whole: string): boolean 
  * joiner or variation selector that is part of an emoji, judged by what stands on both
  * sides of it.
  */
+/**
+ * Cut a text to at most `max` UTF-16 units, between characters and never through one, ending
+ * in three full stops when anything was cut. For strings written into records by code, which
+ * must fit the length their contract allows. It makes no promise about canonical form.
+ */
+export function truncate(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  if (max < 4) return trimmed.slice(0, Math.max(0, max));
+  let kept = "";
+  for (const character of trimmed) {
+    if (kept.length + character.length > max - 3) break;
+    kept += character;
+  }
+  return `${kept.trimEnd()}...`;
+}
+
+/**
+ * canonicalText applied until it changes nothing more. One pass can leave text that a second
+ * pass would still change: removing an invisible character can bring a letter and an accent
+ * together, which then combine.
+ */
+export function settledCanonicalText(text: string): string {
+  let current = text;
+  for (let pass = 0; pass < 5; pass++) {
+    const next = canonicalText(current);
+    if (next === current) return current;
+    current = next;
+  }
+  return current;
+}
+
 export function canonicalText(text: string): string {
   return text
     .normalize("NFKC")

@@ -48,7 +48,7 @@ import {
 } from "../skills/prompts.ts";
 import type { CampaignStore } from "../store/store.ts";
 import type { Clock, CodeSource, IdSource } from "../util/runtime.ts";
-import { canonicalJson, canonicalText, mapLimitSettled, randomCodes, randomIds, sha256, systemClock } from "../util/runtime.ts";
+import { canonicalJson, canonicalText, mapLimitSettled, randomCodes, randomIds, settledCanonicalText, sha256, systemClock, truncate } from "../util/runtime.ts";
 import type { OperatorChannel } from "./operator.ts";
 import type { SpendLedger } from "./spend.ts";
 import { MemorySpendLedger } from "./spend.ts";
@@ -243,24 +243,29 @@ function normaliseHashtags(tags: readonly string[]): string[] {
 }
 
 export function clip(text: string, max: number): string {
-  const trimmed = text.trim();
+  // Brought to canonical form first, and to rest there: text that a further pass would still
+  // change cannot be cut to something canonical.
+  const trimmed = settledCanonicalText(text).trim();
   if (trimmed.length <= max) return trimmed;
   // Cut by whole characters, never through one, and end in three full stops, not the single
   // ellipsis character. The result must still be in canonical form, or the draft it belongs to
   // is refused as carrying compatibility characters: a cut can leave the joining character of
-  // an emoji at the end, so the cut moves back until what is left is canonical and fits.
+  // an emoji at the end, so the cut moves back, a character at a time, until what is left is
+  // canonical and fits. A few steps are enough; the search is bounded all the same.
   const characters = [...trimmed];
-  for (let keep = Math.min(characters.length, max - 3); keep > 0; keep--) {
+  let keep = characters.length;
+  for (let length = trimmed.length; length > max - 3 && keep > 0; keep--) length -= (characters[keep - 1] as string).length;
+  for (let steps = 0; keep > 0 && steps < 64; keep--, steps++) {
     const cut = `${characters.slice(0, keep).join("").trimEnd()}...`;
     if (cut.length <= max && canonicalText(cut) === cut) return cut;
   }
-  return "...";
+  return truncate(trimmed.replace(/[^\x20-\x7e\n]/g, ""), max);
 }
 
 // Model text is canonicalised before it is clipped or stored, so that no rule downstream
 // can be sidestepped with invisible or look-alike compatibility characters.
-const short = (text: string) => clip(canonicalText(text), 400);
-const long = (text: string) => clip(canonicalText(text), 6000);
+const short = (text: string) => clip(text, 400);
+const long = (text: string) => clip(text, 6000);
 
 type ModelRequest<T> = Omit<GenerateRequest<T>, "system" | "signal">;
 
@@ -705,7 +710,7 @@ export class CampaignService {
       variant: short(variant.variant),
       approach: short(variant.approach),
       hook: short(variant.hook),
-      body: canonicalText(variant.body).trim(),
+      body: settledCanonicalText(variant.body).trim(),
       callToAction: short(variant.callToAction),
       hashtags: normaliseHashtags(variant.hashtags.map(canonicalText)),
       claims: variant.claims.slice(0, 12).map((c) => ({
@@ -1111,8 +1116,8 @@ export class CampaignService {
         id: this.ids.next("req"),
         subject: input.subject,
         action: input.action,
-        proposedRationale: canonicalText(rationale.data),
-        revisionInstruction: revisionInstruction === null ? null : canonicalText(revisionInstruction),
+        proposedRationale: settledCanonicalText(rationale.data),
+        revisionInstruction: revisionInstruction === null ? null : settledCanonicalText(revisionInstruction),
         requestedBy: short(input.requestedBy || "unknown"),
         requestedAt,
         expiresAt,

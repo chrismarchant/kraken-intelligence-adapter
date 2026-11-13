@@ -65,7 +65,8 @@ test("F1: a ruled-out term written wholly in Greek or Cyrillic look-alike letter
 
 test("F2: a figure written in the digits of another script is refused", () => {
   for (const figure of ["\u0664\u0660", "\u06F4\u06F0", "\u096A\u0966", "\u0E54\u0E50"]) {
-    assert.deepEqual(rulesWith([], `${figure}% of operations teams reconcile by hand.`), ["unlisted-statistic"], figure);
+    // Refused twice over: as a figure not in the digits 0 to 9, and as characters a post may not use.
+    assert.deepEqual(rulesWith([], `${figure}% of operations teams reconcile by hand.`), ["suspicious-characters", "unlisted-statistic"], figure);
   }
   // The same figure in ordinary digits is refused for the same reason, so nothing was gained.
   assert.deepEqual(rulesWith([], "40% of operations teams reconcile by hand."), ["unlisted-statistic"]);
@@ -274,7 +275,14 @@ test("N4: a term of three letters catches its inflections; one of two letters do
   assert.deepEqual(rulesWith(["fix"], "It is fixed."), ["must-avoid-term"]);
   assert.deepEqual(rulesWith(["tax"], "Nobody is taxed."), ["must-avoid-term"]);
   assert.deepEqual(rulesWith(["buy"], "Buying is easy."), ["must-avoid-term"]);
-  assert.deepEqual(rulesWith(["AI"], "It was AIed in a day."), ["must-avoid-term"]);
+  // Over-matching the same change brought back, found by the next review: these are other words.
+  const others: Array<[string, string]> = [["US", "Teams used spreadsheets."], ["US", "We are using a ledger."], ["fun", "The fund closed."], ["win", "Wind turbines turn."], ["car", "Use the card."], ["fee", "Read the feed."], ["ban", "The band played."], ["kin", "A kind word."], ["pro", "Ship it to prod."], ["be", "Being clear helps."]];
+  for (const [term, text] of others) assert.deepEqual(rulesWith([term], text), [], text);
+  // And the inflections English does write are still caught.
+  assert.deepEqual(rulesWith(["ban"], "It was banned."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["win"], "Winning matters."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["US"], "Two USs."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["market"], "It was marketed widely."), ["must-avoid-term"]);
   assert.deepEqual(rulesWith(["AI"], "Teams need first aid kits."), []);
   assert.deepEqual(rulesWith(["AI"], "He said it plainly."), []);
 });
@@ -294,8 +302,13 @@ test("a ruled-out word written with keyboard symbols in place of letters is foun
   assert.deepEqual(rulesWith(["results"], "Great re$ults ahead."), ["must-avoid-term"]);
   assert.deepEqual(rulesWith(["AI"], "Our A| tool helps."), ["must-avoid-term"]);
   assert.deepEqual(rulesWith(["all"], "For a|l teams."), ["must-avoid-term"]);
-  // A digit in place of a letter is a figure, and is refused as one.
-  assert.deepEqual(rulesWith(["AI"], "Our A1 tool helps."), ["unlisted-statistic"]);
+  // A digit in place of a letter is read as the letter, and is a figure as well.
+  assert.deepEqual(rulesWith(["AI"], "Our A1 tool helps."), ["must-avoid-term", "unlisted-statistic"]);
+  assert.ok(rulesWith(["scam"], "Not a 5cam.").includes("must-avoid-term"));
+  // At the start of a word, and with other signs a post may use.
+  assert.deepEqual(rulesWith(["scam"], "Not a $cam."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["scam"], "Not a s\u00A2am."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["example"], "For e\u00D7ample."), ["must-avoid-term"]);
   // Ordinary punctuation is not read as letters.
   assert.deepEqual(rulesWith(["hi"], "Oh! Is that so?"), []);
 });
@@ -303,7 +316,7 @@ test("a ruled-out word written with keyboard symbols in place of letters is foun
 test("N6: text is clipped between characters, never through one, and stays canonical", () => {
   const coder = "\u{1F469}\u200D\u{1F4BB}"; // a woman technologist: two emoji joined by a zero-width joiner
   for (let pad = 380; pad <= 400; pad++) {
-    const clipped = clip(canonicalText(`${"a".repeat(pad)}${coder}${coder} and then a good deal more text to push it over the limit.`), 400);
+    const clipped = clip(canonicalText(`${"a".repeat(pad)} ${coder}${coder} and then a good deal more text to push it over the limit.`), 400);
     assert.ok(clipped.length <= 400, `pad ${pad}`);
     assert.equal(canonicalText(clipped), clipped, `pad ${pad}`);
     assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(clipped), `no half character, pad ${pad}`);
@@ -334,4 +347,101 @@ test("N12: a blocking concern with a long description rules the creator out; it 
   const result = ranking.results.find((r) => r.creatorId === candidate.id)!;
   assert.equal(result.eligible, false);
   assert.ok(result.ineligibility.some((reason) => reason.rule === "blocking-concern"));
+});
+
+// ------------------------------------------------------------------------------------------
+// The review of the second remediation (docs/review/2026-11-13-review-a3-a1affd2.md).
+
+test("1: a character that is not a letter but is drawn as one is refused", () => {
+  const cases: Array<[string, string]> = [
+    ["AI", "Our \u{1F170}\u{1F178}-powered tool."], // squared letters
+    ["AI", "Our \u{1F150}\u{1F158}-powered tool."], // circled letters
+    ["scam", "Not a \u{1F182}\u{1F172}\u{1F170}\u{1F17C}."],
+    ["scam", "Not a \u{1F1F8} \u{1F1E8} \u{1F1E6} \u{1F1F2}."], // regional indicators, one at a time
+    ["fraud", "It is not fr\u237Aud."], // APL alpha
+    ["AI", "Our A\u2373-powered tool."],
+    ["AI", "Our A\u2129 tool."],
+    ["free", "fr\u212E\u212E"],
+    ["boost", "bo\u25CBst"],
+    ["union", "\u222Anion"],
+    ["AI", "\u2200I"],
+    ["scam", "sca\u036B"], // a combining small m
+    ["AI", "Our A\u2139 tool."], // the information sign
+  ];
+  for (const [term, text] of cases) assert.ok(rulesWith([term], text).includes("suspicious-characters"), text);
+  // Two letters that are allowed and are drawn like other letters: read both ways.
+  assert.deepEqual(rulesWith(["spam"], "No s\u00FEam."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["best"], "The \u00DFest."), ["must-avoid-term"]);
+  // What a post may use is not refused: letters of European languages, everyday marks, emoji set apart.
+  const fine = [
+    "Caf\u00E9 \u2013 cr\u00E8me \u2014 \u201Cquoted\u201D, it\u2019s \u20AC5 \u2192 done \u2713 \u2022 next",
+    "Bucure\u0219ti, Timi\u0219oara, Constan\u021Ba, Ph\u01A1, Th\u01B0, n\u01D0 h\u01CEo, STRA\u1E9EE.",
+    "Launch day \u{1F680} is here \u{1F469}\u200D\u{1F4BB} \u2764\uFE0F \u{1F1EC}\u{1F1E7} \u{1F44D}\u{1F3FD}",
+  ];
+  for (const text of fine) assert.deepEqual(rulesWith([], text).filter((rule) => rule === "suspicious-characters"), [], text);
+});
+
+test("1: an emoji is written apart from words", () => {
+  assert.deepEqual(rulesWith(["boost"], "b\u2B55\u2B55st your reach."), ["suspicious-characters"]);
+  assert.deepEqual(rulesWith([], "Launch day\u{1F680}"), ["suspicious-characters"]);
+  assert.deepEqual(rulesWith([], "\u{1F680}Launch day"), ["suspicious-characters"]);
+  assert.deepEqual(rulesWith([], "Launch day \u{1F680}!"), []);
+  assert.deepEqual(rulesWith([], "\u{1F680} Launch day \u{1F680}\u{1F680}"), []);
+});
+
+test("2: a lower-case L beside a capital is read as a capital I, a capital I among small letters as an L, and spaced letters are joined", () => {
+  assert.deepEqual(rulesWith(["AI"], "Our Al-powered tool."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["ROI"], "Better ROl this year."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["sell"], "We seII more."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["AI"], "Our A I tool."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["ROI"], "Better R O I."), ["must-avoid-term"]);
+  // What is not that word stays allowed.
+  assert.deepEqual(rulesWith(["AI"], "Smith et al. found it."), []);
+  assert.deepEqual(rulesWith(["AI"], "All of it. Also this. Almost."), []);
+});
+
+test("3: an apostrophe put before an ending does not shield a ruled-out word", () => {
+  const shielded: Array<[string, string]> = [["guaranteed", "Results guarantee'd."], ["guaranteed", "Results guarantee\u2019d."], ["fraud", "No frau'd here."], ["scam", "No sca'm here."], ["boost", "We boos't nothing."], ["boss", "The bos's view."]];
+  for (const [term, text] of shielded) assert.deepEqual(rulesWith([term], text), ["must-avoid-term"], text);
+  // The contractions English has are still read as they are.
+  for (const [term, text] of [["well", "We'll send it."], ["were", "We're ready."], ["cant", "We can't wait."], ["its", "It's ready."], ["wed", "We'd like that."], ["id", "I'd say so."]] as const) {
+    assert.deepEqual(rulesWith([term], text), [], text);
+  }
+});
+
+test("4: whatever the brief and the drafts hold, the evaluation fits its own contract", async () => {
+  const { CandidateEvaluation } = await import("../../src/contracts/evaluation.ts");
+  const { evaluateSlot } = await import("../../src/evaluation/evaluator.ts");
+  const { MockJevTransport } = await import("../../src/evaluation/jev.ts");
+  const { fixedClock, sequentialIds } = await import("../../src/util/runtime.ts");
+  const brief = syntheticBrief();
+  const point = `Reconciling by hand ${"takes time and care ".repeat(11)}every week`.slice(0, 213);
+  brief.constraints.mustInclude = [point];
+  brief.constraints.mustAvoid = [`${"very ".repeat(74)}long term`];
+  const longClaim = { text: `A claim ${"that goes on ".repeat(20)}`.slice(0, 300), needsEvidence: true, evidenceRef: "r".repeat(80) };
+  const drafts = [
+    draft("covers", `${point}. ${"very ".repeat(74)}long term.`),
+    draft("figure", `We saw ${"9".repeat(500)} of them.`),
+    draft("claim", "", { claims: [longClaim] }),
+  ];
+  for (const candidate of drafts) {
+    const analysis = analyseDraft(brief, slot, candidate, DEFAULT_LIMITS);
+    for (const signal of analysis.signals) for (const item of signal.evidence) assert.ok(item.length <= 200, candidate.id);
+    for (const failure of analysis.failures) assert.ok(failure.detail.length <= 400, candidate.id);
+  }
+  const evaluation = await evaluateSlot({ brief, slot, drafts }, { transport: new MockJevTransport(DEFAULT_LIMITS), limits: DEFAULT_LIMITS, clock: fixedClock(), ids: sequentialIds() });
+  for (const candidate of evaluation.candidates) assert.equal(CandidateEvaluation.safeParse(candidate).success, true, candidate.draftId);
+  assert.equal(evaluation.candidates.find((c) => c.draftId === "figure")!.eligibility.eligible, false);
+});
+
+test("9: text that one pass of canonical form does not settle is clipped whole, not to one character", () => {
+  // A zero-width space between a letter and an accent: the first pass removes the space, the second joins the two.
+  const unsettled = `e\u200B\u0301${" and more".repeat(700)}`;
+  const clipped = clip(unsettled, 6000);
+  assert.ok(clipped.length > 5900 && clipped.length <= 6000, `length ${clipped.length}`);
+  assert.equal(canonicalText(clipped), clipped);
+  assert.ok(clipped.startsWith("\u00E9 and more"));
+  const started = Date.now();
+  clip(`${"a\u200B\u0301".repeat(3000)}`, 400);
+  assert.ok(Date.now() - started < 500);
 });
