@@ -51,13 +51,23 @@ const SPELLED_QUANTITY = new RegExp(
     `|\\b${NUMBER_PHRASE}[\\s-]+(?:times|fold)\\b` +
     `|\\b(?:twice|double|triple|quadruple)\\s+(?:as|the)\\b` +
     `|\\b(?:half|a\\s+third|a\\s+quarter|two[\\s-]thirds|three[\\s-]quarters)\\s+of\\b` +
-    `|\\b(?:halved|doubled|tripled|quadrupled)\\b`,
+    `|\\b(?:halved|doubled|tripled|quadrupled)\\b` +
+    // Magnitudes attached to a thing: "two million records", "a hundred hours", "hundreds of", "a dozen".
+    `|\\b(?:(?:a|an|${NUMBER_PHRASE})[\\s-]+)?(?:hundred|thousand|million|billion|dozen)s?\\b` +
+    // Fractions of a thing: "half their time", "a third", "two thirds of".
+    `|\\bhalf\\s+(?:of|the|their|your|our|its)\\b` +
+    `|\\b(?:a|one|two|three)[\\s-]+(?:third|quarter|fifth|tenth)s?\\s+of\\b`,
   "gi",
 );
 
-/** Letters of a script that is easily mistaken for Latin, used to spot disguised words. */
-const LOOKALIKE_SCRIPT = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
+/**
+ * A word that mixes Latin letters with letters of any other script is treated as
+ * disguised: Cyrillic, Greek, Armenian, Cherokee and others all have look-alikes.
+ */
+const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
 const LATIN = /\p{Script=Latin}/u;
+/** Latin-script letters from phonetic and small-capital blocks, which pass for ordinary letters. */
+const ODD_LATIN = /[\u0250-\u02AF\u1D00-\u1D7F]/u;
 
 export interface DraftAnalysis {
   /** 0..1 per criterion, derived only from the observations in `signals`. */
@@ -96,10 +106,49 @@ function squash(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** The numbers written in digits in a text, without clock times, as plain digit strings. */
-function numbersIn(text: string): string[] {
-  const found = text.replace(CLOCK_TIME, " ").match(NUMBER) ?? [];
+/**
+ * Digits that are part of an everyday term and state no figure: "B2B", "Q3", "24/7", an
+ * identifier such as "COVID-19" or "ISO-9001", and a year named as a date ("in 2026").
+ * These are removed before figures are looked for. The list is deliberately short.
+ */
+const NOT_A_FIGURE = [
+  /\b[A-Z]2[A-Z]\b/g,
+  /\bQ[1-4]\b/g,
+  /\b24\/7\b/g,
+  /\b[A-Z]{2,}-\d{1,5}\b/g,
+  /\b(?:in|since|by|during|from|until|before|after|early|late|mid)[\s-]+(?:19|20)\d{2}\b(?!\s*(?:%|percent))/gi,
+];
+
+/** The numbers written in digits in a text, without clock times and everyday terms, as plain digit strings. */
+function numbersIn(text: string, options: { everydayTerms: boolean } = { everydayTerms: true }): string[] {
+  let scanned = text.replace(CLOCK_TIME, " ");
+  if (options.everydayTerms) for (const pattern of NOT_A_FIGURE) scanned = scanned.replace(pattern, " ");
+  const found = scanned.match(NUMBER) ?? [];
   return [...new Set(found.map((n) => n.replace(/,/g, "").replace(/\.$/, "")))];
+}
+
+/** Letters that are easily mistaken for plain Latin ones, mapped to the letter they resemble. */
+const CONFUSABLE: Record<string, string> = {
+  "\u0131": "i", "\u0261": "g", "\u0251": "a", "\u0269": "i", "\u026A": "i", "\u028F": "y", "\u0299": "b", "\u1D00": "a", "\u1D04": "c",
+  "\u1D05": "d", "\u1D07": "e", "\u1D0A": "j", "\u1D0B": "k", "\u1D0D": "m", "\u1D0F": "o", "\u1D18": "p", "\u1D1B": "t", "\u1D1C": "u",
+  "\u1D20": "v", "\u1D21": "w", "\u1D22": "z", "\u0142": "l", "\u00F8": "o", "\u0111": "d", "\u0127": "h", "\u017F": "s", "\u01C0": "l",
+};
+
+/**
+ * The forms of a text that a ruled-out term is looked for in. Besides the text itself:
+ * with accents and look-alike letters folded to plain ones; with dots removed from dotted
+ * initials ("A.I." becomes "AI"); with marks that can be slipped inside a word removed
+ * (hyphens, emphasis marks, emoji); and with letters that were spaced out joined up.
+ */
+function matchForms(text: string): string[] {
+  const folded = text
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\u0131\u0261\u0251\u0269\u026A\u028F\u0299\u1D00-\u1D22\u0142\u00F8\u0111\u0127\u017F\u01C0]/g, (c) => CONFUSABLE[c] ?? c);
+  const undotted = folded.replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ""));
+  const unbroken = undotted.replace(/(?<=[\p{L}\p{N}])[-*_~`\u00B7\u2022\p{Extended_Pictographic}\uFE0F\u200D]+(?=[\p{L}\p{N}])/gu, "");
+  const joined = unbroken.replace(/\b(?:[A-Za-z][ .]){3,}[A-Za-z]\b/g, (m) => m.replace(/[ .]/g, ""));
+  return [...new Set([text, folded, undotted, unbroken, joined])];
 }
 
 function hasNumber(text: string, number: string): boolean {
@@ -187,7 +236,8 @@ export function analyseDraft(
   // cites a reference, and in that reference itself. Citing a reference that does not
   // contain the figure does not support it.
   const published = `${body}\n${hashtags.join(" ")}`;
-  const figures = numbersIn(published);
+  // Everyday terms ("B2B", "in 2026") are not figures in running text. Inside a hashtag every digit counts.
+  const figures = [...new Set([...numbersIn(body), ...numbersIn(hashtags.join(" "), { everydayTerms: false })])];
   const citing = draft.claims.filter((c) => c.evidenceRef !== null && references.has(c.evidenceRef));
   const unlisted = figures.filter(
     (figure) => !citing.some((c) => hasNumber(canonicalText(c.text), figure) && hasNumber(references.get(c.evidenceRef as string) as string, figure)),
@@ -253,26 +303,27 @@ export function analyseDraft(
   if (length > limits.linkedinMaxChars) {
     failures.push({ rule: "over-length", detail: `${length} characters with hashtags; the limit is ${limits.linkedinMaxChars}` });
   }
-  const squashedTags = hashtags.map(squash);
+  const squashedTags = hashtags.flatMap((tag) => matchForms(tag).map(squash));
+  const bodyForms = matchForms(body);
   for (const term of brief.constraints.mustAvoid) {
     const squashedTerm = squash(term);
     // Hashtags run words together, so a ruled-out term is looked for inside each one.
     const inHashtag = squashedTerm.length >= 4 && squashedTags.some((tag) => tag.includes(squashedTerm));
-    if (containsPhrase(body, term) || inHashtag) {
+    if (bodyForms.some((form) => containsPhrase(form, term)) || inHashtag) {
       failures.push({ rule: "must-avoid-term", detail: `Contains "${term}", which the brief rules out` });
     }
   }
   // Text that tries to slip past the rules above: invisible or compatibility characters,
   // control characters, and words that mix Latin letters with look-alike scripts.
   const raw = `${draft.body}\n${draft.hashtags.join(" ")}`;
-  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => LATIN.test(word) && LOOKALIKE_SCRIPT.test(word));
+  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => (LATIN.test(word) && NON_LATIN_LETTER.test(word)) || ODD_LATIN.test(word));
   if (canonicalText(raw) !== raw) {
     failures.push({ rule: "suspicious-characters", detail: "Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)" });
   } else if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(raw)) {
     failures.push({ rule: "suspicious-characters", detail: "Contains control characters" });
   }
   if (disguised.length > 0) {
-    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) mixing Latin letters with look-alike letters from another script` });
+    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) written with look-alike letters from another script or alphabet` });
   }
 
   return {

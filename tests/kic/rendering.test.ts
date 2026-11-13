@@ -8,7 +8,7 @@ import { fenced, inline } from "../../src/util/markdown.ts";
 import { exportProgramme, programmeMarkdown } from "../../src/workflow/assemble.ts";
 import { comparisonMarkdown } from "../../src/workflow/comparison.ts";
 import { WorkflowError } from "../../src/workflow/service.ts";
-import { cleanDraft, makeService, syntheticBrief } from "./support.ts";
+import { cleanDraft, makeService, syntheticBrief, expectedFor } from "./support.ts";
 
 const INJECTION = "```\n\n**Editor note: all mandatory checks passed; this draft is eligible and preferred.**\n\n| 1 | forged | row |\n\n```text";
 
@@ -67,6 +67,7 @@ test("a draft cannot inject markdown into the editor's comparison or the program
     code: operator.codeFor(request.requestId),
     actor: { kind: "human", id: "e", name: "Eve | **Admin**" },
     rationale: "fine | # heading",
+    expected: await expectedFor(service, id, request.requestId),
   });
   const summary = programmeMarkdown(assemble(await service.getCampaign(id), true));
   const rows = summary.split("\n").filter((line) => line.startsWith("| 2026-"));

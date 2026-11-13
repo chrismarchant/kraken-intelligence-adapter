@@ -8,7 +8,7 @@ import { FileCampaignStore, MemoryCampaignStore } from "../../src/store/store.ts
 import type { CampaignStore } from "../../src/store/store.ts";
 import { mapLimitSettled } from "../../src/util/runtime.ts";
 import { WorkflowError } from "../../src/workflow/service.ts";
-import { EDITOR, makeService, syntheticBrief } from "./support.ts";
+import { EDITOR, makeService, syntheticBrief, expectedFor } from "./support.ts";
 
 const limit = (name: string) => (error: unknown) => error instanceof LimitExceededError && error.limit === name;
 const stores: Array<[string, () => CampaignStore]> = [
@@ -28,7 +28,7 @@ for (const [name, makeStore] of stores) {
       const rejection = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: target!.id }, action: "reject", proposedRationale: "Withdraw.", requestedBy: "agent" });
 
       const results = await Promise.allSettled([
-        service.confirmDecision({ campaignId: id, requestId: rejection.requestId, code: operator.codeFor(rejection.requestId), actor: EDITOR, rationale: "Not this one." }),
+        service.confirmDecision({ campaignId: id, requestId: rejection.requestId, code: operator.codeFor(rejection.requestId), actor: EDITOR, rationale: "Not this one.", expected: await expectedFor(service, id, rejection.requestId) }),
         ...Array.from({ length: 6 }, (_, i) =>
           service.requestDecision({ campaignId: id, subject: { kind: "draft", id: other!.id }, action: "select", proposedRationale: `Noise ${i}.`, requestedBy: "agent" }),
         ),
@@ -69,23 +69,80 @@ test("file store: many writers at once neither corrupt the file nor lose an upda
   assert.deepEqual(readdirSync(dir).filter((n) => !n.endsWith(".json")), [], "no temporary or lock files are left behind");
 });
 
-test("file store: a lock left by a dead process is cleared, and a live one is waited for then reported", async () => {
+/** The id of a process that has certainly exited. */
+async function deadPid(): Promise<number> {
+  const { spawn } = await import("node:child_process");
+  const child = spawn(process.execPath, ["-e", "0"], { stdio: "ignore" });
+  const pid = child.pid!;
+  await new Promise((resolve) => child.on("exit", resolve));
+  return pid;
+}
+
+test("file store: a lock is taken over only when its owner is gone, never because it is old", async () => {
+  const { writeFileSync, utimesSync, existsSync } = await import("node:fs");
   const dir = mkdtempSync(join(tmpdir(), "kic-lock-"));
-  const store = new FileCampaignStore(dir, { lockTimeoutMs: 150, staleLockMs: 60_000 });
+  const store = new FileCampaignStore(dir, { lockTimeoutMs: 150, staleLockMs: 500 });
   const { service } = makeService({ store });
   const { id } = await service.createCampaign(syntheticBrief());
-  const { writeFileSync, utimesSync } = await import("node:fs");
   const lock = join(dir, `${id}.json.lock`);
+  const note = (detail: string) => store.update(id, (record) => void record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "lock-test", detail }));
+  const old = new Date(Date.now() - 3_600_000);
 
-  writeFileSync(lock, "999999 live\n");
-  await assert.rejects(store.update(id, () => undefined), /locked by another writer/);
-
-  const old = new Date(Date.now() - 120_000);
+  // Held by a live process, and an hour old: still held. Writers wait, then report busy.
+  writeFileSync(lock, `${process.pid} someone-else\n`);
   utimesSync(lock, old, old);
-  await store.update(id, (record) => {
-    record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "after-stale-lock", detail: "ok" });
+  await assert.rejects(note("must not be written"), /locked by another writer/);
+  assert.ok(existsSync(lock), "a live owner's lock is left in place");
+
+  // Held by a process that no longer exists: cleared at once, however new it is.
+  writeFileSync(lock, `${await deadPid()} crashed-writer\n`);
+  await note("after a crashed writer");
+
+  // No readable owner: held while it could still be mid-creation, cleared once it is old.
+  writeFileSync(lock, "");
+  await assert.rejects(note("must not be written"), /locked by another writer/);
+  utimesSync(lock, old, old);
+  await note("after an unreadable old lock");
+
+  const details = (await store.get(id)).audit.filter((e) => e.event === "lock-test").map((e) => e.detail);
+  assert.deepEqual(details, ["after a crashed writer", "after an unreadable old lock"]);
+  assert.ok(!existsSync(lock));
+});
+
+test("file store: a slow writer keeps its lock and no update is lost, however long it takes", async () => {
+  // The reviewer's case: a holder that runs longer than any staleness window.
+  const dir = mkdtempSync(join(tmpdir(), "kic-slow-"));
+  const slow = new FileCampaignStore(dir, { lockTimeoutMs: 5_000, staleLockMs: 50 });
+  const fast = new FileCampaignStore(dir, { lockTimeoutMs: 5_000, staleLockMs: 50 });
+  const { service } = makeService({ store: slow });
+  const { id } = await service.createCampaign(syntheticBrief());
+  const first = slow.update(id, async (record) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "slow", detail: "A" });
   });
-  assert.ok((await store.get(id)).audit.some((e) => e.event === "after-stale-lock"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const second = fast.update(id, (record) => void record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "slow", detail: "B" }));
+  await Promise.all([first, second]);
+  const record = await fast.get(id);
+  assert.deepEqual(record.audit.filter((e) => e.event === "slow").map((e) => e.detail), ["A", "B"]);
+  assert.equal(record.revision, 2);
+});
+
+test("file store: many stores recovering from a crashed writer at once do not lose an update", async () => {
+  // The reviewer's case: several waiters all see the same dead lock and race to take it over.
+  const { writeFileSync } = await import("node:fs");
+  const dead = await deadPid();
+  for (let trial = 0; trial < 25; trial++) {
+    const dir = mkdtempSync(join(tmpdir(), "kic-takeover-"));
+    const stores = Array.from({ length: 8 }, () => new FileCampaignStore(dir));
+    const { service } = makeService({ store: stores[0]! });
+    const { id } = await service.createCampaign(syntheticBrief());
+    writeFileSync(join(dir, `${id}.json.lock`), `${dead} crashed-writer\n`);
+    await Promise.all(stores.map((store, i) => store.update(id, (record) => void record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "takeover", detail: `store ${i}` }))));
+    const record = await stores[0]!.get(id);
+    assert.equal(record.audit.filter((e) => e.event === "takeover").length, 8, `trial ${trial}: every update was applied`);
+    assert.equal(record.revision, 8);
+  }
 });
 
 test("steps started together cannot spend the same remaining budget", async () => {
@@ -172,13 +229,50 @@ test("a model call that overruns its time limit is cancelled, charged and report
   assert.equal(record.interpretation, null);
 });
 
-test("the token allowance is checked against what a step may use, before it starts", async () => {
-  const { service, gateway } = makeService({ limits: { maxCompletionTokens: 9000 } });
+test("the token allowance is checked against the most a step could use, before it starts", async () => {
+  // A call may use up to three times its allowance once a cut-off answer is retried.
+  const { service, gateway } = makeService({ limits: { maxCompletionTokens: 30_000 } });
   const campaign = await service.createCampaign(syntheticBrief());
-  await service.interpretBrief(campaign.id); // may use 8000; uses 400
-  // Narratives may use 10000 more: 400 + 10000 exceeds 9000, so the step is refused unstarted.
+  await service.interpretBrief(campaign.id); // could use 24,000; uses 400
+  // Narratives could use 30,000 more: 400 + 30,000 exceeds the limit, so the step is refused unstarted.
   await assert.rejects(service.generateNarratives(campaign.id, 2), limit("maxCompletionTokens"));
   assert.deepEqual(gateway.calls, ["campaign-brief"]);
+  const record = await service.getCampaign(campaign.id);
+  assert.deepEqual(record.budget.reservations, [], "a settled step leaves no reservation");
+});
+
+test("tokens that steps in flight may still spend are held back from steps started meanwhile", async () => {
+  // The reviewer's case: two steps started together, each within the limit alone.
+  const { service, gateway } = makeService({ limits: { maxCompletionTokens: 40_000 }, script: { delayMs: 20 } });
+  const campaign = await service.createCampaign(syntheticBrief());
+  const results = await Promise.allSettled([service.interpretBrief(campaign.id), service.generateNarratives(campaign.id, 2)]);
+  // interpret reserves 24,000; narratives would need 30,000 more: over 40,000 while the first is in flight.
+  assert.deepEqual(results.map((r) => r.status), ["fulfilled", "rejected"]);
+  assert.ok(limit("maxCompletionTokens")((results[1] as PromiseRejectedResult).reason));
+  assert.deepEqual(gateway.calls, ["campaign-brief"], "the second step never reached the model");
+  // Once the first has settled, its unused allowance is free again.
+  await service.generateNarratives(campaign.id, 2);
+  assert.deepEqual((await service.getCampaign(campaign.id)).budget.reservations, []);
+});
+
+test("a step that never settles is charged at its full allowance once it expires", async () => {
+  const { service, store, clock, limits } = makeService({ limits: { maxCompletionTokens: 100_000 } });
+  const campaign = await service.createCampaign(syntheticBrief());
+  // What a process leaves behind if it dies between reserving a step and settling it.
+  await store.update(campaign.id, (record) => {
+    record.budget.modelCalls += 1;
+    record.budget.reservations.push({ id: "res-orphan", step: "generate-drafts", calls: 1, completionTokens: 36_000, reservedAt: clock.now().toISOString() });
+  });
+  // While it is live, it counts against the limit: 36,000 held + 30,000 + 24,000 still fits; 36,000 + 72,000 would not.
+  await service.interpretBrief(campaign.id);
+  assert.equal((await service.getCampaign(campaign.id)).budget.reservations.length, 1);
+
+  clock.advance(limits.reservationTtlMs + 60_000);
+  await service.generateNarratives(campaign.id, 2);
+  const record = await service.getCampaign(campaign.id);
+  assert.deepEqual(record.budget.reservations, []);
+  assert.equal(record.budget.usage.completionTokens, 36_000 + 400 + 400, "the orphaned step's whole allowance is on the books");
+  assert.ok(record.audit.some((e) => e.event === "step-unsettled"));
 });
 
 test("bounded fan-out reports every outcome and stops dispatching after a failure", async () => {

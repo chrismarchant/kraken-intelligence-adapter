@@ -39,6 +39,8 @@ export const ProvisionalPublishCommand = z.strictObject({
     decisionId: Id,
     approvedBy: HumanActor,
     approvedAt: IsoDateTime,
+    /** True when the approval's operator signature was checked. False only in unsigned development mode. */
+    signatureVerified: z.boolean(),
   }),
   translation: z.strictObject({
     target: z.literal("kraken"),

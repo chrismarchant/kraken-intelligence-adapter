@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { z } from "zod";
 import { FallbackGateway, FixtureGateway, FixtureMissingError, RecordingGateway } from "../../src/gateway/fixture.ts";
 import { ModelCallError, ModelOutputError, parseJsonAnswer } from "../../src/gateway/gateway.ts";
-import { costOf } from "../../src/gateway/gateway.ts";
+import { MAX_TOKEN_FACTOR, costOf } from "../../src/gateway/gateway.ts";
 import { MistralGateway, checkedBaseUrl, messageText } from "../../src/gateway/mistral.ts";
 
 const Answer = z.strictObject({ theme: z.string(), score: z.number() });
@@ -111,7 +111,7 @@ test("malformed or off-schema output is corrected once, then refused", async () 
     () => json(completion('{"theme":"t"}')),
   ]);
   await assert.rejects(gateway(bad.impl).generateJson(request), ModelOutputError);
-  assert.equal(bad.bodies.length, 3, "no more than the configured attempts");
+  assert.equal(bad.bodies.length, 2, "one correction, then the call fails");
 });
 
 test("transient failures are retried; a client error is not", async () => {
@@ -166,14 +166,14 @@ test("what a failed call cost is carried on the error, and provider requests are
   const ok = fakeFetch([() => new Response("x", { status: 502 }), () => json(completion('{"theme":"t","score":1}'))]);
   assert.equal((await gateway(ok.impl).generateJson(request)).providerRequests, 2, "the retry is counted");
 
-  // Three off-schema answers: the call fails, having spent three requests and their tokens.
+  // Two off-schema answers: the call fails, having spent two requests and their tokens.
   const bad = fakeFetch(Array.from({ length: 3 }, () => () => json(completion('{"theme":"t"}'))));
   const failure = await gateway(bad.impl).generateJson(request).then(
     () => null,
     (error: unknown) => error,
   );
   assert.ok(failure instanceof ModelOutputError);
-  assert.deepEqual(costOf(failure), { usage: { promptTokens: 30, completionTokens: 150, reasoningTokens: 120 }, providerRequests: 3 });
+  assert.deepEqual(costOf(failure), { usage: { promptTokens: 20, completionTokens: 100, reasoningTokens: 80 }, providerRequests: 2 });
 
   // However retries combine, one call never sends more than the cap.
   const storm = fakeFetch(Array.from({ length: 20 }, () => () => new Response("x", { status: 503 })));
@@ -205,4 +205,19 @@ test("the model endpoint must be https, or http on loopback, and carry no creden
     assert.throws(() => checkedBaseUrl(bad), /model base URL/, bad);
   }
   assert.throws(() => new MistralGateway({ baseUrl: "http://models.example/v1" }), /https/);
+});
+
+test("all attempts of one call together never exceed three times its token allowance", async () => {
+  // Every answer is cut off. The call tries once at its allowance, once at double, and stops.
+  const always = fakeFetch(Array.from({ length: 10 }, () => () => json(completion("", "length"))));
+  await assert.rejects(gateway(always.impl, { retries: 5 }).generateJson(request), /cut off/);
+  const budgets = always.bodies.map((b) => b.max_tokens as number);
+  assert.deepEqual(budgets, [1000, 2000]);
+  assert.ok(budgets.reduce((a, b) => a + b, 0) <= MAX_TOKEN_FACTOR * request.maxTokens);
+
+  // Corrections do not escape the limit either, however many retries are configured.
+  const wrong = fakeFetch(Array.from({ length: 10 }, () => () => json(completion("not json"))));
+  await assert.rejects(gateway(wrong.impl, { retries: 9 }).generateJson(request), ModelOutputError);
+  assert.equal(wrong.bodies.length, 3);
+  assert.ok(wrong.bodies.reduce((sum, b) => sum + (b.max_tokens as number), 0) <= MAX_TOKEN_FACTOR * request.maxTokens);
 });

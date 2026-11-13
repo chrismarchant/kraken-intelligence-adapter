@@ -1,29 +1,32 @@
 import { mkdir, open, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { buildProvisionalCommand } from "../commands/provisional.ts";
-import type { CampaignRecord, EditorialDecision, PackagedPost, PostDraft, ProgrammePackage } from "../contracts/index.ts";
-import { PROGRAMME_PACKAGE_SCHEMA, ProgrammePackage as ProgrammePackageSchema, SCHEMA_VERSION } from "../contracts/index.ts";
+import type { CampaignRecord, EditorialDecision, HumanActor, PackagedPost, PostDraft, ProgrammePackage } from "../contracts/index.ts";
+import { HumanActor as HumanActorSchema, PROGRAMME_PACKAGE_SCHEMA, ProgrammePackage as ProgrammePackageSchema, SCHEMA_VERSION, ShortText } from "../contracts/index.ts";
 import { analyseDraft } from "../evaluation/signals.ts";
 import type { Limits } from "../limits.ts";
 import { fenced, inline } from "../util/markdown.ts";
 import type { Clock } from "../util/runtime.ts";
 import { canonicalJson, sha256 } from "../util/runtime.ts";
 import { WorkflowError, draftContentHash, latestDecisionFor, selectedNarrativeOf } from "./service.ts";
-import type { DecisionVerifier } from "./signing.ts";
+import type { DecisionVerifier, LogHead } from "./signing.ts";
 
 export const GENERATOR_VERSION = "0.1.0";
 
 /**
  * The approval that makes a draft publishable in principle, or null.
  *
- * A draft counts as approved only if all of these hold: its status says approved; the
- * latest decision about it that can be relied on is an approval; and that approval was
- * made on exactly this text. A status with no decision behind it, an approval followed by
- * a rejection, text edited after approval, and (when decisions are signed) a decision
- * without a valid operator signature all fail.
+ * A draft counts as approved only if all of these hold: the campaign's whole decision log
+ * is intact (in order, chained, and validly signed when decisions are signed); the draft's
+ * status says approved; it has not been revised; the latest decision about it is an
+ * approval; and that approval was made on exactly this text. A status with no decision
+ * behind it, an approval followed by a rejection or a revision request, text edited after
+ * approval, and a log that has been reordered, cut in the middle or mis-signed all fail.
  */
 export function approvalOf(record: CampaignRecord, draft: PostDraft, verifier: DecisionVerifier | null): EditorialDecision | null {
   if (draft.status !== "approved") return null;
+  // A draft that has been revised is superseded, whatever its status field says.
+  if (record.drafts.some((d) => d.revisionOf === draft.id)) return null;
   const latest = latestDecisionFor(record, { kind: "draft", id: draft.id }, verifier);
   if (!latest || latest.action !== "approve") return null;
   return latest.subjectContentSha256 === draftContentHash(draft) ? latest : null;
@@ -68,7 +71,7 @@ export function assembleProgramme(record: CampaignRecord, options: AssembleOptio
       if (failures.length > 0) {
         throw new WorkflowError("ineligible", `Approved draft ${approved.id} fails mandatory constraints: ${failures.map((f) => f.rule).join(", ")}.`);
       }
-      commands.push(buildProvisionalCommand(programmeId, slot, approved, approval));
+      commands.push(buildProvisionalCommand(programmeId, slot, approved, approval, options.verifier !== null));
     } else {
       pending.push(slot.slot);
     }
@@ -110,6 +113,8 @@ export function assembleProgramme(record: CampaignRecord, options: AssembleOptio
     posts,
     decisions: record.decisions,
     provisionalCommands: commands,
+    // Assembly produces a preview. Only the operator tool can release a package.
+    release: null,
     provenance: {
       generator: "kraken-intelligence-companion",
       generatorVersion: GENERATOR_VERSION,
@@ -129,9 +134,68 @@ export function assembleProgramme(record: CampaignRecord, options: AssembleOptio
   });
 }
 
+/** SHA-256 of a package's canonical JSON with its release block set aside. This is what a release signs. */
+export function packageDigest(pkg: ProgrammePackage): string {
+  return sha256(canonicalJson({ ...pkg, release: null }));
+}
+
+export interface ReleaseInput {
+  actor: HumanActor;
+  rationale: string;
+  /** Head of the decision log, as checked by the operator's service against its own ledger. */
+  logHead: LogHead;
+  sign: (packageSha256: string) => { alg: "ed25519"; keyId: string; value: string } | null;
+  clock: Clock;
+}
+
+/**
+ * The editor's sign-off on an assembled package. The caller must have checked, in the
+ * operator's process, that the decision log is intact and complete; the release records
+ * the length of the log it was made on, and refuses a package assembled from a different one.
+ */
+export function releaseProgramme(pkg: ProgrammePackage, input: ReleaseInput): ProgrammePackage {
+  if (pkg.release !== null) throw new WorkflowError("already-released", "This package has already been released.");
+  if (pkg.decisions.length !== input.logHead.sequence) {
+    throw new WorkflowError("decision-log-rolled-back", "The package was assembled from a decision log that differs from the one the operator checked.");
+  }
+  const actor = HumanActorSchema.safeParse(input.actor);
+  if (!actor.success) throw new WorkflowError("invalid-actor", "A release must name the person making it (kind: human, id, name).");
+  const rationale = ShortText.safeParse(input.rationale);
+  if (!rationale.success) throw new WorkflowError("invalid-rationale", "The editor must give a reason of 1 to 400 characters.");
+  const digest = packageDigest(pkg);
+  return ProgrammePackageSchema.parse({
+    ...pkg,
+    release: {
+      releasedBy: actor.data,
+      releasedAt: input.clock.now().toISOString(),
+      rationale: rationale.data,
+      packageSha256: digest,
+      decisionLogSequence: input.logHead.sequence,
+      signature: input.sign(digest),
+    },
+  });
+}
+
+/** True when a package carries a release that matches its content and, with a verifier, a valid operator signature. */
+export function releaseIsValid(pkg: ProgrammePackage, verifier: DecisionVerifier | null): boolean {
+  const release = pkg.release;
+  if (release === null || release.packageSha256 !== packageDigest(pkg)) return false;
+  if (verifier === null) return true;
+  return release.signature !== null && verifier.verify(release.signature.keyId, `kic-release\n${release.packageSha256}`, release.signature.value);
+}
+
 export function programmeMarkdown(pkg: ProgrammePackage): string {
   const lines: string[] = [];
   lines.push(`# Programme package ${inline(pkg.programmeId)}`, "");
+  if (pkg.release) {
+    lines.push(
+      `> **RELEASED** by ${inline(pkg.release.releasedBy.name)} on ${pkg.release.releasedAt}: ${inline(pkg.release.rationale)} ` +
+        `(${pkg.release.signature ? `signed with operator key ${pkg.release.signature.keyId}` : "UNSIGNED"}).`,
+      "",
+    );
+  } else {
+    lines.push("> **PREVIEW — NOT RELEASED.** The editor has not signed off this package. It is released with the operator tool.", "");
+  }
   if (pkg.synthetic) lines.push("> **SYNTHETIC TEST DATA.** The client, figures and references in this package are invented.", "");
   lines.push("> **Publishing commands are provisional and NON-EXECUTABLE.** Nothing in this package has been or can be published by KIC.", "");
   lines.push(`- Client: ${inline(pkg.brief.client.name)}`, `- Approval state: ${pkg.approvalState}`, `- Assembled: ${pkg.assembledAt}`, "");
@@ -186,8 +250,9 @@ export interface ExportResult {
   packagePath: string;
   summaryPath: string;
   commandsPath: string;
-  /** SHA-256 of the canonical JSON of the package. */
+  /** SHA-256 of the canonical JSON of the package, release block set aside. */
   packageSha256: string;
+  released: boolean;
 }
 
 async function writeNew(path: string, content: string): Promise<void> {
@@ -206,10 +271,10 @@ async function writeNew(path: string, content: string): Promise<void> {
  * so an earlier export is never overwritten. Files are private to the owner.
  */
 export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string): Promise<ExportResult> {
-  const packageSha256 = sha256(canonicalJson(pkg));
+  const packageSha256 = packageDigest(pkg);
   await mkdir(resolve(exportRoot), { recursive: true, mode: 0o700 });
   const root = await realpath(resolve(exportRoot));
-  const name = `${pkg.assembledAt.replace(/[^0-9TZ]/g, "")}-${packageSha256.slice(0, 12)}`;
+  const name = `${pkg.assembledAt.replace(/[^0-9TZ]/g, "")}-${packageSha256.slice(0, 12)}${pkg.release ? "-released" : "-preview"}`;
   const dir = resolve(root, pkg.programmeId, name);
   if (!dir.startsWith(root + sep)) throw new WorkflowError("invalid-export-path", "Export path escapes the export directory.");
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -218,15 +283,23 @@ export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string)
   const packagePath = join(dir, "programme.json");
   const summaryPath = join(dir, "programme.md");
   const commandsPath = join(dir, "provisional-commands.NON-EXECUTABLE.json");
+  const commandsFile = {
+    notice: "NON-EXECUTABLE. Provisional fixtures for contract convergence only. Not Kraken commands.",
+    programmeId: pkg.programmeId,
+    released: pkg.release !== null,
+    decisionsVerified: pkg.provisionalCommands.every((c) => c.approval.signatureVerified),
+    packageSha256,
+    commands: pkg.provisionalCommands,
+  };
   try {
     await writeNew(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
     await writeNew(summaryPath, programmeMarkdown(pkg));
-    await writeNew(commandsPath, `${JSON.stringify(pkg.provisionalCommands, null, 2)}\n`);
+    await writeNew(commandsPath, `${JSON.stringify(commandsFile, null, 2)}\n`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       throw new WorkflowError("already-exported", `This exact package was already exported to ${dir}.`);
     }
     throw error;
   }
-  return { programmeId: pkg.programmeId, directory: dir, packagePath, summaryPath, commandsPath, packageSha256 };
+  return { programmeId: pkg.programmeId, directory: dir, packagePath, summaryPath, commandsPath, packageSha256, released: pkg.release !== null };
 }

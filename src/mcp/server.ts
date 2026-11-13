@@ -229,10 +229,11 @@ export function createKicServer(deps: KicServerDeps): McpServer {
   server.registerTool(
     "kic_assemble_programme",
     {
-      title: "Assemble and export the programme package",
+      title: "Assemble a preview of the programme package",
       description:
-        "Build the programme package from human-approved drafts only and export it. Publishing commands in the package " +
-        "are provisional and NON-EXECUTABLE. Refused when nothing is approved, or when posts are pending unless allowPartial is true.",
+        "Build a preview of the programme package from human-approved drafts only and export it. The preview is not a released " +
+        "programme: only the editor's operator tool can release it. Publishing commands in the package are provisional and " +
+        "NON-EXECUTABLE. Refused when nothing is approved, or when posts are pending unless allowPartial is true.",
       inputSchema: { campaignId, allowPartial: z.boolean().optional() },
       annotations: writes,
     },
@@ -243,6 +244,9 @@ export function createKicServer(deps: KicServerDeps): McpServer {
         return ok({
           programmeId: pkg.programmeId,
           approvalState: pkg.approvalState,
+          released: false,
+          decisionsVerified: service.verifier !== null,
+          next: "This is a preview. The editor releases the package with the operator tool, which signs it.",
           approvedPosts: pkg.posts.filter((p) => p.state === "approved").map((p) => p.slot.slot),
           pendingPosts: pkg.posts.filter((p) => p.state === "pending").map((p) => p.slot.slot),
           provisionalCommands: pkg.provisionalCommands.map((c) => ({ commandId: c.commandId, status: c.status, executable: c.executable, authoritative: c.authoritative })),

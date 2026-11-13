@@ -33,7 +33,7 @@ Every statement is marked by how it was established: **[V]** verified by a comma
 | Unit prices (any model) | [N] Not verified. No cost figure in this report is a quote. |
 | OpenAI / Codex | [V] **Unavailable.** The injected OpenAI key is rejected (`invalid_api_key`). Not retried. |
 | Claude orchestrator | [V] This session. Sub-agents can be started on Opus, Sonnet, Haiku and Fable tiers [N: none started yet]. "Fable 5.1" is not offered; the substitute for sub-orchestration is a same-tier fork or Sonnet. |
-| JEV (TypeSafe System One) | [V] Host `api.typesafe.ai` is reachable and a **live JEV credential is injected into this session**. One GET to `/` was made as a reachability probe (404). **No decision endpoint was called and none will be** until the gate in §G is passed. |
+| JEV decision model | [V] Not called. One reachability request was made to the service's root address during KIC-00; no decision endpoint was contacted, and none will be until the gate in §G is passed. |
 
 ### Tools and services
 
@@ -45,7 +45,7 @@ Every statement is marked by how it was established: **[V]** verified by a comma
 | Mistral Code Review Bot | [R] Per Kraken's records: controlled test **failed** (bot posts the model's block content as the comment body; GitHub 422); trigger suspended; fix waits in an unmerged pull request on the bot repository. **Not operational.** |
 | Mistral router plugin (coding delegation) | [N] Not installed in this session. Direct API calls work as a substitute. |
 | Claude-Mem | [N] Not installed. Git-native state is used instead. |
-| Railway, Supabase, Linear, Slack connectors | [V] Connected. [N] Not exercised; nothing provisioned. |
+| Deployment and project-tracking connectors | [V] Present in the session. [N] Not exercised; nothing provisioned. |
 
 ---
 

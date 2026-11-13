@@ -20,15 +20,23 @@
       "gate": "KIC-01",
       "owner": "agent",
       "deps": [],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "src/shim/**",
+        "tests/shim/** (offline)",
+        "tests/shim/live.ts run once at 3306759: cases a-f pass, control fails as expected",
+        "docs/gates/KIC-01-EVIDENCE.md: agent runs through the hardened shim"
+      ]
     },
     {
       "id": "KIC-01-C2b",
       "title": "Shim verified inside running OpenBot",
       "gate": "KIC-01",
       "owner": "orchestrator",
-      "deps": ["KIC-01-C1", "KIC-01-C2"],
+      "deps": [
+        "KIC-01-C1",
+        "KIC-01-C2"
+      ],
       "status": "blocked",
       "evidence": []
     },
@@ -52,35 +60,60 @@
       "gate": "KIC-01",
       "owner": "agent",
       "deps": [],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "src/contracts/**",
+        "tests/kic/contracts.test.ts"
+      ]
     },
     {
       "id": "KIC-B2",
       "title": "KIC MCP server with mocked JEV evaluator",
       "gate": "KIC-01",
       "owner": "agent",
-      "deps": ["KIC-B1"],
-      "status": "todo",
-      "evidence": []
+      "deps": [
+        "KIC-B1"
+      ],
+      "status": "done",
+      "evidence": [
+        "src/mcp/**",
+        "src/evaluation/**",
+        "src/workflow/**",
+        "tests/kic/mcp.test.ts",
+        "tests/kic/evaluation.test.ts"
+      ]
     },
     {
       "id": "KIC-C1",
       "title": "Synthetic campaign proof via API/CLI",
       "gate": "KIC-01",
       "owner": "agent",
-      "deps": ["KIC-B2"],
-      "status": "todo",
-      "evidence": []
+      "deps": [
+        "KIC-B2"
+      ],
+      "status": "done",
+      "evidence": [
+        "src/cli/scenario.ts",
+        "fixtures/llm/synthetic-harbourline/**",
+        "tests/kic/scenario.test.ts",
+        "docs/gates/KIC-01-EVIDENCE.md"
+      ]
     },
     {
       "id": "KIC-C4",
       "title": "Human editorial approval enforced in code, with tests",
       "gate": "KIC-01",
       "owner": "agent",
-      "deps": ["KIC-B2"],
-      "status": "todo",
-      "evidence": []
+      "deps": [
+        "KIC-B2"
+      ],
+      "status": "done",
+      "evidence": [
+        "tests/kic/approval.test.ts",
+        "tests/kic/signing.test.ts",
+        "tests/kic/concurrency.test.ts",
+        "docs/review/2026-11-13-independent-agent-983487d.md (finding 3 and its remediation)"
+      ]
     },
     {
       "id": "AEH-1",
@@ -88,8 +121,13 @@
       "gate": "AEH",
       "owner": "agent",
       "deps": [],
-      "status": "in_progress",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "harness/**",
+        ".github/workflows/ci.yml",
+        "CI runs 43343870467, 43346469381, 43350445685: success",
+        "harness/tests/** (82 tests)"
+      ]
     },
     {
       "id": "AEH-2",
@@ -110,7 +148,86 @@
       "title": "Independent commit-bound review of the session's implementation",
       "gate": "KIC-01",
       "owner": "reviewer",
-      "deps": ["KIC-B2", "KIC-01-C2"],
+      "deps": [
+        "KIC-B2",
+        "KIC-01-C2"
+      ],
+      "status": "in_progress",
+      "evidence": [
+        "harness/state/reviews.json: two reviews of 983487d, both changes-requested",
+        "remediation aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+      ]
+    },
+    {
+      "id": "KIC-D1",
+      "title": "Automated tests for the operator command-line tool (init, show, confirm, decline)",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "KIC-D2",
+      "title": "Store test across two operating-system processes under load",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "KIC-D3",
+      "title": "Comparison and approval surface for the editor inside the workspace",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "blocked",
+      "evidence": [],
+      "stop": {
+        "level": "local",
+        "reason": "Owner decision OD-9: where the editor confirms decisions.",
+        "since": "2026-11-13"
+      }
+    },
+    {
+      "id": "KIC-D4",
+      "title": "Creator skills: labelled fixtures and typed contracts only",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "KIC-D5",
+      "title": "Evaluator adapter contract tests against recorded real decision-model responses",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "blocked",
+      "evidence": [],
+      "stop": {
+        "level": "local",
+        "reason": "JEV security, redaction and authority gate not passed. Owner decision OD-3.",
+        "since": "2026-11-13"
+      }
+    },
+    {
+      "id": "KIC-D6",
+      "title": "Re-run tests/shim/live.ts against the hardened shim",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "AEH-3",
+      "title": "Install and verify the global-stop hook in a live session",
+      "gate": "AEH",
+      "owner": "orchestrator",
+      "deps": [],
       "status": "todo",
       "evidence": []
     }

@@ -6,7 +6,8 @@ import { test } from "node:test";
 import { runSyntheticCampaign, SYNTHETIC_EDITOR } from "../../src/cli/scenario.ts";
 import { ProgrammePackage, ProvisionalPublishCommand } from "../../src/contracts/index.ts";
 import { FixtureGateway } from "../../src/gateway/fixture.ts";
-import { decisionIsAuthentic, generateDecisionKeyPair } from "../../src/workflow/signing.ts";
+import { releaseIsValid } from "../../src/workflow/assemble.ts";
+import { generateDecisionKeyPair, verifyDecisionLog } from "../../src/workflow/signing.ts";
 import { BRIEF_PATH } from "./support.ts";
 
 const FIXTURES = "fixtures/llm/synthetic-harbourline";
@@ -52,13 +53,18 @@ test("the synthetic campaign runs end to end from recorded Mistral output", asyn
   const actions = record.decisions.map((d) => d.action);
   for (const action of ["select", "reject", "request-revision", "approve"]) assert.ok(actions.includes(action as never), `${action} was exercised`);
   assert.ok(record.decisions.every((d) => d.actor.id === SYNTHETIC_EDITOR.id && d.actor.kind === "human"));
-  assert.ok(record.decisions.every((d) => decisionIsAuthentic(record.id, d, keys.verifier)), "every decision carries a valid operator signature");
+  assert.equal(verifyDecisionLog(record, keys.verifier).ok, true, "every decision is chained and carries a valid operator signature");
+  assert.deepEqual(record.decisions.map((d) => d.sequence), record.decisions.map((_, i) => i + 1));
   assert.match(pkg.provenance.notes.join(" "), new RegExp(`signature from operator key ${keys.verifier.keyId}`));
   assert.equal(record.drafts.filter((d) => d.revisionPass === 1).length, 1);
   assert.equal(record.drafts.filter((d) => d.status === "superseded").length, 1);
 
-  // Exportable programme package.
+  // Exportable programme package, released by the editor with the operator key.
   ProgrammePackage.parse(pkg);
+  assert.equal(releaseIsValid(pkg, keys.verifier), true);
+  assert.equal(pkg.release!.releasedBy.id, SYNTHETIC_EDITOR.id);
+  assert.equal(pkg.release!.decisionLogSequence, record.decisions.length);
+  assert.match(exported.directory, /-released$/);
   assert.equal(pkg.approvalState, "complete");
   assert.equal(pkg.synthetic, true);
   assert.equal(pkg.posts.filter((p) => p.state === "approved").length, 4);

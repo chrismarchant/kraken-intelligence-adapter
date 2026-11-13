@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, open, readFile, readdir, rename, stat, unlink } from "node:fs/promises";
+import { link, mkdir, open, readFile, readdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { CampaignRecord, Id } from "../contracts/index.ts";
 
@@ -9,6 +9,9 @@ export class RecordNotFoundError extends Error {
     this.name = "RecordNotFoundError";
   }
 }
+
+/** Internal: this writer's lock was displaced, or the record moved, before it could write. The update is run again. */
+class LockLostError extends Error {}
 
 export class StoreBusyError extends Error {
   constructor(id: string) {
@@ -88,7 +91,7 @@ export class MemoryCampaignStore implements CampaignStore {
 export interface FileStoreOptions {
   /** How long to wait for another process to release a campaign. */
   lockTimeoutMs?: number;
-  /** A lock file older than this is taken to belong to a dead process and is removed. */
+  /** How old a lock with no readable owner must be before it is cleared. A lock that names a live process is never cleared. */
   staleLockMs?: number;
 }
 
@@ -97,8 +100,9 @@ export interface FileStoreOptions {
  *
  * Writers in one process queue on an in-memory mutex. Writers in different processes
  * (for example the MCP server and the operator tool) queue on a lock file created with
- * exclusive-create. Each write goes to a uniquely named temporary file, is flushed to
- * disk, and is then renamed into place, so a reader never sees a partial file.
+ * exclusive-create, which names its owner. Each write goes to a uniquely named temporary
+ * file, is flushed to disk, and is then renamed into place, so a reader never sees a
+ * partial file. Processes sharing a store must run on the same machine.
  */
 export class FileCampaignStore implements CampaignStore {
   private readonly dir: string;
@@ -109,7 +113,7 @@ export class FileCampaignStore implements CampaignStore {
   constructor(dir: string, options: FileStoreOptions = {}) {
     this.dir = dir;
     this.lockTimeoutMs = options.lockTimeoutMs ?? 15_000;
-    this.staleLockMs = options.staleLockMs ?? 60_000;
+    this.staleLockMs = options.staleLockMs ?? 10_000;
   }
 
   private path(id: string): string {
@@ -136,34 +140,94 @@ export class FileCampaignStore implements CampaignStore {
     }
   }
 
-  /** Hold the cross-process lock for a campaign while `task` runs. */
-  private async locked<T>(id: string, task: () => Promise<T>): Promise<T> {
+  /**
+   * Hold the cross-process lock for a campaign while `task` runs.
+   *
+   * The lock file names its owner: a process id and a random token. A lock is taken over
+   * only when its owner is known to be gone (the process no longer exists), never because
+   * it is old: a writer that is merely slow or paused keeps its lock, and others wait and
+   * then report that the campaign is busy. On release, a writer removes the lock only if
+   * it still carries its own token.
+   */
+  private async locked<T>(id: string, task: (assertHeld: () => Promise<void>) => Promise<T>): Promise<T> {
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
     const lockPath = `${this.path(id)}.lock`;
+    const token = randomBytes(12).toString("hex");
+    const mine = `${process.pid} ${token}\n`;
     const deadline = Date.now() + this.lockTimeoutMs;
     let pause = 5;
     for (;;) {
       try {
         const handle = await open(lockPath, "wx", 0o600);
-        await handle.writeFile(`${process.pid} ${new Date().toISOString()}\n`);
-        await handle.close();
+        try {
+          await handle.writeFile(mine);
+        } finally {
+          await handle.close();
+        }
         break;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const age = await stat(lockPath).then((s) => Date.now() - s.mtimeMs, () => 0);
-        if (age > this.staleLockMs) {
-          await unlink(lockPath).catch(() => undefined);
-          continue;
-        }
-        if (Date.now() > deadline) throw new StoreBusyError(id);
-        await new Promise((resolve) => setTimeout(resolve, pause));
-        pause = Math.min(pause * 2, 100);
       }
+      if (await this.clearDeadLock(lockPath)) continue;
+      if (Date.now() > deadline) throw new StoreBusyError(id);
+      await new Promise((resolve) => setTimeout(resolve, pause));
+      pause = Math.min(pause * 2, 100);
     }
+    const held = async () => (await readFile(lockPath, "utf8").catch(() => "")) === mine;
     try {
-      return await task();
+      return await task(async () => {
+        if (!(await held())) throw new LockLostError();
+      });
     } finally {
-      await unlink(lockPath).catch(() => undefined);
+      // Only our own lock is removed. If it is no longer ours, it is left alone.
+      if (await held()) await unlink(lockPath).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Remove a lock whose owning process no longer exists. Returns true if the caller should
+   * try to take the lock again at once.
+   *
+   * The lock is first moved aside under a unique name, which only one contender can do,
+   * and is then checked again: if what was moved is not the dead owner's lock (a live
+   * writer took over in between), it is put back.
+   */
+  private async clearDeadLock(lockPath: string): Promise<boolean> {
+    const content = await readFile(lockPath, "utf8").catch(() => null);
+    if (content === null) return true; // released in the meantime
+    const pid = Number(content.split(" ")[0]);
+    if (!Number.isInteger(pid) || pid <= 0 || this.alive(pid)) {
+      // A lock with no readable owner is treated as held until it is old enough to be
+      // certain that no writer is part-way through creating it.
+      if (Number.isInteger(pid) && pid > 0) return false;
+      const age = await stat(lockPath).then((st) => Date.now() - st.mtimeMs, () => 0);
+      if (age < this.staleLockMs) return false;
+    }
+    // Look once more immediately before moving it: another contender may already have taken over.
+    if ((await readFile(lockPath, "utf8").catch(() => null)) !== content) return true;
+    const grave = `${lockPath}.${randomBytes(8).toString("hex")}.dead`;
+    try {
+      await rename(lockPath, grave);
+    } catch {
+      return true; // someone else moved or released it
+    }
+    const moved = await readFile(grave, "utf8").catch(() => null);
+    if (moved !== content) {
+      // We moved a different lock from the one we judged dead. Put it back unless a new one exists.
+      await link(grave, lockPath).catch(() => undefined);
+    }
+    await unlink(grave).catch(() => undefined);
+    return true;
+  }
+
+  private alive(pid: number): boolean {
+    if (pid === process.pid) return true;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      // EPERM means the process exists but belongs to someone else.
+      return (error as NodeJS.ErrnoException).code === "EPERM";
     }
   }
 
@@ -193,15 +257,29 @@ export class FileCampaignStore implements CampaignStore {
   }
 
   update<T>(id: string, change: (record: CampaignRecord) => T | Promise<T>): Promise<T> {
-    return this.mutex.run(id, () =>
-      this.locked(id, async () => {
-        const record = await this.get(id);
-        const result = await change(record);
-        record.revision += 1;
-        await this.write(record);
-        return result;
-      }),
-    );
+    return this.mutex.run(id, async () => {
+      // If this writer's lock is displaced while several writers recover from a crashed one,
+      // nothing has been written: the update is simply run again on the latest record.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await this.locked(id, async (assertHeld) => {
+            const record = await this.get(id);
+            const revision = record.revision;
+            const result = await change(record);
+            record.revision += 1;
+            // Last line of defence before the write: the lock must still be ours, and nothing
+            // may have been written since we read.
+            await assertHeld();
+            if ((await this.get(id)).revision !== revision) throw new LockLostError();
+            await this.write(record);
+            return result;
+          });
+        } catch (error) {
+          if (!(error instanceof LockLostError)) throw error;
+          if (attempt >= 8) throw new StoreBusyError(id);
+        }
+      }
+    });
   }
 
   async list(): Promise<string[]> {

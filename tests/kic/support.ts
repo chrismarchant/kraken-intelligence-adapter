@@ -13,7 +13,7 @@ import type { CampaignStore } from "../../src/store/store.ts";
 import { assembleProgramme } from "../../src/workflow/assemble.ts";
 import { MemoryOperatorChannel } from "../../src/workflow/operator.ts";
 import { CampaignService } from "../../src/workflow/service.ts";
-import { generateDecisionKeyPair } from "../../src/workflow/signing.ts";
+import { MemoryOperatorLedger, generateDecisionKeyPair } from "../../src/workflow/signing.ts";
 
 export const BRIEF_PATH = "fixtures/campaigns/synthetic-harbourline.brief.json";
 
@@ -22,6 +22,15 @@ export function syntheticBrief(): CampaignBrief {
 }
 
 export const EDITOR: HumanActor = { kind: "human", id: "test-editor", name: "Test Editor (test actor)" };
+
+/**
+ * What the editor read before deciding: the action, subject and content hash of a request,
+ * taken from the campaign record as the operator tool takes them.
+ */
+export async function expectedFor(service: CampaignService, campaignId: string, requestId: string) {
+  const shown = await service.describeRequest(campaignId, requestId);
+  return { action: shown.action, subject: shown.subject, contentSha256: shown.contentSha256 };
+}
 
 export interface DraftSpec {
   variant: string;
@@ -185,8 +194,10 @@ export function makeService(options: { script?: ScriptOptions; limits?: Partial<
   // The operator's key pair. `service` holds both halves, as the operator's tool does.
   // `agentService` holds only the public half, as the agent-facing server does.
   const keys = generateDecisionKeyPair();
+  // The operator's own record of each decision log, kept outside the store.
+  const ledger = new MemoryOperatorLedger();
   const shared = { store, gateway, evaluator: new MockJevTransport(limits), operator, clock, ids, limits };
-  const service = new CampaignService({ ...shared, signer: keys.signer, verifier: keys.verifier });
+  const service = new CampaignService({ ...shared, signer: keys.signer, verifier: keys.verifier, ledger });
   const agentService = new CampaignService({ ...shared, signer: null, verifier: keys.verifier });
   const assemble = (record: CampaignRecord, allowPartial = false) => assembleProgramme(record, { allowPartial, clock, limits, verifier: keys.verifier });
 
@@ -206,6 +217,7 @@ export function makeService(options: { script?: ScriptOptions; limits?: Partial<
       code: operator.codeFor(request.requestId),
       actor: EDITOR,
       rationale: "Decided by the test editor.",
+      expected: await expectedFor(service, campaignId, request.requestId),
     });
   };
 
@@ -226,5 +238,5 @@ export function makeService(options: { script?: ScriptOptions; limits?: Partial<
     return id;
   };
 
-  return { service, agentService, keys, assemble, gateway, operator, store, clock, limits, decide, planned, evaluated };
+  return { service, agentService, keys, ledger, assemble, gateway, operator, store, clock, limits, decide, planned, evaluated };
 }

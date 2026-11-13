@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createJevTransport } from "../evaluation/jev.ts";
 import { FixtureGateway } from "../gateway/fixture.ts";
 import type { ModelGateway } from "../gateway/gateway.ts";
@@ -8,7 +8,8 @@ import { DEFAULT_LIMITS } from "../limits.ts";
 import { FileCampaignStore } from "../store/store.ts";
 import { FileOperatorChannel } from "../workflow/operator.ts";
 import { CampaignService } from "../workflow/service.ts";
-import type { DecisionSigner, DecisionVerifier } from "../workflow/signing.ts";
+import { FileOperatorLedger } from "../workflow/ledger.ts";
+import type { DecisionSigner, DecisionVerifier, OperatorLedger } from "../workflow/signing.ts";
 import { signerFromPrivateKeyPem, verifierFromPublicKeyPem } from "../workflow/signing.ts";
 
 export interface RuntimeConfig {
@@ -23,9 +24,29 @@ export interface RuntimeConfig {
   decisionPublicKeyFile: string | null;
 }
 
-function inside(parent: string, child: string): boolean {
-  const rel = relative(parent, child);
-  return rel === "" || (!rel.startsWith("..") && !resolve(parent, rel).startsWith(".."));
+/**
+ * The real location of a path: links resolved for as much of it as exists. A directory that
+ * does not exist yet is located through its nearest existing ancestor.
+ */
+function realLocation(path: string): string {
+  let existing = resolve(path);
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      return join(realpathSync(existing), ...missing.reverse());
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return resolve(path);
+      missing.push(basename(existing));
+      existing = parent;
+    }
+  }
+}
+
+/** True when `child` is `parent` or lies beneath it, after links are resolved. */
+export function inside(parent: string, child: string): boolean {
+  const rel = relative(realLocation(parent), realLocation(child));
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 /**
@@ -69,7 +90,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env, cwd: str
   };
 }
 
-function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; verifier: DecisionVerifier | null }) {
+function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; verifier: DecisionVerifier | null; ledger?: OperatorLedger | null }) {
   const gateway: ModelGateway =
     config.modelMode === "fixture" ? new FixtureGateway(config.fixtureDir) : new MistralGateway({ reasoningEffort: config.reasoningEffort });
   const operator = new FileOperatorChannel(config.operatorDir);
@@ -81,6 +102,7 @@ function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; ver
     operator,
     signer: keys.signer,
     verifier: keys.verifier,
+    ledger: keys.ledger ?? null,
   });
   return { service, operator, config };
 }
@@ -104,5 +126,6 @@ export function createOperatorRuntime(privateKeyFile: string, config: RuntimeCon
     const configured = verifierFromPublicKeyPem(readFileSync(config.decisionPublicKeyFile, "utf8"));
     if (configured.keyId !== signer.keyId) throw new Error("The operator key does not match the public key this instance is configured with.");
   }
-  return build(config, { signer, verifier });
+  // The ledger sits beside the private key: the operator's own record of every decision log.
+  return build(config, { signer, verifier, ledger: new FileOperatorLedger(`${privateKeyFile}.ledger.json`) });
 }

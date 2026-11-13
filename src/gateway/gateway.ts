@@ -42,6 +42,13 @@ export function costOf(error: unknown): CallCost {
 }
 
 /**
+ * The most completion tokens one generateJson call may consume, as a multiple of the
+ * request's `maxTokens`, all retries included. Callers budget on this figure, so every
+ * gateway must stay within it.
+ */
+export const MAX_TOKEN_FACTOR = 3;
+
+/**
  * Provider-neutral inference boundary. Skills depend on this interface only, so the
  * provider, a gateway service or a recorded fixture can stand behind it.
  */

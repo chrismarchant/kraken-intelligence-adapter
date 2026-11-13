@@ -84,10 +84,16 @@ const EvaluatorState = z.object({
 });
 type EvaluatorState = z.infer<typeof EvaluatorState>;
 
-/** Replace the client's name, and its distinctive leading words, wherever they occur in the state. */
+const GENERIC_NAME_WORDS = new Set(
+  "the and of for analytics company group limited ltd inc corp corporation plc llc gmbh solutions services systems global international consulting partners technologies technology software labs digital data media logistics".split(" "),
+);
+
+/** Replace the client's name, and its distinctive words, wherever they occur in the state. */
 function withoutClientName<T>(clientName: string, value: T): T {
   const full = clientName.replace(/\s*\([^)]*\)\s*/g, " ").trim();
-  const names = [full, ...full.split(/\s+/).filter((w) => w.length >= 5 && /^[A-Z]/.test(w))].filter(Boolean);
+  // The full name, and each distinctive word of it. Generic company words are left alone so
+  // that ordinary vocabulary in a draft is not blanked out.
+  const names = [full, ...full.split(/\s+/).filter((w) => w.length >= 3 && /^[A-Z]/.test(w) && !GENERIC_NAME_WORDS.has(w.toLowerCase()))].filter(Boolean);
   const pattern = new RegExp(names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
   const scrub = (v: unknown): unknown => {
     if (typeof v === "string") return names.length ? v.replace(pattern, "[client]") : v;

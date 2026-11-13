@@ -28,7 +28,7 @@ import { evaluateSlot } from "../evaluation/evaluator.ts";
 import type { JevTransport } from "../evaluation/jev.ts";
 import { analyseDraft } from "../evaluation/signals.ts";
 import type { CallCost, GenerateRequest, GenerateResult, ModelGateway } from "../gateway/gateway.ts";
-import { costOf } from "../gateway/gateway.ts";
+import { MAX_TOKEN_FACTOR, costOf } from "../gateway/gateway.ts";
 import type { Limits } from "../limits.ts";
 import { DEFAULT_LIMITS, LimitExceededError } from "../limits.ts";
 import {
@@ -49,9 +49,9 @@ import {
 import type { CampaignStore } from "../store/store.ts";
 import type { Clock, CodeSource, IdSource } from "../util/runtime.ts";
 import { canonicalJson, canonicalText, mapLimitSettled, randomCodes, randomIds, sha256, systemClock } from "../util/runtime.ts";
-import type { DecisionNotice, OperatorChannel } from "./operator.ts";
-import type { DecisionSigner, DecisionVerifier, UnsignedDecision } from "./signing.ts";
-import { decisionIsAuthentic, decisionPayload } from "./signing.ts";
+import type { OperatorChannel } from "./operator.ts";
+import type { DecisionSigner, DecisionVerifier, LogHead, OperatorLedger, UnsignedDecision } from "./signing.ts";
+import { GENESIS_SHA256, decisionDigest, decisionPayload, logContainsHead, verifyDecisionLog } from "./signing.ts";
 
 export const SKILL_VERSION = "0.1.0";
 
@@ -84,6 +84,11 @@ export interface ServiceDeps {
    * signature, however the campaign record came to say otherwise.
    */
   verifier?: DecisionVerifier | null;
+  /**
+   * The operator's own record of each campaign's decision log, kept outside the store.
+   * Present only in the operator's process.
+   */
+  ledger?: OperatorLedger | null;
 }
 
 export interface DecisionRequestInput {
@@ -101,6 +106,38 @@ export interface DecisionConfirmation {
   code: string;
   actor: HumanActor;
   rationale: string;
+  /**
+   * What the editor was shown and means to decide. Taken from `describeRequest`, never from
+   * the requester. The decision is refused unless the stored request and the current
+   * content match all three.
+   */
+  expected: { action: DecisionAction; subject: DecisionSubject; contentSha256: string };
+}
+
+/** What the editor is shown before deciding. Everything in it is read from the campaign record. */
+export interface RequestDescription {
+  requestId: string;
+  campaignId: string;
+  state: DecisionRequest["state"];
+  action: DecisionAction;
+  subject: DecisionSubject;
+  /** Why the requester proposed this. Written by the requester, so not to be relied on. */
+  proposedRationale: string;
+  revisionInstruction: string | null;
+  requestedBy: string;
+  expiresAt: string;
+  content: {
+    title: string;
+    text: string;
+    hashtags: string[];
+    /** Mandatory constraints the content fails. A draft with any cannot be approved. */
+    eligibilityFailures: string[];
+    evaluation: string | null;
+  };
+  /** SHA-256 of the content as it is now. */
+  contentSha256: string;
+  /** False when the content has changed since the request was made; such a request cannot be confirmed. */
+  unchanged: boolean;
 }
 
 /** What an agent sees of a pending decision. The confirmation code is never part of it. */
@@ -170,6 +207,7 @@ export class CampaignService {
   private readonly ids: IdSource;
   private readonly codes: CodeSource;
   private readonly signer: DecisionSigner | null;
+  private readonly ledger: OperatorLedger | null;
   readonly verifier: DecisionVerifier | null;
   readonly limits: Limits;
 
@@ -184,6 +222,7 @@ export class CampaignService {
     this.limits = deps.limits ?? DEFAULT_LIMITS;
     this.signer = deps.signer ?? null;
     this.verifier = deps.verifier ?? null;
+    this.ledger = deps.ledger ?? null;
     if (this.signer && this.verifier && this.signer.keyId !== this.verifier.keyId) {
       throw new Error("The decision signing key and the verification key do not belong together.");
     }
@@ -220,21 +259,36 @@ export class CampaignService {
     record.audit.push({ at: this.now(), event: clip(event, 400), detail: clip(detail, 1000) });
   }
 
-  /** Refuse a step whose calls, or whose nominal token allowance, would take the campaign over budget. */
-  private assertBudget(budget: BudgetUsage, calls: number, nominalTokens: number): void {
+  /**
+   * Refuse a step whose calls, or whose worst-case token use, would take the campaign over
+   * budget. Tokens that steps already in flight may still spend count as spent.
+   */
+  private assertBudget(budget: BudgetUsage, calls: number, worstCaseTokens: number): void {
     if (budget.modelCalls + calls > this.limits.maxModelCalls) {
       throw new LimitExceededError(
         "maxModelCalls",
         `This step needs ${calls} model call(s); ${budget.modelCalls} of ${this.limits.maxModelCalls} are already used.`,
       );
     }
-    if (budget.usage.completionTokens + nominalTokens > this.limits.maxCompletionTokens) {
+    const inFlight = budget.reservations.reduce((sum, r) => sum + r.completionTokens, 0);
+    if (budget.usage.completionTokens + inFlight + worstCaseTokens > this.limits.maxCompletionTokens) {
       throw new LimitExceededError(
         "maxCompletionTokens",
-        `The campaign has used ${budget.usage.completionTokens} completion tokens and this step may use ${nominalTokens} more; ` +
-          `the limit is ${this.limits.maxCompletionTokens}.`,
+        `The campaign has used ${budget.usage.completionTokens} completion tokens, steps in progress may use ${inFlight} more, ` +
+          `and this step may use up to ${worstCaseTokens}; the limit is ${this.limits.maxCompletionTokens}.`,
       );
     }
+  }
+
+  /** A step that was started and never settled is charged at its full allowance. */
+  private expireReservations(record: CampaignRecord): void {
+    const cutoff = this.clock.now().getTime() - this.limits.reservationTtlMs;
+    const [expired, live] = [record.budget.reservations.filter((r) => Date.parse(r.reservedAt) < cutoff), record.budget.reservations.filter((r) => Date.parse(r.reservedAt) >= cutoff)];
+    for (const reservation of expired) {
+      record.budget.usage.completionTokens += reservation.completionTokens;
+      this.audit(record, "step-unsettled", `${reservation.step} (${reservation.id}) never settled; its full allowance of ${reservation.completionTokens} tokens is charged.`);
+    }
+    record.budget.reservations = live;
   }
 
   private addCosts(record: CampaignRecord, costs: readonly CallCost[]): void {
@@ -283,9 +337,9 @@ export class CampaignService {
    * Run one model-backed step in three phases.
    *
    * 1. Reserve. Under the campaign lock: check the step is allowed, build its requests from
-   *    the latest record, check the budget, and charge the calls. A step that cannot afford
-   *    its calls never starts, and two steps started together cannot both spend the same
-   *    remaining budget.
+   *    the latest record, check the budget, charge the calls and reserve the most tokens the
+   *    step could use. A step that cannot afford that never starts, and two steps started
+   *    together cannot both spend the same remaining budget.
    * 2. Call the model, outside the lock, with bounded concurrency. After the first failure
    *    no further call is started and the rest are cancelled.
    * 3. Settle. Under the lock again: record what every call cost, whether it succeeded or
@@ -299,11 +353,16 @@ export class CampaignService {
     prepare: (record: CampaignRecord) => { context: C; requests: ModelRequest<T>[] };
     commit: (record: CampaignRecord, results: GenerateResult<T>[], context: C) => O;
   }): Promise<O> {
-    const { context, requests } = await this.mutate(spec.campaignId, (record) => {
+    const { context, requests, reservationId } = await this.mutate(spec.campaignId, (record) => {
+      this.expireReservations(record);
       const prepared = spec.prepare(record);
-      this.assertBudget(record.budget, prepared.requests.length, prepared.requests.reduce((sum, r) => sum + r.maxTokens, 0));
+      // Each call may use up to MAX_TOKEN_FACTOR times its allowance once retries are counted.
+      const worstCase = prepared.requests.reduce((sum, r) => sum + r.maxTokens * MAX_TOKEN_FACTOR, 0);
+      this.assertBudget(record.budget, prepared.requests.length, worstCase);
       record.budget.modelCalls += prepared.requests.length;
-      return prepared;
+      const id = this.ids.next("res");
+      record.budget.reservations.push({ id, step: spec.name, calls: prepared.requests.length, completionTokens: worstCase, reservedAt: this.now() });
+      return { ...prepared, reservationId: id };
     });
 
     const cancelAll = new AbortController();
@@ -326,7 +385,11 @@ export class CampaignService {
 
     type Outcome = { ok: true; value: O } | { ok: false; error: unknown };
     const outcome = await this.mutate(spec.campaignId, (record): Outcome => {
-      this.addCosts(record, costs);
+      const reserved = record.budget.reservations.some((r) => r.id === reservationId);
+      record.budget.reservations = record.budget.reservations.filter((r) => r.id !== reservationId);
+      // If the reservation had already expired, its full allowance was charged then; only
+      // the request count is added now, so tokens are not counted twice.
+      this.addCosts(record, reserved ? costs : costs.map((c) => ({ ...c, usage: { promptTokens: c.usage.promptTokens, completionTokens: 0, reasoningTokens: 0 } })));
       // Calls that were reserved but never sent are given back.
       record.budget.modelCalls -= neverStarted;
       if (failure !== null) {
@@ -343,11 +406,6 @@ export class CampaignService {
     });
     if (!outcome.ok) throw outcome.error;
     return outcome.value;
-  }
-
-  /** True when a decision in the record can be relied on (see signing.ts). */
-  private authentic(record: CampaignRecord, decision: EditorialDecision): boolean {
-    return decisionIsAuthentic(record.id, decision, this.verifier);
   }
 
   /** The narrative an editor selected: its status says so and a valid decision on its exact text backs it. */
@@ -391,7 +449,7 @@ export class CampaignService {
       evaluations: [],
       decisionRequests: [],
       decisions: [],
-      budget: { modelCalls: 0, providerRequests: 0, usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 } },
+      budget: { modelCalls: 0, providerRequests: 0, usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 }, reservations: [] },
       audit: [{ at, event: "campaign-created", detail: `Brief accepted (${slots} posts planned, synthetic: ${brief.synthetic}).` }],
     };
     await this.store.create(record);
@@ -634,9 +692,9 @@ export class CampaignService {
         throw new WorkflowError("draft-not-revisable", `Draft ${draftId} is ${draft.status}.`);
       }
       const hash = draftContentHash(draft);
-      const instruction = [...record.decisions]
-        .reverse()
-        .find((d) => d.action === "request-revision" && d.subject.id === draftId && d.subjectContentSha256 === hash && this.authentic(record, d));
+      // The latest decision about the draft must be the editor's request to revise this exact text.
+      const latest = latestDecisionFor(record, { kind: "draft", id: draftId }, this.verifier);
+      const instruction = latest?.action === "request-revision" && latest.subjectContentSha256 === hash ? latest : undefined;
       if (!instruction?.revisionInstruction) {
         throw new WorkflowError("no-revision-requested", `No editor has asked for draft ${draftId} to be revised.`);
       }
@@ -760,18 +818,17 @@ export class CampaignService {
     return draftContentHash(draft);
   }
 
-  /** What the editor is shown: the content itself, not the requester's description of it. */
-  private noticeContent(record: CampaignRecord, subject: DecisionSubject): DecisionNotice["content"] {
+  /** What the editor is shown: the content itself, read from the record, not the requester's description of it. */
+  private contentOf(record: CampaignRecord, subject: DecisionSubject): RequestDescription["content"] {
     if (subject.kind === "narrative") {
       const narrative = record.narratives.find((n) => n.id === subject.id) as Narrative;
-      return { kind: "narrative", title: narrative.title, text: `${narrative.angle}\n\nCore message: ${narrative.coreMessage}`, hashtags: [], eligibilityFailures: [], evaluation: null };
+      return { title: narrative.title, text: `${narrative.angle}\n\nCore message: ${narrative.coreMessage}`, hashtags: [], eligibilityFailures: [], evaluation: null };
     }
     const draft = record.drafts.find((d) => d.id === subject.id) as PostDraft;
     const failures = analyseDraft(record.brief, this.slotOf(record, draft.slot), draft, this.limits).failures;
     const evaluation = this.latestEvaluationFor(record, draft.id);
     const candidate = evaluation?.candidates.find((c) => c.draftId === draft.id);
     return {
-      kind: "draft",
       title: `Post ${draft.slot}, ${draft.variant}`,
       text: draft.body,
       hashtags: draft.hashtags,
@@ -783,10 +840,47 @@ export class CampaignService {
     };
   }
 
+  private contentHashOf(record: CampaignRecord, subject: DecisionSubject): string | null {
+    if (subject.kind === "narrative") {
+      const narrative = record.narratives.find((n) => n.id === subject.id);
+      return narrative ? narrativeContentHash(narrative) : null;
+    }
+    const draft = record.drafts.find((d) => d.id === subject.id);
+    return draft ? draftContentHash(draft) : null;
+  }
+
+  /**
+   * Describe a decision request for the editor. Everything returned is read from the
+   * campaign record now: the action and subject from the stored request, the content from
+   * the stored narrative or draft. Nothing comes from the operator channel, which the
+   * requester's side can write.
+   */
+  async describeRequest(campaignId: string, requestId: string): Promise<RequestDescription> {
+    const record = await this.store.get(campaignId);
+    const request = record.decisionRequests.find((r) => r.id === requestId);
+    if (!request) throw new WorkflowError("unknown-request", `No decision request ${requestId}.`);
+    const hash = this.contentHashOf(record, request.subject);
+    if (hash === null) throw new WorkflowError("unknown-subject", `The ${request.subject.kind} ${request.subject.id} no longer exists.`);
+    return {
+      requestId: request.id,
+      campaignId: record.id,
+      state: request.state,
+      action: request.action,
+      subject: request.subject,
+      proposedRationale: request.proposedRationale,
+      revisionInstruction: request.revisionInstruction,
+      requestedBy: request.requestedBy,
+      expiresAt: request.expiresAt,
+      content: this.contentOf(record, request.subject),
+      contentSha256: hash,
+      unchanged: hash === request.subjectContentSha256,
+    };
+  }
+
   /**
    * Ask a person to make an editorial decision. Nothing changes until that person confirms
-   * through the operator's tool. The one-time code and the content to be decided on are
-   * delivered to the operator channel; the code is never returned here.
+   * through the operator's tool. The operator channel is told only that a request is
+   * waiting, and is given its one-time code; the code is never returned here.
    */
   async requestDecision(input: DecisionRequestInput): Promise<DecisionRequestView> {
     const rationale = ShortText.safeParse(input.proposedRationale);
@@ -801,7 +895,7 @@ export class CampaignService {
     const requestedAt = this.now();
     const expiresAt = new Date(Date.parse(requestedAt) + this.limits.decisionRequestTtlMs).toISOString();
 
-    const { request, notice } = await this.mutate(input.campaignId, (record) => {
+    const request = await this.mutate(input.campaignId, (record) => {
       const contentHash = this.checkDecision(record, input.subject, input.action);
       const waiting = record.decisionRequests.filter((r) => r.state === "pending" && Date.parse(r.expiresAt) >= Date.parse(requestedAt)).length;
       if (waiting >= this.limits.maxPendingDecisions) {
@@ -823,25 +917,11 @@ export class CampaignService {
       };
       record.decisionRequests.push(created);
       this.audit(record, "decision-requested", `${created.id}: ${input.action} ${input.subject.kind} ${input.subject.id}, requested by ${created.requestedBy}.`);
-      const delivered: DecisionNotice = {
-        requestId: created.id,
-        campaignId: record.id,
-        subject: input.subject,
-        action: input.action,
-        summary: `${input.action} ${input.subject.kind} ${input.subject.id}`,
-        proposedRationale: rationale.data,
-        revisionInstruction,
-        requestedBy: created.requestedBy,
-        content: this.noticeContent(record, input.subject),
-        contentSha256: contentHash,
-        code,
-        expiresAt,
-      };
-      return { request: created, notice: delivered };
+      return created;
     });
 
     try {
-      await this.operator.deliver(notice);
+      await this.operator.deliver({ requestId: request.id, campaignId: input.campaignId, code, expiresAt });
     } catch {
       // A request the editor never received must not stay open.
       await this.mutate(input.campaignId, (record) => {
@@ -878,9 +958,25 @@ export class CampaignService {
   }
 
   /**
+   * The decision log, checked: every entry in sequence, chained to the one before and (when
+   * decisions are signed) validly signed. In the operator's process the log must also
+   * contain everything the operator's own ledger says was decided. A log that fails either
+   * check is not relied on at all.
+   */
+  private async checkedHead(record: CampaignRecord): Promise<LogHead> {
+    const check = verifyDecisionLog(record, this.verifier);
+    if (!check.ok) throw new WorkflowError("decision-log-invalid", `The campaign's decision log cannot be trusted: ${check.reason}.`);
+    if (this.ledger && !logContainsHead(check, await this.ledger.get(record.id))) {
+      throw new WorkflowError("decision-log-rolled-back", "The campaign's decision log is missing decisions the operator recorded. The store has been rolled back or altered.");
+    }
+    return check.head;
+  }
+
+  /**
    * Record a person's decision. Requires the one-time code that only the operator received
    * and, when decisions are signed, the operator's key: a process without that key (the
-   * agent-facing server) cannot record a decision at all.
+   * agent-facing server) cannot record a decision at all. The decision is refused unless
+   * the stored request and the current content are exactly what the editor was shown.
    */
   async confirmDecision(input: DecisionConfirmation): Promise<EditorialDecision> {
     if (this.verifier !== null && this.signer === null) {
@@ -891,29 +987,45 @@ export class CampaignService {
     const rationale = ShortText.safeParse(input.rationale);
     if (!rationale.success) throw new WorkflowError("invalid-rationale", "The editor must give a reason of 1 to 400 characters.");
 
+    // The ledger is read before the campaign is locked; it changes only in this process.
+    const ledgerHead = this.ledger ? await this.ledger.get(input.campaignId) : null;
+
     // A wrong code must be recorded even though the call fails, so the outcome is decided
     // inside the write and the error is thrown after it.
-    type Outcome = { ok: true; decision: EditorialDecision } | { ok: false; error: WorkflowError };
+    type Outcome = { ok: true; decision: EditorialDecision; head: LogHead } | { ok: false; error: WorkflowError };
     const outcome = await this.mutate(input.campaignId, (record): Outcome => {
       const decidedAt = this.now();
+      // Nothing is signed on top of a log that is broken or has lost decisions.
+      const check = verifyDecisionLog(record, this.verifier);
+      if (!check.ok) return { ok: false, error: new WorkflowError("decision-log-invalid", `The campaign's decision log cannot be trusted: ${check.reason}.`) };
+      if (!logContainsHead(check, ledgerHead)) {
+        return { ok: false, error: new WorkflowError("decision-log-rolled-back", "The campaign's decision log is missing decisions the operator recorded. Nothing was signed.") };
+      }
       const opened = this.openRequest(record, input.requestId, input.code, decidedAt);
       if ("error" in opened) return { ok: false, error: opened.error };
       const request = opened.request;
       let contentHash: string;
       try {
+        // What the editor meant to decide must be what the stored request says.
+        const e = input.expected;
+        if (e.action !== request.action || e.subject.kind !== request.subject.kind || e.subject.id !== request.subject.id) {
+          throw new WorkflowError("request-mismatch", `Decision request ${request.id} is to ${request.action} ${request.subject.kind} ${request.subject.id}, which is not what was confirmed.`);
+        }
         contentHash = this.checkDecision(record, request.subject, request.action);
         // The editor was shown particular text. If it has changed since, the request is void.
-        if (contentHash !== request.subjectContentSha256) {
-          throw new WorkflowError("subject-changed", `The ${request.subject.kind} changed after decision ${request.id} was requested.`);
+        if (contentHash !== request.subjectContentSha256 || contentHash !== e.contentSha256) {
+          throw new WorkflowError("subject-changed", `The ${request.subject.kind} is not the text the editor was shown for decision ${request.id}.`);
         }
       } catch (error) {
         if (!(error instanceof WorkflowError)) throw error;
         request.state = "voided";
-        this.audit(record, "decision-voided", `${request.id}: no longer possible (${error.code}).`);
+        this.audit(record, "decision-voided", `${request.id}: not confirmed (${error.code}).`);
         return { ok: false, error };
       }
       const unsigned: UnsignedDecision = {
         id: this.ids.next("dec"),
+        sequence: check.head.sequence + 1,
+        previousSha256: check.head.sequence === 0 ? GENESIS_SHA256 : check.head.sha256,
         requestId: request.id,
         subject: request.subject,
         action: request.action,
@@ -931,9 +1043,10 @@ export class CampaignService {
       record.decisions.push(decision);
       this.apply(record, decision);
       this.audit(record, "decision-recorded", `${decision.id}: ${actor.data.name} chose ${decision.action} for ${decision.subject.kind} ${decision.subject.id}.`);
-      return { ok: true, decision };
+      return { ok: true, decision, head: { sequence: decision.sequence, sha256: decisionDigest(record.id, decision) } };
     });
     if (!outcome.ok) throw outcome.error;
+    await this.ledger?.set(input.campaignId, outcome.head);
     return outcome.decision;
   }
 
@@ -981,7 +1094,11 @@ export class CampaignService {
         draft.status = "rejected";
         break;
       case "request-revision":
-        // The draft stays as it is; reviseDraft acts on the recorded instruction.
+        // Asking for changes to an approved draft withdraws its approval.
+        if (draft.status === "approved") {
+          this.audit(record, "approval-withdrawn", `${draft.id}: a revision was requested after approval.`);
+          draft.status = "candidate";
+        }
         break;
     }
   }
@@ -992,24 +1109,53 @@ export class CampaignService {
       .filter((r) => r.state === "pending")
       .map((r) => ({ requestId: r.id, subject: r.subject, action: r.action, state: r.state, expiresAt: r.expiresAt }));
   }
+
+  /**
+   * The operator's view of the decision log: its head if it is intact and complete.
+   * Throws if the log is broken or, in the operator's process, has lost decisions.
+   */
+  async decisionLogHead(campaignId: string): Promise<LogHead> {
+    return this.checkedHead(await this.store.get(campaignId));
+  }
+
+  /** True when this process holds the operator's signing key. */
+  get canSign(): boolean {
+    return this.signer !== null;
+  }
+
+  /** Sign a programme package digest with the operator's key. Null in unsigned mode. */
+  signRelease(packageSha256: string): { alg: "ed25519"; keyId: string; value: string } | null {
+    if (this.verifier !== null && this.signer === null) {
+      throw new WorkflowError("cannot-release", "This process does not hold the operator's key. A programme is released with the operator tool.");
+    }
+    return this.signer ? { alg: "ed25519", keyId: this.signer.keyId, value: this.signer.sign(`kic-release\n${packageSha256}`) } : null;
+  }
 }
 
 /**
- * The latest decision about a subject, counting only decisions that can be relied on.
- * A later decision always supersedes an earlier one, so a rejection after an approval wins.
+ * The decisions of a campaign, in order, after the whole log has been checked. Throws when
+ * the log is broken, mis-signed or out of order: a tampered record is not partly trusted.
+ */
+export function trustedDecisions(record: CampaignRecord, verifier: DecisionVerifier | null): EditorialDecision[] {
+  const check = verifyDecisionLog(record, verifier);
+  if (!check.ok) throw new WorkflowError("decision-log-invalid", `The campaign's decision log cannot be trusted: ${check.reason}.`);
+  return record.decisions;
+}
+
+/**
+ * The latest decision about a subject. A later decision always supersedes an earlier one:
+ * a rejection, or a request for revision, after an approval withdraws it.
  */
 export function latestDecisionFor(record: CampaignRecord, subject: DecisionSubject, verifier: DecisionVerifier | null): EditorialDecision | null {
-  for (let i = record.decisions.length - 1; i >= 0; i--) {
-    const decision = record.decisions[i] as EditorialDecision;
-    if (decision.subject.kind !== subject.kind || decision.subject.id !== subject.id) continue;
-    if (decision.action === "request-revision") continue;
-    if (!decisionIsAuthentic(record.id, decision, verifier)) continue;
-    return decision;
+  const decisions = trustedDecisions(record, verifier);
+  for (let i = decisions.length - 1; i >= 0; i--) {
+    const decision = decisions[i] as EditorialDecision;
+    if (decision.subject.kind === subject.kind && decision.subject.id === subject.id) return decision;
   }
   return null;
 }
 
-/** The narrative an editor selected, backed by a valid decision on its exact text; otherwise null. */
+/** The narrative an editor selected, backed by the latest decision on its exact text; otherwise null. */
 export function selectedNarrativeOf(record: CampaignRecord, verifier: DecisionVerifier | null): Narrative | null {
   for (const narrative of record.narratives) {
     if (narrative.status !== "selected") continue;

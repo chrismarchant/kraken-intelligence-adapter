@@ -7,12 +7,12 @@ import { MemoryCampaignStore } from "../store/store.ts";
 import type { CampaignStore } from "../store/store.ts";
 import { fixedClock, sequentialIds } from "../util/runtime.ts";
 import type { ExportResult } from "../workflow/assemble.ts";
-import { assembleProgramme, exportProgramme } from "../workflow/assemble.ts";
+import { assembleProgramme, exportProgramme, releaseProgramme } from "../workflow/assemble.ts";
 import { comparisonMarkdown } from "../workflow/comparison.ts";
 import { MemoryOperatorChannel } from "../workflow/operator.ts";
 import { CampaignService } from "../workflow/service.ts";
 import type { DecisionKeyPair } from "../workflow/signing.ts";
-import { generateDecisionKeyPair } from "../workflow/signing.ts";
+import { MemoryOperatorLedger, generateDecisionKeyPair } from "../workflow/signing.ts";
 
 /**
  * The scripted stand-in for the editor in the synthetic scenario. It is labelled as such in
@@ -65,6 +65,7 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
   const service = new CampaignService({
     signer: keys.signer,
     verifier: keys.verifier,
+    ledger: new MemoryOperatorLedger(),
     store,
     gateway: options.gateway,
     evaluator: createJevTransport("mock-jev", DEFAULT_LIMITS),
@@ -82,12 +83,16 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
       revisionInstruction: revisionInstruction ?? null,
       requestedBy: "synthetic-scenario",
     });
+    // The scripted editor does what the operator tool does: reads the request from the record,
+    // then confirms exactly what it read.
+    const shown = await service.describeRequest(campaignId, request.requestId);
     return service.confirmDecision({
       campaignId,
       requestId: request.requestId,
       code: operator.codeFor(request.requestId),
       actor: SYNTHETIC_EDITOR,
       rationale,
+      expected: { action: shown.action, subject: shown.subject, contentSha256: shown.contentSha256 },
     });
   };
 
@@ -158,10 +163,18 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
   record = await service.getCampaign(id);
   evaluations = record.evaluations;
   const comparison = comparisonMarkdown(record);
-  const pkg = assembleProgramme(record, { allowPartial: pending.length > 0, clock, limits: service.limits, verifier: keys.verifier });
+  const preview = assembleProgramme(record, { allowPartial: pending.length > 0, clock, limits: service.limits, verifier: keys.verifier });
+  // The editor releases the package: the decision log is checked against the operator's ledger, then the package is signed.
+  const pkg = releaseProgramme(preview, {
+    actor: SYNTHETIC_EDITOR,
+    rationale: "Scripted: released for the test run.",
+    logHead: await service.decisionLogHead(id),
+    sign: (digest) => service.signRelease(digest),
+    clock,
+  });
   const exported = await exportProgramme(pkg, options.exportRoot);
   log(
-    `6. Programme ${pkg.programmeId} assembled (${pkg.approvalState}): ${pkg.provisionalCommands.length} provisional commands, all ${pkg.provisionalCommands[0]?.status}.`,
+    `6. Programme ${pkg.programmeId} assembled (${pkg.approvalState}) and released by the editor: ${pkg.provisionalCommands.length} provisional commands, all ${pkg.provisionalCommands[0]?.status}.`,
   );
   log(
     `   Model steps: ${record.budget.modelCalls}; provider requests: ${record.budget.providerRequests}; prompt tokens: ${record.budget.usage.promptTokens}; ` +

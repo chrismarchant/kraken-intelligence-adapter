@@ -1,30 +1,14 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { DecisionAction, DecisionSubject } from "../contracts/index.ts";
 
-/** What a person needs in order to confirm or decline a pending editorial decision. */
+/**
+ * Tells the editor that a decision is waiting, and carries its one-time code. It carries
+ * nothing else: what is to be decided is read from the campaign record by the operator's
+ * tool, because this channel can be written by the requester's side.
+ */
 export interface DecisionNotice {
   requestId: string;
   campaignId: string;
-  subject: DecisionSubject;
-  action: DecisionAction;
-  summary: string;
-  /** Why the requester proposes this. Written by the requester, so not to be relied on. */
-  proposedRationale: string;
-  revisionInstruction: string | null;
-  requestedBy: string;
-  /** The content the decision applies to, taken from the campaign record, not from the requester. */
-  content: {
-    kind: "narrative" | "draft";
-    title: string;
-    text: string;
-    hashtags: string[];
-    /** Mandatory constraints the content fails. A draft with any cannot be approved. */
-    eligibilityFailures: string[];
-    evaluation: string | null;
-  };
-  /** SHA-256 of that content. Confirmation fails if the content has changed since. */
-  contentSha256: string;
   /** The one-time code. It goes to the operator and nowhere else. */
   code: string;
   expiresAt: string;
@@ -57,6 +41,8 @@ export class MemoryOperatorChannel implements OperatorChannel {
 /** Writes one file per pending decision into a directory only the operator should read. */
 export class FileOperatorChannel implements OperatorChannel {
   private readonly dir: string;
+  /** Files in the channel that could not be read as notices on the last call to `pending`. */
+  readonly skipped: string[] = [];
 
   constructor(dir: string) {
     this.dir = dir;
@@ -68,6 +54,7 @@ export class FileOperatorChannel implements OperatorChannel {
   }
 
   async pending(): Promise<DecisionNotice[]> {
+    this.skipped.length = 0;
     let names: string[];
     try {
       names = await readdir(this.dir);
@@ -77,7 +64,17 @@ export class FileOperatorChannel implements OperatorChannel {
     }
     const notices: DecisionNotice[] = [];
     for (const name of names.filter((n) => n.endsWith(".json")).sort()) {
-      notices.push(JSON.parse(await readFile(join(this.dir, name), "utf8")) as DecisionNotice);
+      // One unreadable or malformed file must not stop the editor from seeing the rest.
+      try {
+        const parsed = JSON.parse(await readFile(join(this.dir, name), "utf8")) as Partial<DecisionNotice>;
+        if (typeof parsed.requestId === "string" && typeof parsed.campaignId === "string" && typeof parsed.code === "string" && typeof parsed.expiresAt === "string") {
+          notices.push({ requestId: parsed.requestId, campaignId: parsed.campaignId, code: parsed.code, expiresAt: parsed.expiresAt });
+        } else {
+          this.skipped.push(name);
+        }
+      } catch {
+        this.skipped.push(name);
+      }
     }
     return notices;
   }

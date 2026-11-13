@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { approvalOf } from "../../src/workflow/assemble.ts";
 import { WorkflowError } from "../../src/workflow/service.ts";
-import { EDITOR, cleanDraft, makeService, syntheticBrief } from "./support.ts";
+import { EDITOR, cleanDraft, makeService, syntheticBrief, expectedFor } from "./support.ts";
 
 /** Assert that a promise rejects with a WorkflowError carrying the given code. */
 async function refuses(promise: Promise<unknown>, code: string): Promise<void> {
@@ -53,8 +53,8 @@ test("a wrong code is refused, counted, and voids the request after the attempt 
     proposedRationale: "Strongest angle.",
     requestedBy: "agent",
   });
-  const confirm = (code: string) =>
-    service.confirmDecision({ campaignId: campaign.id, requestId: view.requestId, code, actor: EDITOR, rationale: "Chosen." });
+  const expected = await expectedFor(service, campaign.id, view.requestId);
+  const confirm = (code: string) => service.confirmDecision({ campaignId: campaign.id, requestId: view.requestId, code, actor: EDITOR, rationale: "Chosen.", expected });
 
   for (let attempt = 1; attempt <= limits.maxDecisionCodeAttempts; attempt++) await refuses(confirm(`guess-${attempt}`), "invalid-code");
   const record = await service.getCampaign(campaign.id);
@@ -79,7 +79,7 @@ test("a decision needs a named human actor and the editor's own reason", async (
     requestedBy: "agent",
   });
   const code = operator.codeFor(view.requestId);
-  const base = { campaignId: campaign.id, requestId: view.requestId, code, rationale: "Chosen." };
+  const base = { campaignId: campaign.id, requestId: view.requestId, code, rationale: "Chosen.", expected: await expectedFor(service, campaign.id, view.requestId) };
   for (const actor of [
     { kind: "agent", id: "a1", name: "Agent" },
     { kind: "model", id: "m1", name: "Model" },
@@ -105,7 +105,7 @@ test("a decision request expires", async () => {
   });
   clock.advance(limits.decisionRequestTtlMs + 60_000);
   await refuses(
-    service.confirmDecision({ campaignId: campaign.id, requestId: view.requestId, code: operator.codeFor(view.requestId), actor: EDITOR, rationale: "Late." }),
+    service.confirmDecision({ campaignId: campaign.id, requestId: view.requestId, code: operator.codeFor(view.requestId), actor: EDITOR, rationale: "Late.", expected: await expectedFor(service, campaign.id, view.requestId) }),
     "request-expired",
   );
   const record = await service.getCampaign(campaign.id);
@@ -124,7 +124,14 @@ test("a confirmed request cannot be replayed", async () => {
     proposedRationale: "Strongest angle.",
     requestedBy: "agent",
   });
-  const confirmation = { campaignId: campaign.id, requestId: view.requestId, code: operator.codeFor(view.requestId), actor: EDITOR, rationale: "Chosen." };
+  const confirmation = {
+    campaignId: campaign.id,
+    requestId: view.requestId,
+    code: operator.codeFor(view.requestId),
+    actor: EDITOR,
+    rationale: "Chosen.",
+    expected: await expectedFor(service, campaign.id, view.requestId),
+  };
   const decision = await service.confirmDecision(confirmation);
   assert.equal(decision.actor.kind, "human");
   await refuses(service.confirmDecision(confirmation), "request-not-pending");
@@ -210,7 +217,7 @@ test("a pending approval is void if the draft is rejected before it is confirmed
   const pending = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action: "approve", proposedRationale: "Good.", requestedBy: "agent" });
   await decide(id, { kind: "draft", id: draft.id }, "reject");
   await refuses(
-    service.confirmDecision({ campaignId: id, requestId: pending.requestId, code: operator.codeFor(pending.requestId), actor: EDITOR, rationale: "Approve." }),
+    service.confirmDecision({ campaignId: id, requestId: pending.requestId, code: operator.codeFor(pending.requestId), actor: EDITOR, rationale: "Approve.", expected: await expectedFor(service, id, pending.requestId) }),
     "draft-rejected",
   );
   const after = await service.getCampaign(id);

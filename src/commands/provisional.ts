@@ -12,6 +12,7 @@ export function buildProvisionalCommand(
   slot: ProgrammeSlot,
   draft: PostDraft,
   approval: EditorialDecision,
+  signatureVerified: boolean,
 ): ProvisionalPublishCommand {
   if (draft.status !== "approved") {
     throw new Error(`Draft ${draft.id} is not approved; no provisional command can be built for it.`);
@@ -36,7 +37,7 @@ export function buildProvisionalCommand(
       hashtags: draft.hashtags,
       bodySha256: sha256(draft.body),
     },
-    approval: { decisionId: approval.id, approvedBy: approval.actor, approvedAt: approval.decidedAt },
+    approval: { decisionId: approval.id, approvedBy: approval.actor, approvedAt: approval.decidedAt, signatureVerified },
     translation: {
       target: "kraken",
       contract: null,

@@ -1,0 +1,116 @@
+{
+  "note": "SYNTHETIC TEST DATA. Every creator, post, figure and source here is invented. No real person or account is described, and nothing was collected from any platform.",
+  "set": {
+    "schema": "kic.creator-candidates/v0",
+    "synthetic": true,
+    "candidates": [
+      {
+        "id": "creator-alder",
+        "displayName": "Mara Alder (fictional)",
+        "headline": "Invented profile: former warehouse operations lead who writes about reporting discipline.",
+        "topics": ["warehouse operations", "reporting", "data quality"],
+        "languages": ["en"],
+        "availability": "available",
+        "indicativeFeePerPost": 900,
+        "currency": "GBP",
+        "sponsorshipConsent": "granted",
+        "blockingConcerns": [],
+        "evidence": [
+          { "id": "ev-alder-1", "kind": "recent-post", "summary": "Invented: a post on reconciling inventory before the weekly report.", "observedAt": "2026-10-28T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-alder-2", "kind": "engagement-observation", "summary": "Invented: comments on recent posts are mostly from operations job titles.", "observedAt": "2026-10-30T09:00:00Z", "provenance": { "source": "fixture-source-b", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-alder-3", "kind": "posting-cadence", "summary": "Invented: posts twice a week over the last three months.", "observedAt": "2026-11-01T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-alder-4", "kind": "commercial-terms", "summary": "Invented: indicative fee and availability as listed.", "observedAt": "2026-11-02T09:00:00Z", "provenance": { "source": "fixture-source-c", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true }
+        ],
+        "synthetic": true
+      },
+      {
+        "id": "creator-birch",
+        "displayName": "Tomas Birch (fictional)",
+        "headline": "Invented profile: supply chain consultant with a large general business following.",
+        "topics": ["supply chain", "leadership"],
+        "languages": ["en"],
+        "availability": "available",
+        "indicativeFeePerPost": 2400,
+        "currency": "GBP",
+        "sponsorshipConsent": "granted",
+        "blockingConcerns": [
+          { "kind": "competitor-conflict", "detail": "Invented: currently promotes a competing reconciliation product.", "evidenceId": "ev-birch-3" }
+        ],
+        "evidence": [
+          { "id": "ev-birch-1", "kind": "recent-post", "summary": "Invented: a widely shared post on supply chain resilience.", "observedAt": "2026-10-29T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-birch-2", "kind": "engagement-observation", "summary": "Invented: very high reaction counts across recent posts.", "observedAt": "2026-10-30T09:00:00Z", "provenance": { "source": "fixture-source-b", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-birch-3", "kind": "brand-safety", "summary": "Invented: a sponsored post for a competing product last month.", "observedAt": "2026-10-20T09:00:00Z", "provenance": { "source": "fixture-source-b", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-birch-4", "kind": "commercial-terms", "summary": "Invented: indicative fee as listed.", "observedAt": "2026-11-02T09:00:00Z", "provenance": { "source": "fixture-source-c", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true }
+        ],
+        "synthetic": true
+      },
+      {
+        "id": "creator-cedar",
+        "displayName": "Ines Cedar (fictional)",
+        "headline": "Invented profile: distribution centre manager who posts practical checklists.",
+        "topics": ["distribution", "operations"],
+        "languages": ["en", "es"],
+        "availability": "available",
+        "indicativeFeePerPost": 600,
+        "currency": "GBP",
+        "sponsorshipConsent": "unknown",
+        "blockingConcerns": [],
+        "evidence": [
+          { "id": "ev-cedar-1", "kind": "recent-post", "summary": "Invented: a checklist post on cycle counts.", "observedAt": "2026-10-25T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-cedar-2", "kind": "posting-cadence", "summary": "Invented: posts about once a week.", "observedAt": "2026-10-27T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true },
+          { "id": "ev-cedar-3", "kind": "profile-fact", "summary": "Invented: eight years in distribution management.", "observedAt": "2026-10-27T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true }
+        ],
+        "synthetic": true
+      },
+      {
+        "id": "creator-dune",
+        "displayName": "Leo Dune (fictional)",
+        "headline": "Invented profile: logistics commentator whose recent activity is unknown.",
+        "topics": ["logistics"],
+        "languages": ["en"],
+        "availability": "unknown",
+        "indicativeFeePerPost": null,
+        "currency": "GBP",
+        "sponsorshipConsent": "unknown",
+        "blockingConcerns": [],
+        "evidence": [
+          { "id": "ev-dune-1", "kind": "recent-post", "summary": "Invented: a post on carrier pricing, observed long ago.", "observedAt": "2026-03-01T09:00:00Z", "provenance": { "source": "fixture-source-a", "method": "invented for testing", "licenceNote": "none: synthetic" }, "synthetic": true }
+        ],
+        "synthetic": true
+      }
+    ]
+  },
+  "policy": {
+    "weights": { "icp_relevance": 3, "engagement_quality": 2, "professional_credibility": 2, "commercial_efficiency": 2, "operational_suitability": 1 },
+    "requiredLanguage": "en",
+    "sponsorshipPlanned": true,
+    "minEvidenceItems": 2,
+    "maxEvidenceAgeDays": 60,
+    "maxFeePerPost": 2000
+  },
+  "assessments": [
+    { "creatorId": "creator-alder", "dimension": "icp_relevance", "score": 0.9, "rationale": "Invented judgement: writes for operations leaders about reporting.", "evidenceIds": ["ev-alder-1", "ev-alder-2"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-alder", "dimension": "engagement_quality", "score": 0.7, "rationale": "Invented judgement: comments come from relevant roles.", "evidenceIds": ["ev-alder-2"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-alder", "dimension": "professional_credibility", "score": 0.8, "rationale": "Invented judgement: first-hand operations background.", "evidenceIds": ["ev-alder-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-alder", "dimension": "commercial_efficiency", "score": 0.7, "rationale": "Invented judgement: fee is moderate for the fit.", "evidenceIds": ["ev-alder-4"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-alder", "dimension": "operational_suitability", "score": 0.8, "rationale": "Invented judgement: regular cadence.", "evidenceIds": ["ev-alder-3"], "assessor": "synthetic fixture" },
+
+    { "creatorId": "creator-birch", "dimension": "icp_relevance", "score": 0.95, "rationale": "Invented judgement: large relevant following.", "evidenceIds": ["ev-birch-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-birch", "dimension": "engagement_quality", "score": 0.95, "rationale": "Invented judgement: very high reactions.", "evidenceIds": ["ev-birch-2"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-birch", "dimension": "professional_credibility", "score": 0.9, "rationale": "Invented judgement: established consultant.", "evidenceIds": ["ev-birch-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-birch", "dimension": "commercial_efficiency", "score": 0.9, "rationale": "Invented judgement: reach per pound is high.", "evidenceIds": ["ev-birch-4"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-birch", "dimension": "operational_suitability", "score": 0.9, "rationale": "Invented judgement: experienced with sponsorship.", "evidenceIds": ["ev-birch-2"], "assessor": "synthetic fixture" },
+
+    { "creatorId": "creator-cedar", "dimension": "icp_relevance", "score": 0.75, "rationale": "Invented judgement: distribution audience overlaps the brief.", "evidenceIds": ["ev-cedar-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-cedar", "dimension": "engagement_quality", "score": 0.5, "rationale": "Invented judgement: no engagement evidence beyond the posts themselves.", "evidenceIds": ["ev-cedar-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-cedar", "dimension": "professional_credibility", "score": 0.8, "rationale": "Invented judgement: long practical experience.", "evidenceIds": ["ev-cedar-3"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-cedar", "dimension": "commercial_efficiency", "score": 0.8, "rationale": "Invented judgement: low fee.", "evidenceIds": ["ev-cedar-2"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-cedar", "dimension": "operational_suitability", "score": 0.6, "rationale": "Invented judgement: weekly cadence.", "evidenceIds": ["ev-cedar-2"], "assessor": "synthetic fixture" },
+
+    { "creatorId": "creator-dune", "dimension": "icp_relevance", "score": 0.6, "rationale": "Invented judgement: logistics topic, old evidence.", "evidenceIds": ["ev-dune-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-dune", "dimension": "engagement_quality", "score": 0.5, "rationale": "Invented judgement: nothing recent to go on.", "evidenceIds": ["ev-dune-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-dune", "dimension": "professional_credibility", "score": 0.5, "rationale": "Invented judgement: nothing recent to go on.", "evidenceIds": ["ev-dune-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-dune", "dimension": "commercial_efficiency", "score": 0.5, "rationale": "Invented judgement: fee unknown.", "evidenceIds": ["ev-dune-1"], "assessor": "synthetic fixture" },
+    { "creatorId": "creator-dune", "dimension": "operational_suitability", "score": 0.4, "rationale": "Invented judgement: availability unknown.", "evidenceIds": ["ev-dune-1"], "assessor": "synthetic fixture" }
+  ]
+}

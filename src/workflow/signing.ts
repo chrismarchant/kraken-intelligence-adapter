@@ -1,12 +1,15 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import type { KeyObject } from "node:crypto";
-import type { EditorialDecision } from "../contracts/index.ts";
+import type { CampaignRecord, EditorialDecision } from "../contracts/index.ts";
 import { canonicalJson } from "../util/runtime.ts";
 
 /**
- * Editorial decisions are signed with a key that only the operator's tool holds.
- * The agent-facing server holds the public half: it can check a decision but cannot make
- * one, and neither can anything else that is able to write to the campaign store.
+ * Editorial decisions are signed with a key that only the operator's tool holds, and each
+ * one is chained to the one before it. The agent-facing server holds the public half: it
+ * can check the log but cannot add to it, and anything else that can write the campaign
+ * store can neither forge a decision nor reorder, replace or remove one from the middle of
+ * the log without the chain breaking. Removing decisions from the END of the log is caught
+ * by the operator's own ledger (see OperatorLedger), which lives outside the store.
  */
 export interface DecisionSigner {
   readonly keyId: string;
@@ -20,10 +23,14 @@ export interface DecisionVerifier {
 
 export type UnsignedDecision = Omit<EditorialDecision, "signature">;
 
-/** The exact bytes a signature covers: the campaign and every field of the decision. */
+export const GENESIS_SHA256 = "0".repeat(64);
+
+/** The exact bytes a signature covers: the campaign, the position in the log, and every field of the decision. */
 export function decisionPayload(campaignId: string, decision: UnsignedDecision): string {
   return canonicalJson({
     campaignId,
+    sequence: decision.sequence,
+    previousSha256: decision.previousSha256,
     id: decision.id,
     requestId: decision.requestId,
     subject: decision.subject,
@@ -34,6 +41,12 @@ export function decisionPayload(campaignId: string, decision: UnsignedDecision):
     decidedAt: decision.decidedAt,
     subjectContentSha256: decision.subjectContentSha256,
   });
+}
+
+/** The value the next decision in the log must name as its predecessor. */
+export function decisionDigest(campaignId: string, decision: EditorialDecision): string {
+  const { signature, ...unsigned } = decision;
+  return createHash("sha256").update(`${decisionPayload(campaignId, unsigned)}\n${signature?.value ?? ""}`, "utf8").digest("hex");
 }
 
 function keyIdOf(publicKey: KeyObject): string {
@@ -78,14 +91,65 @@ export function generateDecisionKeyPair(): DecisionKeyPair {
   return { privateKeyPem, publicKeyPem, signer: signerFromPrivateKeyPem(privateKeyPem), verifier: verifierFromPublicKeyPem(publicKeyPem) };
 }
 
+export interface LogHead {
+  /** Number of decisions in the log. Zero for an empty log. */
+  sequence: number;
+  /** Digest of the last decision, or the genesis value for an empty log. */
+  sha256: string;
+}
+
+export type LogCheck = { ok: true; head: LogHead; digests: string[] } | { ok: false; reason: string };
+
 /**
- * True when the decision may be relied on. With a verifier, the decision must carry a
- * valid signature from the operator key. Without one (development only), unsigned
- * decisions are accepted and the programme package says so.
+ * Check the whole decision log of a campaign. Every decision must sit at its own sequence
+ * number, name the digest of the one before it, and (when a verifier is given) carry a
+ * valid operator signature. One bad entry invalidates the log: a record that has been
+ * tampered with is not partly trusted.
  */
-export function decisionIsAuthentic(campaignId: string, decision: EditorialDecision, verifier: DecisionVerifier | null): boolean {
-  if (verifier === null) return true;
-  if (decision.signature === null) return false;
-  const { signature, ...unsigned } = decision;
-  return verifier.verify(signature.keyId, decisionPayload(campaignId, unsigned), signature.value);
+export function verifyDecisionLog(record: Pick<CampaignRecord, "id" | "decisions">, verifier: DecisionVerifier | null): LogCheck {
+  let previous = GENESIS_SHA256;
+  const digests: string[] = [];
+  for (let index = 0; index < record.decisions.length; index++) {
+    const decision = record.decisions[index] as EditorialDecision;
+    if (decision.sequence !== index + 1) return { ok: false, reason: `decision ${decision.id} is at position ${index + 1} but is numbered ${decision.sequence}` };
+    if (decision.previousSha256 !== previous) return { ok: false, reason: `decision ${decision.id} does not follow the decision before it` };
+    if (verifier !== null) {
+      if (decision.signature === null) return { ok: false, reason: `decision ${decision.id} is not signed` };
+      const { signature, ...unsigned } = decision;
+      if (!verifier.verify(signature.keyId, decisionPayload(record.id, unsigned), signature.value)) {
+        return { ok: false, reason: `decision ${decision.id} does not carry a valid operator signature` };
+      }
+    }
+    previous = decisionDigest(record.id, decision);
+    digests.push(previous);
+  }
+  return { ok: true, head: { sequence: record.decisions.length, sha256: previous }, digests };
+}
+
+/**
+ * The operator's own record of how far each campaign's decision log has reached. It is kept
+ * with the operator's key, outside the campaign store, so that a store rolled back to an
+ * earlier state (a later rejection removed, say) is recognised as such.
+ */
+export interface OperatorLedger {
+  get(campaignId: string): Promise<LogHead | null>;
+  set(campaignId: string, head: LogHead): Promise<void>;
+}
+
+export class MemoryOperatorLedger implements OperatorLedger {
+  private readonly heads = new Map<string, LogHead>();
+
+  async get(campaignId: string): Promise<LogHead | null> {
+    return this.heads.get(campaignId) ?? null;
+  }
+
+  async set(campaignId: string, head: LogHead): Promise<void> {
+    this.heads.set(campaignId, head);
+  }
+}
+
+/** True when the log in the store contains everything the operator's ledger says was decided. */
+export function logContainsHead(check: Extract<LogCheck, { ok: true }>, head: LogHead | null): boolean {
+  if (head === null || head.sequence === 0) return true;
+  return check.head.sequence >= head.sequence && check.digests[head.sequence - 1] === head.sha256;
 }

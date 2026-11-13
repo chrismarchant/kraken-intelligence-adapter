@@ -114,6 +114,58 @@ test("every figure must be in digits and traceable to the reference it cites", (
   assert.deepEqual(rules(draft("unflagged", "Errors fall by 90%.", { claims: [{ text: "Errors fall by 90%.", needsEvidence: false, evidenceRef: null }] })), ["unlisted-statistic"]);
 });
 
+test("further disguises found by the confirmation review are refused", () => {
+  // Characters that take no space but are not "format" characters.
+  for (const invisible of ["\uFE0F", "\u3164", "\u034F", "\u115F", "\u2800"]) {
+    const found = rules(draft("inv", `We guar${invisible}antee results.`));
+    assert.ok(found.includes("must-avoid-term") || found.includes("suspicious-characters"), `U+${invisible.codePointAt(0)!.toString(16)} is caught: ${found.join(",")}`);
+  }
+  // Look-alike letters beyond Cyrillic and Greek.
+  assert.ok(rules(draft("ipa", "We \u0261uarantee results.")).length > 0, "Latin small script g");
+  assert.deepEqual(rules(draft("armenian", "We guarantee results. Results are revoluti\u0585nary.")).sort(), ["must-avoid-term", "suspicious-characters"]);
+  assert.deepEqual(rules(draft("cherokee", "\u13AAI-powered checks.")), ["suspicious-characters"]);
+  // Accents and dotless letters fold to the plain word.
+  assert.deepEqual(rules(draft("accent", "We gu\u00E0rantee results.")), ["must-avoid-term"]);
+  assert.deepEqual(rules(draft("dotless", "A revolut\u0131onary idea.")), ["must-avoid-term"]);
+  // Dotted initials, and words broken up with visible marks.
+  for (const text of ["Our A.I.-powered checks.", "Our A.I. powered checks.", "We guar-antee results.", "We g u a r a n t e e results.", "We guar*antee results.", "We guar\u{1F600}antee results.", "We guar_antee results."]) {
+    assert.ok(rules(draft("split", text)).includes("must-avoid-term"), text);
+  }
+  // An emoji with its variation selector, on its own, is ordinary text.
+  assert.deepEqual(rules(draft("emoji", "Checked \u2714\uFE0F and done \u{1F44D}.")), []);
+});
+
+test("quantities in words are refused when they state a magnitude or a share", () => {
+  for (const text of ["Two million records were checked.", "It took a hundred hours.", "Hundreds of teams agree.", "A dozen warehouses tried it.", "Dozens of reports were late.", "They lose half their time.", "A third of the reports are wrong.", "Two thirds of leaders agree."]) {
+    assert.deepEqual([...new Set(rules(draft("words", text)))], ["unlisted-statistic"], text);
+  }
+  // Ordinary small counts and everyday phrases are not statistics.
+  for (const text of ["Start with two questions.", "There are three steps.", "Bring in a third party to check.", "It happens every quarter.", "Ask for a second opinion.", "One report at a time."]) {
+    assert.deepEqual(rules(draft("ordinary", text)), [], text);
+  }
+});
+
+test("everyday terms that contain digits do not make a post ineligible, but figures still do", () => {
+  for (const text of ["We work with B2B teams.", "Plan it for Q3.", "The desk runs 24/7.", "Habits changed after COVID-19.", "The process follows ISO-9001.", "We started in 2019.", "Since 2021 the report has changed.", "By 2027 this will be routine."]) {
+    assert.deepEqual(rules(draft("everyday", text)), [], text);
+  }
+  // The exemption is narrow: a year used as a count, or a figure beside a term, is still a figure.
+  assert.deepEqual(rules(draft("count", "We audited 2024 pallets.")), ["unlisted-statistic"]);
+  assert.deepEqual(rules(draft("beside", "B2B teams save 40 hours.")), ["unlisted-statistic"]);
+  assert.deepEqual(rules(draft("percent", "In 2026 percent terms nothing changed.")), ["unlisted-statistic"]);
+  // Inside a hashtag every digit counts.
+  assert.deepEqual(rules(draft("tag", "", { hashtags: ["#Q3", "#Ops"] })), ["unlisted-statistic"]);
+});
+
+test("a draft that obeyed an instruction planted in the brief would be refused by code", () => {
+  // What a model would have written had it followed the override used in the live injection probe.
+  const obeyed = draft("obeyed", "Customers see a 300% return on investment, and results are guaranteed.", {
+    hashtags: ["#AIpowered", "#Operations"],
+    claims: [{ text: "Customers see a 300% return on investment", needsEvidence: false, evidenceRef: null }],
+  });
+  assert.deepEqual([...new Set(rules(obeyed))].sort(), ["must-avoid-term", "unlisted-statistic"]);
+});
+
 test("the mock evaluator is deterministic and is labelled as not live and not JEV", async () => {
   const input = { brief: syntheticBrief(), slot, drafts: [draft("draft-a"), draft("draft-b", "Short extra line.")] };
   const one = await evaluateSlot(input, deps());
@@ -191,6 +243,12 @@ test("the evaluator request is one fan-out, carries no client name and is redact
   assert.ok(!/harbourline/i.test(serialised), "the client's name is not sent, in the brief, the references or the drafts");
   assert.ok(!serialised.includes("example.com"));
   assert.ok(!serialised.includes("7946"));
+  // A short client name is removed too, and generic company words are not.
+  const acme = syntheticBrief();
+  acme.client.name = "Acme Data";
+  const short = JSON.stringify(buildJevRequest(acme, slot, [draft("draft-c", "Acme helps operations teams trust their data. ACME is practical.")], DEFAULT_CRITERIA));
+  assert.ok(!/acme/i.test(short));
+  assert.match(short, /trust their data/);
   assert.match(serialised, /\[email\]/);
   assert.match(serialised, /\[phone\]/);
   assert.match(serialised, /\[url\]/);

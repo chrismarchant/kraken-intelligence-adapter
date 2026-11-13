@@ -119,9 +119,14 @@ export async function mapLimit<T, R>(
 
 /**
  * Bring text to one canonical form before any rule looks at it: compatibility characters
- * are folded (full-width digits and signs become ordinary ones) and invisible format
- * characters (zero-width spaces, soft hyphens, direction marks) are removed.
+ * are folded (full-width digits and signs become ordinary ones) and characters that take
+ * no space are removed: zero-width spaces and joiners, soft hyphens, direction marks,
+ * variation selectors, filler characters and the blank braille pattern. The one exception
+ * is inside an emoji sequence, where a joiner or variation selector is part of the emoji.
  */
 export function canonicalText(text: string): string {
-  return text.normalize("NFKC").replace(/\p{Cf}/gu, "");
+  return text
+    .normalize("NFKC")
+    .replace(/(?<![\p{Extended_Pictographic}\u200D\uFE0F])[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, "")
+    .replace(/\u2800/g, "");
 }

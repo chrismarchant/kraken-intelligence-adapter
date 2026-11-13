@@ -18,8 +18,9 @@ Order of authority when records disagree: owner directives and accepted decision
 - Gates are accepted by the Human Owner only. Silence is not approval.
 - No product implementation outside an accepted gate. Research, tests in scratch space and documentation are allowed.
 - Never push to `main`. Never merge. Changes go through draft pull requests.
-- **JEV stays disabled.** No call to any TypeSafe decision endpoint, even though a credential is present in the environment. Mocks and recorded fixtures only.
+- **JEV stays disabled.** No call to any JEV decision endpoint, whether or not a credential is available. The deterministic mock and recorded fixtures only. The build contains no live JEV transport; do not add one.
 - CopilotKit Intelligence may be used only under a legitimately obtained licence (owner clarification 2026-11-13). Its memory and learned skills are never authoritative for contracts, permissions or approved skills. Do not strip or modify OpenBot until the full application has been tested and the foundation decision is accepted.
+- Editorial decisions are recorded only with the operator tool (`src/cli/operator.ts`), which holds the signing key. Never add an agent-facing tool that records a decision, never read the operator channel, and never handle confirmation codes or the operator key.
 - Do not import upstream code without a licence check and an entry in `LICENSES/`.
 - Do not write to Kraken, `jev-router` or any other programme repository.
 - Never print, log or commit a credential. Check presence only.
@@ -32,6 +33,14 @@ Order of authority when records disagree: owner directives and accepted decision
 
 - Product and coding model: `mistral-large-4` / `mistral-large-4-0` on the Mistral API; the key is injected by the session proxy.
 - It returns a `thinking` block before the `text` block and spends most completion tokens on reasoning. Budget `max_tokens` generously and extract the text block. OpenBot's OpenAI-compatible client rejects this shape; a normalising shim is required (see `docs/gates/KIC-01-ASSESSMENT.md` §2).
+
+## Working on the code
+
+- `npm run check` runs the type check, the product tests and the harness tests. All must pass before a commit.
+- Tests are offline. Live model calls happen only in `src/cli/demo.ts --mode live|fill`, `tests/shim/live.ts` and scratch experiments; set `NODE_USE_ENV_PROXY=1` for them.
+- Non-streamed model responses longer than about 30 seconds are cut off by the session proxy. The gateway streams for that reason; keep it that way.
+- If a prompt in `src/skills/prompts.ts` changes, bump `PROMPT_VERSION` and re-record with `node src/cli/demo.ts --mode fill`, then delete fixtures that are no longer read.
+- Harness: `node harness/scripts/aeh.mjs status|next|readiness`. Restart steps are in `docs/harness/RESTART.md`.
 
 ## Before ending a session
 

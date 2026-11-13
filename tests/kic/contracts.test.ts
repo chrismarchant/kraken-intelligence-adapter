@@ -22,7 +22,7 @@ const validCommand = () => ({
   kind: "organic-post",
   sequence: { slot: 1, week: 1, orderInWeek: 1 },
   content: { draftId: "draft-001", body: "Body", hashtags: ["#Ops"], bodySha256: "a".repeat(64) },
-  approval: { decisionId: "dec-001", approvedBy: { kind: "human", id: "e1", name: "Editor" }, approvedAt: "2026-01-05T09:00:00.000Z" },
+  approval: { decisionId: "dec-001", approvedBy: { kind: "human", id: "e1", name: "Editor" }, approvedAt: "2026-01-05T09:00:00.000Z", signatureVerified: true },
   translation: { target: "kraken", contract: null, note: "None accepted." },
 });
 

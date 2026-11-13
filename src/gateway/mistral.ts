@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { GenerateRequest, GenerateResult, ModelGateway } from "./gateway.ts";
 import type { CallCost } from "./gateway.ts";
-import { ModelCallError, ModelOutputError, parseJsonAnswer } from "./gateway.ts";
+import { MAX_TOKEN_FACTOR, ModelCallError, ModelOutputError, parseJsonAnswer } from "./gateway.ts";
 
 export interface MistralGatewayOptions {
   /** OpenAI-compatible base URL. The Mistral API, or the normalising shim in front of it. */
@@ -138,7 +138,7 @@ export class MistralGateway implements ModelGateway {
     this.model = options.model ?? process.env.KIC_MODEL ?? "mistral-large-4";
     this.apiKey = options.apiKey ?? process.env.MISTRAL_API_KEY ?? "proxy-injected";
     this.timeoutMs = options.timeoutMs ?? 180_000;
-    this.retries = options.retries ?? 2;
+    this.retries = options.retries ?? 1;
     this.reasoningEffort = options.reasoningEffort;
     this.transientAttempts = options.transientAttempts ?? 4;
     this.backoffMs = options.backoffMs ?? 1500;
@@ -153,10 +153,15 @@ export class MistralGateway implements ModelGateway {
     let lastProblem = "no attempt made";
     let correction: string | null = null;
     // Large 4 spends most of its budget on reasoning, and how much varies run to run. A cut-off
-    // answer is retried with double the budget rather than failing the step.
+    // answer is retried with double the budget rather than failing the step. The allowances of
+    // all attempts together never exceed MAX_TOKEN_FACTOR times the request's own allowance,
+    // which is the figure callers reserve against.
     let maxTokens = request.maxTokens;
+    let allowanceLeft = request.maxTokens * MAX_TOKEN_FACTOR;
 
     for (let attempt = 0; attempt <= this.retries; attempt++) {
+      if (maxTokens > allowanceLeft) break;
+      allowanceLeft -= maxTokens;
       const completion = await this.call(request, correction, maxTokens, cost);
       cost.usage.promptTokens += completion.usage?.prompt_tokens ?? 0;
       cost.usage.completionTokens += completion.usage?.completion_tokens ?? 0;

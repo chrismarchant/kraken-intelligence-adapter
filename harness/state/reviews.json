@@ -1,3 +1,259 @@
 {
-  "reviews": []
+  "reviews": [
+    {
+      "id": "rev-2026-11-13-agent-983487d",
+      "gate": "KIC-01",
+      "commit": "983487d76732fa70bf96c001977e17cc714a8700",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-1",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/**",
+        "harness/scripts/**",
+        "harness/hooks/**",
+        ".github/workflows/ci.yml",
+        "tests/kic/approval.test.ts (part)",
+        "tests/kic/bounds.test.ts (part)"
+      ],
+      "skipped": [
+        {
+          "path": "src/evaluation/criteria.ts, src/skills/catalogue.ts, remaining contracts",
+          "reason": "judged lower risk by the reviewer"
+        },
+        {
+          "path": "tests/shim/**, harness/tests/**, fixtures/llm/**, .claude/agents/**, docs/**",
+          "reason": "not read; docs searched for sensitive strings only"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "critical",
+          "summary": "Non-atomic store writes could lose a confirmed human decision",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F2",
+          "severity": "high",
+          "summary": "Temporary file name collision corrupted campaign files",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F3",
+          "severity": "high",
+          "summary": "Agent could read the one-time code and self-approve through the MCP server",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F4",
+          "severity": "medium",
+          "summary": "Editor confirmed without seeing the content; hash discarded; decline left the request open",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F5",
+          "severity": "high",
+          "summary": "Model spend unbounded: stale budget checks, uncharged failures, no cancellation",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F6",
+          "severity": "medium",
+          "summary": "Mandatory constraints evadable with disguised text, hashtags and worded figures",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F7",
+          "severity": "medium",
+          "summary": "MCP HTTP endpoint: no Host/Origin validation; NaN body limit",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F8",
+          "severity": "medium",
+          "summary": "Shim forwarded every /v1 path with the injected key and had no client authentication",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F9",
+          "severity": "medium",
+          "summary": "check-gates: self-authorising gate map; renames invisible",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F10",
+          "severity": "medium",
+          "summary": "check-reviews: a failed review could be outvoted",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F11",
+          "severity": "low",
+          "summary": "Markdown injection into editor-facing documents",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F12",
+          "severity": "low",
+          "summary": "Summary could show a stale approver",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F13",
+          "severity": "low",
+          "summary": "Exports: default permissions, overwrite, symlinks",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F14",
+          "severity": "low",
+          "summary": "Secret scan skipped tokens containing a placeholder as a substring",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F15",
+          "severity": "low",
+          "summary": "Brief text could close the prompt delimiter",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F16",
+          "severity": "info",
+          "summary": "Client name reached evaluator state through draft bodies",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F17",
+          "severity": "info",
+          "summary": "Stop clearing accepted any identity; hook not installed by default",
+          "status": "accepted"
+        },
+        {
+          "id": "F18",
+          "severity": "info",
+          "summary": "No concurrency tests; guard tests are text searches",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "F19",
+          "severity": "info",
+          "summary": "Session operational detail in a public report",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-independent-agent-983487d.md",
+      "at": "2026-11-13T01:47:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-mistral-983487d",
+      "gate": "KIC-01",
+      "commit": "983487d76732fa70bf96c001977e17cc714a8700",
+      "reviewer": {
+        "kind": "model",
+        "id": "mistral-large-4-direct-api",
+        "model": "mistral-large-4"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/workflow/service.ts",
+        "src/workflow/assemble.ts",
+        "src/workflow/operator.ts",
+        "src/mcp/server.ts",
+        "src/commands/provisional.ts"
+      ],
+      "skipped": [
+        {
+          "path": "everything else",
+          "reason": "not shown to the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "high",
+          "summary": "Limits checked on a stale read can be exceeded by concurrent calls",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "M2",
+          "severity": "medium",
+          "summary": "Failed model calls were not charged to the budget",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "M3",
+          "severity": "medium",
+          "summary": "Code guesses unbounded across requests",
+          "status": "accepted"
+        },
+        {
+          "id": "M4",
+          "severity": "low",
+          "summary": "Token cap checked only on current usage",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "M5",
+          "severity": "low",
+          "summary": "Concurrent revisions of one draft",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "M6",
+          "severity": "low",
+          "summary": "Plan could be stored against a de-selected narrative",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "M7",
+          "severity": "low",
+          "summary": "Request committed before delivery to the editor",
+          "status": "fixed",
+          "remediationCommit": "aad21960bfdc6eaf542fdfecc703beaea84cf8cf"
+        },
+        {
+          "id": "M8",
+          "severity": "low",
+          "summary": "Evaluator work outside the budget",
+          "status": "accepted"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-mistral-large-4-983487d.md",
+      "at": "2026-11-13T01:45:00Z"
+    }
+  ]
 }

@@ -14,7 +14,7 @@
 
 | Item | State |
 |---|---|
-| JEV execution | **Disabled.** Credential present in the session environment; no decision endpoint called. |
+| JEV execution | **Disabled.** No decision endpoint called. The build has no live transport; only the deterministic mock exists. |
 | CopilotKit Intelligence | Permitted under a legitimate licence (owner clarification 2026-11-13). Not yet configured: no project key in the environment. Its memory and learned skills are never authoritative for contracts, permissions or approved skills. |
 | Upstream code imported | None. |
 | Infrastructure provisioned | None. |

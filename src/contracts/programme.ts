@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { BriefInterpretation, CampaignBrief } from "./brief.ts";
 import { ProvisionalPublishCommand } from "./command.ts";
-import { Id, IsoDateTime, SCHEMA_VERSION, ShortText, TokenUsage } from "./common.ts";
+import { HumanActor, Id, IsoDateTime, SCHEMA_VERSION, ShortText, TokenUsage } from "./common.ts";
 import { Narrative, PostDraft, ProgrammePlan, ProgrammeSlot } from "./content.ts";
 import { DecisionRequest, EditorialDecision } from "./decision.ts";
 import { Evaluation } from "./evaluation.ts";
@@ -22,6 +22,14 @@ export const BudgetUsage = z.strictObject({
   /** HTTP requests actually sent to the model provider, including retries. */
   providerRequests: z.number().int().nonnegative(),
   usage: TokenUsage,
+  /**
+   * Steps that have been started and not yet settled, with the most each may still spend.
+   * They count against the token limit until they settle. One that never settles (the
+   * process died) is charged at its full allowance when it expires.
+   */
+  reservations: z.array(
+    z.strictObject({ id: Id, step: ShortText, calls: z.number().int().nonnegative(), completionTokens: z.number().int().nonnegative(), reservedAt: IsoDateTime }),
+  ),
 });
 export type BudgetUsage = z.infer<typeof BudgetUsage>;
 
@@ -75,6 +83,23 @@ export const ProgrammePackage = z.strictObject({
   decisions: z.array(EditorialDecision),
   /** One per approved post. Always non-authoritative and non-executable. */
   provisionalCommands: z.array(ProvisionalPublishCommand),
+  /**
+   * The editor's sign-off on this exact package, made with the operator tool after it has
+   * checked that the campaign's decision log is complete. Null for a preview assembled by
+   * the agent-facing server: a preview is not a released programme.
+   */
+  release: z
+    .strictObject({
+      releasedBy: HumanActor,
+      releasedAt: IsoDateTime,
+      rationale: ShortText,
+      /** SHA-256 of the canonical JSON of this package with `release` set to null. */
+      packageSha256: z.string().regex(/^[0-9a-f]{64}$/),
+      /** Number of decisions in the log the release was made on. */
+      decisionLogSequence: z.number().int().nonnegative(),
+      signature: z.strictObject({ alg: z.literal("ed25519"), keyId: z.string().regex(/^[0-9a-f]{16}$/), value: z.string().min(1) }).nullable(),
+    })
+    .nullable(),
   provenance: z.strictObject({
     generator: z.literal("kraken-intelligence-companion"),
     generatorVersion: z.string(),

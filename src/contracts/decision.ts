@@ -36,6 +36,10 @@ export type DecisionRequest = z.infer<typeof DecisionRequest>;
 
 export const EditorialDecision = z.strictObject({
   id: Id,
+  /** Position in the campaign's decision log, from 1. Covered by the signature. */
+  sequence: z.number().int().min(1),
+  /** Digest of the decision before this one in the log; sixty-four zeros for the first. Covered by the signature. */
+  previousSha256: z.string().regex(/^[0-9a-f]{64}$/),
   requestId: Id,
   subject: DecisionSubject,
   action: DecisionAction,

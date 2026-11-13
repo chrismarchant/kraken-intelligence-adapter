@@ -10,7 +10,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createHttpServer, loadHttpOptions } from "../../src/mcp/http.ts";
 import { createKicServer } from "../../src/mcp/server.ts";
-import { makeService, syntheticBrief } from "./support.ts";
+import { makeService, syntheticBrief, expectedFor } from "./support.ts";
 
 type ToolResult = { isError?: boolean; structuredContent?: Record<string, any>; content: Array<{ type: string; text: string }> };
 
@@ -56,8 +56,15 @@ test("the server exposes the campaign tools and no tool that publishes, schedule
 test("a campaign can be prepared end to end through the tools; only the editor's own tool records decisions", async () => {
   const { call, client, operator, service: operatorService } = await connect();
   // What the editor does with their own tool: read the notice, then confirm with the operator key.
-  const editorConfirms = (campaignId: string, requestId: string, rationale: string) =>
-    operatorService.confirmDecision({ campaignId, requestId, code: operator.codeFor(requestId), actor: { kind: "human", id: "editor-1", name: "Test Editor" }, rationale });
+  const editorConfirms = async (campaignId: string, requestId: string, rationale: string) =>
+    operatorService.confirmDecision({
+      campaignId,
+      requestId,
+      code: operator.codeFor(requestId),
+      actor: { kind: "human", id: "editor-1", name: "Test Editor" },
+      rationale,
+      expected: await expectedFor(operatorService, campaignId, requestId),
+    });
 
   const created = await call("kic_create_campaign", { brief: syntheticBrief() });
   assert.equal(created.isError, undefined);
@@ -110,6 +117,10 @@ test("a campaign can be prepared end to end through the tools; only the editor's
   const assembled = await call("kic_assemble_programme", { campaignId, allowPartial: true });
   assert.equal(assembled.isError, undefined);
   assert.equal(assembled.structuredContent!.approvalState, "partial");
+  assert.equal(assembled.structuredContent!.released, false, "the agent-facing server produces a preview, never a release");
+  assert.equal(assembled.structuredContent!.decisionsVerified, true);
+  assert.equal(assembled.structuredContent!.export.released, false);
+  assert.match(assembled.structuredContent!.export.directory, /-preview$/);
   assert.deepEqual(assembled.structuredContent!.approvedPosts, [1]);
   assert.deepEqual(assembled.structuredContent!.provisionalCommands, [
     { commandId: "cmd-prog-camp-001-01", status: "NON-EXECUTABLE", executable: false, authoritative: false },
