@@ -5,7 +5,7 @@ No gate has been accepted by the Human Owner. Evidence is presented; acceptance 
 | Gate | Status | Evidence |
 |---|---|---|
 | KIC-00 Foundation and feasibility | **Report presented. Awaiting owner approval.** | `docs/gates/KIC-00-REPORT.md` |
-| KIC-01 Runtime proof | **Implementation authorised for the 2026-11-13 session only** (workstreams A–D). **Acceptance package presented. Not accepted: the decision is the owner's.** Review requirement met at commit `2537386`. C1 blocked, C2 demonstrated outside OpenBot, C3 open, C4 demonstrated in tests and independently reviewed. | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
+| KIC-01 Runtime proof | **Implementation authorised for the 2026-11-13 session only** (workstreams A–D). **Not accepted. Not ready to accept: the review requirement, recorded as met at `2537386` earlier on 2026-11-13, is NOT met.** A scope-completing review of parts the approving reviews had not covered requested changes at that commit; remediation is in progress. C1 blocked, C2 demonstrated outside OpenBot, C3 open, C4 demonstrated in tests and independently reviewed. | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
 | KIC-02 Model and skills integration | Not authorised as a gate. Parts were built under the session authorisation: gateway, skills, bounded execution. | `docs/gates/KIC-01-EVIDENCE.md` |
 | KIC-03 Comparative intelligence | Not authorised as a gate. Built under the session authorisation with the deterministic mock evaluator. | same |
 | KIC-04 Commercial campaign preparation | Not authorised as a gate. Demonstrated through API and command-line tests only. **No user interface.** | same |
@@ -65,7 +65,9 @@ Reviews are bound to exact commits in `harness/state/reviews.json`. The review c
 | `55a66f2` | Ninth independent agent (Opus tier); the whole commit against four claims, with stated exclusions | **approved**, with follow-ups (1 medium availability regression, 4 low, 3 informational) |
 | `2537386` | Tenth independent agent (Opus tier), delta review of `55a66f2..2537386` | **approved**: all five follow-up fixes closed; no regression; 3 informational notes |
 
-## Review requirement for KIC-01: met at `2537386`
+## Review requirement for KIC-01: recorded as met at `2537386`, then withdrawn
+
+**Status on 2026-11-13, after scope-completing review A: NOT MET.** `aeh check-reviews --commit 2537386… --gate KIC-01` now fails: a changes-requested review is bound to the commit. The approvals below stand for what they covered, the approval path; they did not cover the evaluator, where the new findings are. What follows in this section, down to "Scope-completing reviews", is the record as it was written before that review, kept for the trail.
 
 Recorded on 2026-11-13 under the owner's gate-closure instruction (`docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md`). **Meeting the review requirement is not acceptance of the gate.**
 
@@ -85,7 +87,7 @@ Commissioned on 2026-11-13 after the audit, at the same commit, from two further
 
 | Review | Scope | Outcome |
 |---|---|---|
-| A | The evaluator, the contracts, creator ranking, the skills catalogue, the shim's normaliser, and their tests | Not returned when this was written |
+| A (`independent-review-agent-11`) | The evaluator, the contracts, creator ranking, the skills catalogue, the shim's normaliser, and their tests | **changes-requested**: 6 medium, 7 low, 1 info. Look-alike letters and non-ASCII digits pass the mandatory constraints; a ruled-out term with a non-ASCII letter never matches; redaction blocks evaluation of honest campaigns; clipped text is refused for good; synthetic creator evidence can be presented as real; the normaliser can leak hidden reasoning on malformed upstream framing. No path to a live JEV; nothing can be made executable. Record: `docs/review/2026-11-13-scope-review-a-2537386.md`. Remediation in progress |
 | B | The MCP tool surface, the gateway and its usage accounting, the stores and lock under real concurrent processes, the budget path, and their tests | Not returned when this was written |
 
 A blocking verdict from either is bound to `2537386` and makes the review check for that commit fail, as it should.

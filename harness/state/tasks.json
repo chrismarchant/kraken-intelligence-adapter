@@ -152,14 +152,15 @@
         "KIC-B2",
         "KIC-01-C2"
       ],
-      "status": "done",
+      "status": "in_progress",
       "evidence": [
         "harness/state/reviews.json (eleven entries; approving: rev-2026-11-13-agent-55a66f2, rev-2026-11-13-agent-delta-2537386)",
         "docs/review/2026-11-13-review-55a66f2.md",
         "docs/review/2026-11-13-delta-review-2537386.md",
         "aeh check-reviews --commit 2537386bf807ebc62f8e89839d1b9dbda2e6769e --gate KIC-01: ok",
         "CI run 23 (43428556880) success on 2537386; clean-checkout npm run check: 202 product, 83 harness tests",
-        "Gate acceptance is the owner's. External approval-path assessment before real-client use: OD-11, open"
+        "Gate acceptance is the owner's. External approval-path assessment before real-client use: OD-11, open",
+        "2026-11-13: scope-completing review A at 2537386: changes-requested (rev-2026-11-13-agent-scope-a-2537386). The review check for 2537386 no longer passes. Remediation and a new review are in progress"
       ]
     },
     {

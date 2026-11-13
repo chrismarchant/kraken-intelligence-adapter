@@ -1090,6 +1090,128 @@
       ],
       "reportPath": "docs/review/2026-11-13-delta-review-2537386.md",
       "at": "2026-11-13T12:55:14Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-scope-a-2537386",
+      "gate": "KIC-01",
+      "commit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-11",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/evaluation/**",
+        "src/contracts/**",
+        "src/creators/**",
+        "src/skills/**",
+        "src/shim/normalize.ts",
+        "tests for those",
+        "claims (e)-(j)"
+      ],
+      "skipped": [
+        {
+          "path": "approval and signing path, operator tool, release, spend limits",
+          "reason": "out of scope; covered by rev-2026-11-13-agent-55a66f2 and rev-2026-11-13-agent-delta-2537386"
+        },
+        {
+          "path": "src/mcp/** tool schemas; F4 and F5 end to end through the service",
+          "reason": "not covered by the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "medium",
+          "summary": "A ruled-out term written entirely in Greek or Cyrillic look-alike letters passes the mandatory constraints",
+          "status": "open"
+        },
+        {
+          "id": "F2",
+          "severity": "medium",
+          "summary": "Figures in non-ASCII digit scripts are not seen by the number rule",
+          "status": "open"
+        },
+        {
+          "id": "F3",
+          "severity": "medium",
+          "summary": "A ruled-out term containing a non-ASCII letter never matches",
+          "status": "open"
+        },
+        {
+          "id": "F4",
+          "severity": "medium",
+          "summary": "Redaction treats any 40-character run as a secret and blocks evaluation of honest campaigns",
+          "status": "open"
+        },
+        {
+          "id": "F5",
+          "severity": "medium",
+          "summary": "Clipped text ends in a non-canonical ellipsis and the draft is refused for good",
+          "status": "open"
+        },
+        {
+          "id": "F6",
+          "severity": "medium",
+          "summary": "Creator ranking's synthetic flag comes from the set alone; synthetic evidence can be presented as real",
+          "status": "open"
+        },
+        {
+          "id": "F7",
+          "severity": "low",
+          "summary": "Only the ASCII hyphen is removed from inside a word",
+          "status": "open"
+        },
+        {
+          "id": "F8",
+          "severity": "low",
+          "summary": "Ratios and amounts are exempted as clock times",
+          "status": "open"
+        },
+        {
+          "id": "F9",
+          "severity": "low",
+          "summary": "Short ruled-out terms over-match; doubled-consonant inflections are missed",
+          "status": "open"
+        },
+        {
+          "id": "F10",
+          "severity": "low",
+          "summary": "The shim's normaliser passes unparseable payloads on with reasoning included when reasoning is hidden",
+          "status": "open"
+        },
+        {
+          "id": "F11",
+          "severity": "low",
+          "summary": "Quadratic work and an unbounded buffer in the normaliser on upstream input",
+          "status": "open"
+        },
+        {
+          "id": "F12",
+          "severity": "low",
+          "summary": "Some outer contracts do not bound length or count or refuse control characters",
+          "status": "open"
+        },
+        {
+          "id": "F13",
+          "severity": "low",
+          "summary": "Future-dated creator evidence counts as fresh; fee limit has no currency",
+          "status": "open"
+        },
+        {
+          "id": "F14",
+          "severity": "info",
+          "summary": "Latest evaluation matched on draft id, not text (advisory, unsigned)",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-scope-review-a-2537386.md",
+      "at": "2026-11-13T13:52:00Z"
     }
   ]
 }
