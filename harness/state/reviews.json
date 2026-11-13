@@ -606,6 +606,75 @@
       ],
       "reportPath": "docs/review/2026-11-13-fourth-review-187f029.md",
       "at": "2026-11-13T11:20:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-765ae20",
+      "gate": "KIC-01",
+      "commit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-5",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff 187f029 765ae20: src/**, tests/**",
+        "src/cli/operator.ts",
+        "src/util/runtime.ts",
+        "src/workflow/spend.ts",
+        "src/workflow/assemble.ts",
+        "src/workflow/service.ts (step, budget, hashes, decisions)",
+        "src/gateway/mistral.ts",
+        "src/mcp/runtime.ts",
+        "src/contracts/**",
+        "src/evaluation/signals.ts (figure rules)"
+      ],
+      "skipped": [
+        {
+          "path": "src/workflow/signing.ts internals, src/mcp/server.ts, src/mcp/http.ts, evaluator, src/util/markdown.ts",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "harness/**, src/shim/**",
+          "reason": "outside the diff"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "high",
+          "summary": "Plan, interpretation and most of the brief were released without being shown to the editor",
+          "status": "fixed",
+          "remediationCommit": "8e4696cf57f51f056f6e3bc359c2e6077350e7d8"
+        },
+        {
+          "id": "N2",
+          "severity": "medium",
+          "summary": "Repeated slot numbers sidestepped the slot binding and scheduled an approved post twice",
+          "status": "fixed",
+          "remediationCommit": "8e4696cf57f51f056f6e3bc359c2e6077350e7d8"
+        },
+        {
+          "id": "N3",
+          "severity": "low",
+          "summary": "Operator-channel file names reached the terminal unescaped",
+          "status": "fixed",
+          "remediationCommit": "8e4696cf57f51f056f6e3bc359c2e6077350e7d8"
+        },
+        {
+          "id": "N4",
+          "severity": "info",
+          "summary": "Right-to-left letters not neutralised; prompt tokens outside the budget; failed creation uses a campaign slot (accepted); year-span leftover (fixed)",
+          "status": "accepted",
+          "remediationCommit": "8e4696cf57f51f056f6e3bc359c2e6077350e7d8"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-fifth-review-765ae20.md",
+      "at": "2026-11-13T11:40:00Z"
     }
   ]
 }

@@ -126,7 +126,7 @@ const NOT_A_FIGURE = [
 ];
 
 /** "from 2019 to 2024": a span of years, read as dates only when it runs forward in time. */
-const YEAR_SPAN = /\b((?:from|between|during|over|since)\s+)((?:19|20)\d{2})(\s*(?:-|\u2013|to|and)\s*)((?:19|20)\d{2})\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi;
+const YEAR_SPAN = /\b((?:from|between|during|since)\s+)((?:19|20)\d{2})(\s*(?:-|\u2013|to|and)\s*)((?:19|20)\d{2})\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi;
 
 /** The numbers written in digits in a text, without clock times and everyday terms, as plain digit strings. */
 function numbersIn(text: string, options: { everydayTerms: boolean } = { everydayTerms: true }): string[] {

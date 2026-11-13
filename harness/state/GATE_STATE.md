@@ -21,7 +21,7 @@ Machine-readable gate map: `harness/config/gates.json`. Task ledger: `harness/st
 | C1 Full OpenBot boots on a licensed Intelligence project | **Blocked.** No Intelligence project key; no pgvector or Docker daemon in the session environment. OD-7. |
 | C2 Mistral Large 4 through a shim, streaming, with tools | Demonstrated with OpenBot's model client and with the CopilotKit agent class. **Not demonstrated inside OpenBot.** |
 | C3 Licence confirmation from CopilotKit | **Open.** OD-8. |
-| C4 Human editorial approval enforced in code | Demonstrated in tests. Three independent reviews each found a new defect; all are fixed and tested; the last fixes are unreviewed. |
+| C4 Human editorial approval enforced in code | Demonstrated in tests. Five independent reviews each found a new defect; all are fixed and tested; the last fixes are unreviewed. |
 
 ## Independent review of KIC-01 work
 
@@ -33,9 +33,11 @@ Reviews are bound to exact commits in `harness/state/reviews.json`. The review c
 | `983487d` | Mistral Large 4, direct API | changes-requested |
 | `aad2196` | Second independent agent (Opus tier) | changes-requested: 2 high |
 | `075b358` | Third independent agent (Opus tier), focused | changes-requested: 2 high |
-| `187f029` | none | **Not reviewed.** Fixes for the third review's findings, each with a regression test. |
+| `187f029` | Fourth independent agent (Opus tier) | changes-requested: 2 high |
+| `765ae20` | Fifth independent agent (Opus tier), focused | changes-requested: 1 high |
+| `8e4696c` | none | **Not reviewed.** Fixes for the fifth review's findings, each with a regression test. |
 
-**The review requirement for KIC-01 is not met.** No commit has an approving independent review. Three rounds was the limit set for the session; a further round is owner decision OD-11. This is a gate stop on anything that depends on KIC-01 being reviewed.
+**The review requirement for KIC-01 is not met.** No commit has an approving independent review. Five rounds have been run; a further round is owner decision OD-11. This is a gate stop on anything that depends on KIC-01 being reviewed.
 
 The Mistral Code Review Bot is not operational (its block-content defect is unfixed on its default branch) and Codex is unavailable. Neither was substituted silently: the reviews above are recorded as what they are.
 

@@ -11,7 +11,7 @@ Every result below came from a command run in the session. Where something was n
 | **C1** Full OpenBot boots on a licensed Intelligence project and completes a conversation with a tool call and a recalled memory | **Not demonstrated. Blocked.** | No Intelligence project key exists in the environment (obtaining one needs a personal account sign-in). OpenBot's schema needs pgvector, which is unavailable: no Docker daemon, package not in the repositories, source build refused by the session's permission layer. Recorded once as a local stop on task `KIC-01-C1`; not retried. |
 | **C2** Mistral Large 4 works through a shim, streaming, with tools | **Demonstrated outside OpenBot. Not demonstrated inside it.** | See "Model shim" and "Agent runs". |
 | **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing new. The four questions are in `KIC-01-ASSESSMENT.md` §8. |
-| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by three independent reviews. Each review found a way through; each was closed and given a regression test. The last set of fixes has not been independently re-reviewed.** | See "Approval enforcement" and "Independent review". |
+| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by five independent reviews. Each review found a way through; each was closed and given a regression test. The last set of fixes has not been independently re-reviewed.** | See "Approval enforcement" and "Independent review". |
 
 ## What was built
 
@@ -33,7 +33,7 @@ Size: about 6,400 lines of product source and 3,600 lines of product tests.
 
 ## Tests
 
-`npm run check` at commit `765ae20`: type check clean; **178 product tests pass; 83 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
+`npm run check` at commit `8e4696c`: type check clean; **181 product tests pass; 83 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
 
 GitHub Actions workflow `ci` succeeded on every push through `765ae20` (runs 1 to 10; run 10 is 43417308791).
 
@@ -152,9 +152,11 @@ Result: both drafts ignored all of it, cited the survey reference for their one 
 | `983487d` | Mistral Large 4, direct API | changes-requested | `docs/review/2026-11-13-mistral-large-4-983487d.md` |
 | `aad2196` | Second independent agent, Opus tier | changes-requested (2 high: decision rollback; forged operator notice) | `docs/review/2026-11-13-confirmation-review-aad2196.md` |
 | `075b358` | Third independent agent, Opus tier, scope limited to the nine findings and the remediation | changes-requested (2 high: a 12-character hash prefix could be collided; a planted notice could delete the operator's ledger) | `docs/review/2026-11-13-focused-re-review-075b358.md` |
-| `187f029` | **None.** The fixes for the third review's twelve findings each have a regression test, but no independent reviewer has read them. | — | — |
+| `187f029` | Fourth independent agent, Opus tier, the decision path and the budget | changes-requested (2 high: terminal escape sequences could hide text from the editor; the budget could be reset by a store writer) | `docs/review/2026-11-13-fourth-review-187f029.md` |
+| `765ae20` | Fifth independent agent, Opus tier, focused on the fourth review's fixes | changes-requested (1 high: plan, interpretation and most of the brief were released without being shown) | `docs/review/2026-11-13-fifth-review-765ae20.md` |
+| `8e4696c` | **None.** The fixes for the fifth review each have a regression test, and the reviewer's probes fail against them, but no independent reviewer has read them. | — | — |
 
-Three rounds were set as the limit for this session, and each round found real defects in the round before. The honest reading is that the approval controls have improved a great deal under attack and have not yet survived a review unbroken. Whether to commission a fourth, and by whom, is an owner decision (OD-11). Each review is bound to the exact commit it read; `node harness/scripts/aeh.mjs check-reviews --commit <sha> --gate KIC-01` fails for any commit without an approving, independent review and with any blocking one.
+Five rounds have now been run, and each found real defects in the round before, of decreasing reach: the first could lose or forge a decision; the fifth could release text the editor was not shown. The honest reading is that the approval controls have improved a great deal under attack and have not yet survived a review unbroken. Whether to commission another, and by whom, is an owner decision (OD-11); a reviewer outside this programme's sessions is recommended. Each review is recorded against its exact commit in `harness/state/reviews.json`.
 
 The Mistral Code Review Bot and Codex were not used: the bot's block-content defect is unfixed on its default branch, and the Codex credential is rejected.
 
