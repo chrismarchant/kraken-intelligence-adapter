@@ -272,8 +272,6 @@ export function createShimServer(config: ShimConfig): http.Server {
     let reservedTokens = 0;
     let charged = false;
     let upstreamStatus = 0;
-    // A caller that stops reading must not hold its place for ever: an idle connection is closed.
-    req.socket.setTimeout(config.upstreamTimeoutMs > 0 ? config.upstreamTimeoutMs + 30_000 : 150_000, () => req.socket.destroy());
     res.on("close", () => {
       if (timer) clearTimeout(timer);
       if (!res.writableFinished) abort.abort(); // client went away
@@ -395,6 +393,12 @@ export function createShimServer(config: ShimConfig): http.Server {
           try {
             await account.reserve("shim", 1, reservedTokens, ceilings);
             charged = true;
+            // The caller left while its place was being taken: nothing will be sent, so nothing is charged.
+            if (res.destroyed) {
+              charged = false;
+              await account.settle("shim", { calls: 1, tokens: reservedTokens }, { calls: 0, tokens: 0 }).catch(() => undefined);
+              return;
+            }
           } catch (e) {
             if (e instanceof LimitExceededError) sendError(res, 429, "The spend ceiling of this shim has been reached", "insufficient_quota");
             else sendError(res, 503, "The shim's spend account is unavailable", "shim_error");
@@ -419,7 +423,8 @@ export function createShimServer(config: ShimConfig): http.Server {
     try {
       const init: RequestInit = { method, headers, redirect: "manual", signal: abort.signal };
       if (body !== undefined && body.length > 0) init.body = body;
-      up = await fetch(upstreamBase + url.pathname + url.search, init);
+      // A chat request carries everything in its body, which is what was checked: no query goes with it.
+      up = await fetch(upstreamBase + url.pathname + (isChat ? "" : url.search), init);
     } catch {
       if (timedOut) sendError(res, 504, "Upstream timed out", "upstream_timeout");
       else if (!res.destroyed) sendError(res, 502, "Upstream unreachable", "upstream_error");
@@ -495,11 +500,18 @@ export function createShimServer(config: ShimConfig): http.Server {
     pipeline(Readable.fromWeb(up.body.pipeThrough(idle) as NodeWebReadableStream), res, () => undefined);
   }
 
-  return http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     handle(req, res).catch(() => {
       sendError(res, 500, "Internal shim error", "shim_error");
     });
   });
+  // A caller that stops reading must not hold its place for ever: an idle connection is closed.
+  // Set once for each connection, not for each request on it.
+  const idleMs = config.upstreamTimeoutMs > 0 ? config.upstreamTimeoutMs + 30_000 : 150_000;
+  server.on("connection", (socket) => {
+    socket.setTimeout(idleMs, () => socket.destroy());
+  });
+  return server;
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;

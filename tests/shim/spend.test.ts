@@ -147,3 +147,39 @@ test("key injection: only so many requests run at once", async () => {
     await mock.close();
   }
 });
+
+test("an idle timeout is set once for a connection, however many requests it carries, and a chat request takes no query upstream", async () => {
+  // (Review of 55a66f2, F1 and F3.) Before: one more listener for every request, held with its request, without a token.
+  const http = await import("node:http");
+  const { createShimServer } = await import("../../src/shim/server.ts");
+  const mock = await startMock((_req, res) => sendJson(res, fixture("nonstream-plain.json")));
+  const server = createShimServer({ host: "127.0.0.1", port: 0, upstream: mock.url, allowedModels: ["mistral-large-4"], maxBodyBytes: 1024 * 1024, upstreamTimeoutMs: 5000, exposeReasoning: false, log: () => undefined, ...injection });
+  const sockets: import("node:net").Socket[] = [];
+  server.on("connection", (socket) => sockets.push(socket));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as import("node:net").AddressInfo).port;
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+  const get = (path: string, headers: Record<string, string> = {}) =>
+    new Promise<number>((resolve, reject) => {
+      const r = http.request({ host: "127.0.0.1", port, path, method: "GET", agent, headers }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      });
+      r.on("error", reject);
+      r.end();
+    });
+  try {
+    for (let i = 0; i < 60; i += 1) assert.equal(await get("/not-a-route"), 404); // no token needed to get this far
+    assert.equal(sockets.length, 1, "all sixty went over one connection");
+    assert.ok(sockets[0]!.listenerCount("timeout") <= 2, `${sockets[0]!.listenerCount("timeout")} timeout listeners on one connection`);
+
+    const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions?max_tokens=999999&model=other`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" }, body: chatBody({ max_tokens: 10 }) });
+    assert.equal(response.status, 200);
+    assert.equal(mock.requests[0]!.url, "/v1/chat/completions");
+  } finally {
+    agent.destroy();
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+    await mock.close();
+  }
+});

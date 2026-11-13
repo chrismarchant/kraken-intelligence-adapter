@@ -168,7 +168,12 @@ export function canonicalText(text: string): string {
 export function displaySafe(text: string, options: { multiline?: boolean } = {}): string {
   const visible = (character: string) => `\\u{${(character.codePointAt(0) as number).toString(16)}}`;
   return text
+    // A backslash first, so that text which itself spells out a code cannot pass for a character written out here.
+    .replace(/\\/g, "\\u{5c}")
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u2800]/g, (character) => (character === "\n" && options.multiline ? character : visible(character)))
+    // Characters with no agreed appearance (private use, unassigned) and marks that enclose their
+    // neighbour: a font may draw them as blanks. The keycap mark is kept where it closes a keycap.
+    .replace(/[\p{Co}\p{Cn}\p{Me}]/gu, (character, offset: number, whole: string) => (character === "\u20E3" && /[0-9#*]\uFE0F?$/.test(whole.slice(Math.max(0, offset - 2), offset)) ? character : visible(character)))
     .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : visible(character)))
     // Every blank that is not an ordinary space is written out, and so is a run of spaces:
     // padding is how text is pushed to the edge of a terminal or made to look like a margin.

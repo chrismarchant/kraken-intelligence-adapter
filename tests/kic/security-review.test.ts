@@ -63,6 +63,12 @@ test("stored text cannot reach the first column of the editor's terminal, howeve
   assert.equal(displaySafe("a\u00a0b\u2003c\u3000d"), "a\\u{a0}b\\u{2003}c\\u{3000}d");
   assert.equal(displaySafe("one\n    two\n three", { multiline: true }), "one\n\\u{20}\\u{20}\\u{20}\\u{20}two\n\\u{20}three");
   assert.doesNotMatch(displaySafe("x\n  |     fake continuation", { multiline: true }), /\n {2}\| {5}/);
+  // Text that spells out a code is not the same on screen as the character the code stands for. (Review of 55a66f2, F5.)
+  assert.notEqual(displaySafe("Save \\u{20}hours"), displaySafe("Save  hours"));
+  assert.equal(displaySafe("a\\b"), "a\\u{5c}b");
+  // Characters a font may draw as nothing are written out; a keycap keeps its closing mark. (F6.)
+  assert.equal(displaySafe("a\uE000b\u{F0000}c\u20DDd"), "a\\u{e000}b\\u{f0000}c\\u{20dd}d");
+  assert.equal(displaySafe("1\uFE0F\u20E3 and #\u20E3"), "1\uFE0F\u20E3 and #\u20E3");
   assert.equal(canonicalText("a    b  \n\n\n\nc\t\td "), "a b\n\nc d ");
 
   const { env, service, store } = await instance();
