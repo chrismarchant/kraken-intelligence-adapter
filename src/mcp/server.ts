@@ -8,7 +8,7 @@ import { JevDisabledError } from "../evaluation/jev.ts";
 import { RedactionError } from "../evaluation/redaction.ts";
 import { LimitExceededError } from "../limits.ts";
 import { CATALOGUE, CATALOGUE_VERSION } from "../skills/catalogue.ts";
-import { RecordNotFoundError, RevisionConflictError } from "../store/store.ts";
+import { RecordNotFoundError, StoreBusyError } from "../store/store.ts";
 import type { Clock } from "../util/runtime.ts";
 import { systemClock } from "../util/runtime.ts";
 import { assembleProgramme, exportProgramme } from "../workflow/assemble.ts";
@@ -22,9 +22,11 @@ export const SERVER_VERSION = "0.1.0";
 export const SERVER_INSTRUCTIONS =
   "KIC prepares LinkedIn campaign programmes for a human editor. It cannot publish, schedule, spend or contact anyone, " +
   "and has no tool that does. Narratives and drafts are selected, rejected and approved only by a person: use " +
-  "kic_request_decision to ask, then give the person the request id. The person confirms with a one-time code they " +
-  "receive outside this conversation. Never guess or search for that code. Evaluation scores are judgements to inform " +
-  "the editor, not measurements. Publishing commands in a programme package are provisional and NON-EXECUTABLE.";
+  "kic_request_decision to ask, then give the person the request id. The person reviews the content and confirms or " +
+  "declines with their own operator tool, outside this conversation. There is no tool here that records a decision, " +
+  "and you must not try to obtain or relay confirmation codes. Use kic_get_campaign to see whether a decision has been " +
+  "made. Evaluation scores are judgements to inform the editor, not measurements. Publishing commands in a programme " +
+  "package are provisional and NON-EXECUTABLE.";
 
 export interface KicServerDeps {
   service: CampaignService;
@@ -46,7 +48,7 @@ function failure(error: unknown): CallToolResult {
   if (error instanceof WorkflowError) [code, message] = [error.code, error.message];
   else if (error instanceof LimitExceededError) [code, message] = [`limit:${error.limit}`, error.message];
   else if (error instanceof RecordNotFoundError) [code, message] = ["not-found", error.message];
-  else if (error instanceof RevisionConflictError) [code, message] = ["conflict", error.message];
+  else if (error instanceof StoreBusyError) [code, message] = ["busy", error.message];
   else if (error instanceof JevDisabledError) [code, message] = ["jev-disabled", error.message];
   else if (error instanceof RedactionError) [code, message] = ["redaction", error.message];
   else if (error instanceof ModelOutputError) [code, message] = ["model-output", error.message];
@@ -81,7 +83,7 @@ export function campaignSummary(record: CampaignRecord): Record<string, unknown>
     pendingDecisions: record.decisionRequests
       .filter((r) => r.state === "pending")
       .map((r) => ({ requestId: r.id, action: r.action, subject: r.subject, expiresAt: r.expiresAt })),
-    decisions: record.decisions.map((d) => ({ id: d.id, action: d.action, subject: d.subject, by: d.actor.name, at: d.decidedAt })),
+    decisions: record.decisions.map((d) => ({ id: d.id, action: d.action, subject: d.subject, by: d.actor.name, at: d.decidedAt, signed: d.signature !== null })),
     budget: record.budget,
   };
 }
@@ -186,7 +188,7 @@ export function createKicServer(deps: KicServerDeps): McpServer {
       title: "Ask the editor for a decision",
       description:
         "Ask a person to select or reject a narrative, or to select, approve, reject or request a revision of a draft. " +
-        "Nothing changes until the person confirms. The one-time code goes to the person, never to this conversation.",
+        "Nothing changes until the person confirms with their own operator tool. This server cannot record a decision.",
       inputSchema: {
         campaignId,
         subjectKind: z.enum(["narrative", "draft"]),
@@ -208,38 +210,7 @@ export function createKicServer(deps: KicServerDeps): McpServer {
             revisionInstruction: input.revisionInstruction ?? null,
             requestedBy,
           })),
-          next: "Give the person the request id. They confirm with the code they receive through the operator channel.",
-        }),
-      ),
-  );
-
-  server.registerTool(
-    "kic_confirm_decision",
-    {
-      title: "Record the editor's decision",
-      description:
-        "Record a person's decision on a pending request. Requires the one-time code that person received outside this " +
-        "conversation, their identity and their own reason. Only call this with a code the person has just given you.",
-      inputSchema: {
-        campaignId,
-        requestId: z.string(),
-        code: z.string().describe("The one-time code the person received. Never guess it."),
-        actorId: z.string().describe("The person's identifier."),
-        actorName: z.string().describe("The person's name."),
-        rationale: z.string().describe("The person's own reason for the decision."),
-      },
-      annotations: writes,
-    },
-    (input) =>
-      guard(async () =>
-        ok({
-          decision: await service.confirmDecision({
-            campaignId: input.campaignId,
-            requestId: input.requestId,
-            code: input.code,
-            actor: { kind: "human", id: input.actorId, name: input.actorName },
-            rationale: input.rationale,
-          }),
+          next: "Give the editor the request id. They review the content and confirm or decline with their operator tool. Check kic_get_campaign for the outcome.",
         }),
       ),
   );
@@ -267,7 +238,7 @@ export function createKicServer(deps: KicServerDeps): McpServer {
     },
     ({ campaignId: id, allowPartial }) =>
       guard(async () => {
-        const pkg = assembleProgramme(await service.getCampaign(id), { allowPartial: allowPartial ?? false, clock, limits: service.limits });
+        const pkg = assembleProgramme(await service.getCampaign(id), { allowPartial: allowPartial ?? false, clock, limits: service.limits, verifier: service.verifier });
         const exported = await exportProgramme(pkg, deps.exportRoot);
         return ok({
           programmeId: pkg.programmeId,

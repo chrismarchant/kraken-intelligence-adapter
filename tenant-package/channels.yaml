@@ -1,0 +1,6 @@
+channels:
+  - id: campaign-preparation
+    name: Campaign preparation
+    description: Prepare a LinkedIn campaign programme from a client brief.
+    permitted_agents: [campaign-assistant]
+    allowed_groups: [all]

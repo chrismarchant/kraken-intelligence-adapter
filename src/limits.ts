@@ -14,6 +14,8 @@ export interface Limits {
   /** Lifetime of a pending editorial decision request. */
   decisionRequestTtlMs: number;
   maxDecisionCodeAttempts: number;
+  /** Decision requests that may be waiting for a person at one time, per campaign. */
+  maxPendingDecisions: number;
   /** LinkedIn's documented limit for an organic post body. */
   linkedinMaxChars: number;
 }
@@ -29,6 +31,7 @@ export const DEFAULT_LIMITS: Limits = Object.freeze({
   modelCallTimeoutMs: 180_000,
   decisionRequestTtlMs: 30 * 60_000,
   maxDecisionCodeAttempts: 5,
+  maxPendingDecisions: 25,
   linkedinMaxChars: 3000,
 });
 

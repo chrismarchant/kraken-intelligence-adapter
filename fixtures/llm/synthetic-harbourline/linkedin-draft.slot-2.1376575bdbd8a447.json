@@ -1,0 +1,43 @@
+{
+  "purpose": "linkedin-draft.slot-2",
+  "schemaName": "post_drafts",
+  "requestSha256": "1376575bdbd8a447e6f86df1fec56e68ba957fb33c8ce17f127aa155c2abb794",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T02:04:51.008Z",
+  "usage": {
+    "promptTokens": 1708,
+    "completionTokens": 4218,
+    "reasoningTokens": 3700
+  },
+  "value": {
+    "variants": [
+      {
+        "variant": "direct",
+        "approach": "Direct point-of-view: states the correction in the first line, then walks through the weekly reporting routine to show where the checking actually happens.",
+        "hook": "Data quality is not an IT problem. It lands on the operations desk.",
+        "body": "Data quality is not an IT problem. It lands on the operations desk.\n\nWhen the weekly report goes out and someone has to hand-check the inventory figures before anyone acts on them, that work is happening in operations. Not in a server room. Not in a ticket queue.\n\nThe systems are only part of it. The checking, the reconciling, the explaining why a number moved — that is operations work, done by operations people, usually on top of everything else.\n\nSo the fix starts where the checking starts. It starts with the report, the records, and the person who has to stand behind the numbers.\n\nLook around your own team this week: who actually owns the checking work when the numbers do not line up?",
+        "callToAction": "Look around your own team this week: who actually owns the checking work when the numbers do not line up?",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Logistics"
+        ],
+        "claims": []
+      },
+      {
+        "variant": "story-led",
+        "approach": "Story-led: opens on a concrete end-of-week moment with the report waiting on a hand-check, then lets the same point of view emerge from that scene rather than a declaration.",
+        "hook": "Late on a Thursday, the weekly report is ready except the inventory figure still needs a hand-check.",
+        "body": "Late on a Thursday, the weekly report is ready except the inventory figure still needs a hand-check.\n\nSomeone on the operations team opens two systems, compares the numbers by eye, and signs it off. The report goes out. The checking did not come from IT. It came from the floor.\n\nThat is where data quality actually lives. Not in the software license or the helpdesk. In the weekly routine where operations leaders reconcile inventory against order records before they trust the report.\n\nWhen the checking sits with operations, the problem sits with operations too. And so does the chance to fix it.\n\nLook around your own team this week: who actually owns the checking work when the numbers do not line up?",
+        "callToAction": "Look around your own team this week: who actually owns the checking work when the numbers do not line up?",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Warehousing"
+        ],
+        "claims": []
+      }
+    ]
+  }
+}

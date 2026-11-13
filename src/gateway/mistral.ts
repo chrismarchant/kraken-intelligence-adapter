@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { GenerateRequest, GenerateResult, ModelGateway } from "./gateway.ts";
+import type { CallCost } from "./gateway.ts";
 import { ModelCallError, ModelOutputError, parseJsonAnswer } from "./gateway.ts";
 
 export interface MistralGatewayOptions {
@@ -21,6 +22,25 @@ export interface MistralGatewayOptions {
   transientAttempts?: number;
   /** First pause between transient retries; each later pause is three times longer. */
   backoffMs?: number;
+  /** Hard cap on HTTP requests sent to the provider for one generateJson call, all retries included. */
+  maxProviderRequests?: number;
+}
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "[::1]", "localhost"]);
+
+/** The model endpoint must be HTTPS, or plain HTTP on loopback (the local shim). */
+export function checkedBaseUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("The model base URL is not a valid URL.");
+  }
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname))) {
+    throw new Error("The model base URL must use https, or http on a loopback address.");
+  }
+  if (url.username || url.password) throw new Error("The model base URL must not contain credentials.");
+  return raw.replace(/\/+$/, "");
 }
 
 interface ChatMessageBlock {
@@ -111,9 +131,10 @@ export class MistralGateway implements ModelGateway {
   private readonly reasoningEffort: "low" | "medium" | "high" | undefined;
   private readonly transientAttempts: number;
   private readonly backoffMs: number;
+  private readonly maxProviderRequests: number;
 
   constructor(options: MistralGatewayOptions = {}) {
-    this.baseUrl = (options.baseUrl ?? process.env.KIC_MODEL_BASE_URL ?? "https://api.mistral.ai/v1").replace(/\/+$/, "");
+    this.baseUrl = checkedBaseUrl(options.baseUrl ?? process.env.KIC_MODEL_BASE_URL ?? "https://api.mistral.ai/v1");
     this.model = options.model ?? process.env.KIC_MODEL ?? "mistral-large-4";
     this.apiKey = options.apiKey ?? process.env.MISTRAL_API_KEY ?? "proxy-injected";
     this.timeoutMs = options.timeoutMs ?? 180_000;
@@ -121,23 +142,25 @@ export class MistralGateway implements ModelGateway {
     this.reasoningEffort = options.reasoningEffort;
     this.transientAttempts = options.transientAttempts ?? 4;
     this.backoffMs = options.backoffMs ?? 1500;
+    this.maxProviderRequests = options.maxProviderRequests ?? 6;
     this.fetchImpl = options.fetch ?? fetch;
   }
 
   async generateJson<T>(request: GenerateRequest<T>): Promise<GenerateResult<T>> {
     const started = Date.now();
-    const usage = { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 };
+    // Everything this call costs is accumulated here, and is attached to the error if it fails.
+    const cost: CallCost = { usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 }, providerRequests: 0 };
     let lastProblem = "no attempt made";
     let correction: string | null = null;
     // Large 4 spends most of its budget on reasoning, and how much varies run to run. A cut-off
-    // answer is retried once with double the budget rather than failing the step.
+    // answer is retried with double the budget rather than failing the step.
     let maxTokens = request.maxTokens;
 
     for (let attempt = 0; attempt <= this.retries; attempt++) {
-      const completion = await this.call(request, correction, maxTokens);
-      usage.promptTokens += completion.usage?.prompt_tokens ?? 0;
-      usage.completionTokens += completion.usage?.completion_tokens ?? 0;
-      usage.reasoningTokens += completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+      const completion = await this.call(request, correction, maxTokens, cost);
+      cost.usage.promptTokens += completion.usage?.prompt_tokens ?? 0;
+      cost.usage.completionTokens += completion.usage?.completion_tokens ?? 0;
+      cost.usage.reasoningTokens += completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
 
       const choice = completion.choices?.[0];
       const text = messageText(choice?.message?.content);
@@ -162,17 +185,18 @@ export class MistralGateway implements ModelGateway {
           provider: "mistral",
           model: completion.model ?? this.model,
           source: "live",
-          usage,
+          usage: cost.usage,
+          providerRequests: cost.providerRequests,
           latencyMs: Date.now() - started,
         };
       }
       lastProblem = z.prettifyError(checked.error);
       correction = `Your previous answer did not match the required schema:\n${lastProblem}\nReturn a corrected JSON object.`;
     }
-    throw new ModelOutputError(request.purpose, lastProblem);
+    throw new ModelOutputError(request.purpose, lastProblem, cost);
   }
 
-  private async call<T>(request: GenerateRequest<T>, correction: string | null, maxTokens: number): Promise<ChatCompletion> {
+  private async call<T>(request: GenerateRequest<T>, correction: string | null, maxTokens: number, cost: CallCost): Promise<ChatCompletion> {
     const messages = [
       { role: "system", content: request.system },
       { role: "user", content: request.user },
@@ -194,33 +218,43 @@ export class MistralGateway implements ModelGateway {
     });
 
     // Transient failures (rate limits, gateway errors, dropped connections) are retried a
-    // fixed number of times with a growing pause. Anything else fails at once.
-    let failure = new ModelCallError(`Model call for "${request.purpose}" was not attempted.`);
+    // fixed number of times with a growing pause. Anything else fails at once. The total
+    // number of requests for one generateJson call is capped whatever the mix of retries.
+    let failure = new ModelCallError(`Model call for "${request.purpose}" was not attempted.`, null, cost);
     for (let attempt = 0; attempt < this.transientAttempts; attempt++) {
+      if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
+      if (cost.providerRequests >= this.maxProviderRequests) {
+        throw new ModelCallError(`Model call for "${request.purpose}" reached the limit of ${this.maxProviderRequests} provider requests.`, null, cost);
+      }
       if (attempt > 0) await new Promise((r) => setTimeout(r, this.backoffMs * 3 ** (attempt - 1)));
+      const timeout = AbortSignal.timeout(this.timeoutMs);
+      const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
       let response: Response;
+      cost.providerRequests += 1;
       try {
         response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${this.apiKey}` },
           body,
-          signal: AbortSignal.timeout(this.timeoutMs),
+          signal,
           redirect: "error",
         });
       } catch (error) {
-        failure = new ModelCallError(`Model call for "${request.purpose}" failed: ${(error as Error).name}`);
+        if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
+        failure = new ModelCallError(`Model call for "${request.purpose}" failed: ${(error as Error).name}`, null, cost);
         continue;
       }
       if (response.ok) {
         try {
           return await readCompletion(response);
         } catch (error) {
-          failure = new ModelCallError(`Model call for "${request.purpose}" broke off mid-stream: ${(error as Error).name}`);
+          if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
+          failure = new ModelCallError(`Model call for "${request.purpose}" broke off mid-stream: ${(error as Error).name}`, null, cost);
           continue;
         }
       }
       // The body may echo request content; report the status only.
-      failure = new ModelCallError(`Model call for "${request.purpose}" returned HTTP ${response.status}.`, response.status);
+      failure = new ModelCallError(`Model call for "${request.purpose}" returned HTTP ${response.status}.`, response.status, cost);
       await response.body?.cancel().catch(() => undefined);
       if (response.status !== 429 && response.status < 500) break;
     }

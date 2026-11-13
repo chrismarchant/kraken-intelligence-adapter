@@ -1,0 +1,6 @@
+# KIC tenant package for an OpenBot-derived client instance.
+# One package per client instance. Client-specific values (name, branding) are changed here,
+# never in application source.
+tenant:
+  id: kic-campaign-workspace
+  product_name: Campaign Preparation Workspace

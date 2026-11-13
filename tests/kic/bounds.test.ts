@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { LimitExceededError } from "../../src/limits.ts";
-import { FileCampaignStore, RecordNotFoundError, RevisionConflictError } from "../../src/store/store.ts";
+import { FileCampaignStore, RecordNotFoundError } from "../../src/store/store.ts";
 import { mapLimit } from "../../src/util/runtime.ts";
 import { WorkflowError } from "../../src/workflow/service.ts";
 import { makeService, syntheticBrief } from "./support.ts";
@@ -76,7 +76,7 @@ test("fan-out never runs more calls at once than the concurrency limit", async (
   assert.equal(peak, 3);
 });
 
-test("the file store keeps one file per campaign, survives a restart and detects conflicting writes", async () => {
+test("the file store keeps one private file per campaign and survives a restart", async () => {
   const dir = mkdtempSync(join(tmpdir(), "kic-store-"));
   const { service } = makeService();
   const created = await service.createCampaign(syntheticBrief());
@@ -84,16 +84,27 @@ test("the file store keeps one file per campaign, survives a restart and detects
   const store = new FileCampaignStore(dir);
   await store.create(created);
   await assert.rejects(store.create(created), /already exists/);
+  await store.update(created.id, (record) => {
+    record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "note", detail: "written before the restart" });
+  });
 
   // A second store on the same directory stands in for a restarted process.
   const reopened = new FileCampaignStore(dir);
   assert.deepEqual(await reopened.list(), [created.id]);
-  const first = await reopened.get(created.id);
-  const second = await reopened.get(created.id);
-  first.revision += 1;
-  await reopened.put(first);
-  second.revision += 1;
-  await assert.rejects(reopened.put(second), RevisionConflictError);
+  const record = await reopened.get(created.id);
+  assert.equal(record.revision, 1);
+  assert.equal(record.audit.at(-1)!.detail, "written before the restart");
+  assert.equal(statSync(join(dir, `${created.id}.json`)).mode & 0o777, 0o600, "the campaign file is private to its owner");
+
+  // A change that throws writes nothing.
+  await assert.rejects(
+    reopened.update(created.id, (r) => {
+      r.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "note", detail: "must not be stored" });
+      throw new Error("abandon");
+    }),
+    /abandon/,
+  );
+  assert.equal((await reopened.get(created.id)).revision, 1);
 
   await assert.rejects(reopened.get("camp-999"), RecordNotFoundError);
   await assert.rejects(reopened.get("../../etc/passwd"), /lowercase id/);

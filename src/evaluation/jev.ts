@@ -77,12 +77,26 @@ const EvaluatorState = z.object({
     audience: CampaignBriefSchema.shape.audience,
     tone: CampaignBriefSchema.shape.tone,
     constraints: CampaignBriefSchema.shape.constraints,
-    referenceIds: z.array(z.string()),
+    references: z.array(z.object({ id: z.string(), title: z.string(), summary: z.string() })),
   }),
   slot: z.object({ theme: z.string(), intent: z.string(), callToAction: z.string() }),
   candidates: z.record(z.string(), StateCandidate),
 });
 type EvaluatorState = z.infer<typeof EvaluatorState>;
+
+/** Replace the client's name, and its distinctive leading words, wherever they occur in the state. */
+function withoutClientName<T>(clientName: string, value: T): T {
+  const full = clientName.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  const names = [full, ...full.split(/\s+/).filter((w) => w.length >= 5 && /^[A-Z]/.test(w))].filter(Boolean);
+  const pattern = new RegExp(names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
+  const scrub = (v: unknown): unknown => {
+    if (typeof v === "string") return names.length ? v.replace(pattern, "[client]") : v;
+    if (Array.isArray(v)) return v.map(scrub);
+    if (v !== null && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, scrub(x)]));
+    return v;
+  };
+  return scrub(value) as T;
+}
 
 /** Build one fan-out request for a slot: every criterion for every candidate, one state. */
 export function buildJevRequest(
@@ -92,13 +106,14 @@ export function buildJevRequest(
   criteria: readonly Criterion[],
   model = "jev-latest",
 ): JevRequest {
-  const state: EvaluatorState = redactDeep({
+  const state: EvaluatorState = withoutClientName(brief.client.name, redactDeep({
     brief: {
-      // Client identity and brand context are deliberately left out: the evaluator does not need them.
+      // Client identity and brand context are left out, and the client's name is removed from
+      // every string that is sent: the evaluator does not need to know whose campaign this is.
       audience: brief.audience,
       tone: brief.tone,
       constraints: brief.constraints,
-      referenceIds: brief.references.map((r) => r.id),
+      references: brief.references.map((r) => ({ id: r.id, title: r.title, summary: r.summary })),
     },
     slot: { theme: slot.theme, intent: slot.intent, callToAction: slot.callToAction },
     candidates: Object.fromEntries(
@@ -107,7 +122,7 @@ export function buildJevRequest(
         { hook: d.hook, body: d.body, callToAction: d.callToAction, hashtags: d.hashtags, claims: d.claims },
       ]),
     ),
-  });
+  }));
   assertNoSecrets(state);
 
   const questions: Record<string, JevQuestion> = {};
@@ -158,7 +173,7 @@ export class MockJevTransport implements JevTransport {
       audience: state.brief.audience,
       tone: state.brief.tone,
       constraints: state.brief.constraints,
-      references: state.brief.referenceIds.map((id) => ({ id })),
+      references: state.brief.references,
     } as unknown as CampaignBrief;
 
     const features = new Map<string, Record<CriterionKey, number>>();

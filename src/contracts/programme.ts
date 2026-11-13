@@ -17,7 +17,10 @@ export const AuditEvent = z.strictObject({
 export type AuditEvent = z.infer<typeof AuditEvent>;
 
 export const BudgetUsage = z.strictObject({
+  /** Model steps started. Charged when a step is reserved, whether or not it then succeeds. */
   modelCalls: z.number().int().nonnegative(),
+  /** HTTP requests actually sent to the model provider, including retries. */
+  providerRequests: z.number().int().nonnegative(),
   usage: TokenUsage,
 });
 export type BudgetUsage = z.infer<typeof BudgetUsage>;

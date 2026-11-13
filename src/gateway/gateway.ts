@@ -10,6 +10,8 @@ export interface GenerateRequest<T> {
   schema: z.ZodType<T>;
   schemaName: string;
   maxTokens: number;
+  /** Aborting this cancels the call, including any request in flight. */
+  signal?: AbortSignal;
 }
 
 export interface GenerateResult<T> {
@@ -18,7 +20,25 @@ export interface GenerateResult<T> {
   model: string;
   source: "live" | "fixture";
   usage: TokenUsage;
+  /** HTTP requests sent to the provider for this result, including retries. Zero for a replay. */
+  providerRequests: number;
   latencyMs: number;
+}
+
+/** What a failed call still cost. Attached to gateway errors so the cost can be recorded. */
+export interface CallCost {
+  usage: TokenUsage;
+  providerRequests: number;
+}
+
+export const NO_COST: CallCost = Object.freeze({
+  usage: Object.freeze({ promptTokens: 0, completionTokens: 0, reasoningTokens: 0 }),
+  providerRequests: 0,
+});
+
+export function costOf(error: unknown): CallCost {
+  const cost = (error as { cost?: CallCost } | null)?.cost;
+  return cost ?? NO_COST;
 }
 
 /**
@@ -31,19 +51,23 @@ export interface ModelGateway {
 
 export class ModelOutputError extends Error {
   readonly purpose: string;
-  constructor(purpose: string, message: string) {
+  cost: CallCost;
+  constructor(purpose: string, message: string, cost: CallCost = NO_COST) {
     super(`Model output for "${purpose}" was rejected: ${message}`);
     this.name = "ModelOutputError";
     this.purpose = purpose;
+    this.cost = cost;
   }
 }
 
 export class ModelCallError extends Error {
   readonly status: number | null;
-  constructor(message: string, status: number | null = null) {
+  cost: CallCost;
+  constructor(message: string, status: number | null = null, cost: CallCost = NO_COST) {
     super(message);
     this.name = "ModelCallError";
     this.status = status;
+    this.cost = cost;
   }
 }
 

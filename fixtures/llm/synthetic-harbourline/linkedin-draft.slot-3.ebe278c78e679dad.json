@@ -1,0 +1,90 @@
+{
+  "purpose": "linkedin-draft.slot-3",
+  "schemaName": "post_drafts",
+  "requestSha256": "ebe278c78e679dadde744f7ff80b69ee5afca82fa4c5d43b0af2f338d5016232",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T02:04:51.153Z",
+  "usage": {
+    "promptTokens": 1727,
+    "completionTokens": 7243,
+    "reasoningTokens": 6328
+  },
+  "value": {
+    "variants": [
+      {
+        "variant": "direct",
+        "approach": "Leads with the benchmark result and states the reduction plainly before walking through how the scheduled checks work, keeping the focus on the hours saved.",
+        "hook": "Manual reconciliation eats hours every week.",
+        "body": "Manual reconciliation eats hours every week.\n\nYou know the routine. The weekly report comes out, and before anyone acts on it someone has to hand-check the inventory figures against the order records. That hand-check is where the week gets lost. In a pilot across 14 warehouses, teams using automated data checks cut the time spent on manual reconciliation by 31%.\n\nThe checks run on a schedule. They compare inventory records with order and shipment records and flag mismatches for a person to review. They do not change any records themselves.\n\nThat is the data quality work sitting in operations, not in the IT department.\n\nHow many hours does your team spend on manual reconciliation each week?",
+        "callToAction": "How many hours does your team spend on manual reconciliation each week?",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Logistics"
+        ],
+        "claims": [
+          {
+            "text": "In a pilot across 14 warehouses, teams using automated data checks cut the time spent on manual reconciliation by 31%.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-benchmark"
+          },
+          {
+            "text": "The checks run on a schedule.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          },
+          {
+            "text": "They compare inventory records with order and shipment records and flag mismatches for a person to review.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          },
+          {
+            "text": "They do not change any records themselves.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          }
+        ]
+      },
+      {
+        "variant": "routine-led",
+        "approach": "Opens with the Friday reporting routine to show exactly where the hours go, then introduces the benchmark and the mechanics of the checks as the alternative.",
+        "hook": "Friday afternoon, and the numbers need checking.",
+        "body": "Friday afternoon, and the numbers need checking.\n\nThe weekly inventory report is on the table. Before anyone acts on it, someone walks the floor or opens the order system to reconcile figures by hand. That is operations time spent on data quality, not on running the warehouse.\n\nIn a pilot across 14 warehouses, teams using automated data checks cut the time spent on manual reconciliation by 31%.\n\nThe checks run on a schedule. They compare inventory records with order and shipment records and flag mismatches for a person to review. The system does not change any records itself.\n\nWhen the checks flag a mismatch, a person reviews it.\n\nHow many hours does your team spend on manual reconciliation each week?",
+        "callToAction": "How many hours does your team spend on manual reconciliation each week?",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Warehouse"
+        ],
+        "claims": [
+          {
+            "text": "In a pilot across 14 warehouses, teams using automated data checks cut the time spent on manual reconciliation by 31%.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-benchmark"
+          },
+          {
+            "text": "The checks run on a schedule.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          },
+          {
+            "text": "They compare inventory records with order and shipment records and flag mismatches for a person to review.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          },
+          {
+            "text": "The system does not change any records itself.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          },
+          {
+            "text": "When the checks flag a mismatch, a person reviews it.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-product"
+          }
+        ]
+      }
+    ]
+  }
+}

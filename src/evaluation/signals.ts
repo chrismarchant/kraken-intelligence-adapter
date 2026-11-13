@@ -7,6 +7,7 @@ import type {
   Signal,
 } from "../contracts/index.ts";
 import type { Limits } from "../limits.ts";
+import { canonicalText } from "../util/runtime.ts";
 
 const STOPWORDS = new Set(
   ("about above after again against also among because been before being between both could does doing during each from further " +
@@ -30,8 +31,33 @@ const HYPE_TERMS = [
   "10x",
 ];
 
-/** Figures a reader could check: percentages, multiples and money. */
-const STATISTIC = /(?:[$£€]\s?\d[\d,.]*\s?(?:k|m|bn|million|billion)?|\b\d[\d,.]*\s?(?:%|percent\b|per cent\b|x\b|×|times\b))/gi;
+/** Clock times are not figures a reader would check against a source. */
+const CLOCK_TIME = /\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\b\d{1,2}:\d{2}\b/gi;
+/** Any number written in digits. */
+const NUMBER = /\d(?:[\d,.]*\d)?/g;
+
+const NUMBER_WORD =
+  "(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|" +
+  "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)";
+const NUMBER_PHRASE = `${NUMBER_WORD}(?:[\\s-]+(?:and[\\s-]+)?${NUMBER_WORD})*`;
+/**
+ * Quantities written in words: "sixty-two percent", "three in four", "nine out of ten",
+ * "twice as", "half of". They cannot be matched against a reference by code, so a post
+ * must state its figures in digits, exactly as its reference does.
+ */
+const SPELLED_QUANTITY = new RegExp(
+  `\\b${NUMBER_PHRASE}[\\s-]+(?:percent|per[\\s-]cent)\\b` +
+    `|\\b${NUMBER_PHRASE}\\s+(?:in|out\\s+of)\\s+(?:every\\s+)?(?:${NUMBER_PHRASE}|\\d+)\\b` +
+    `|\\b${NUMBER_PHRASE}[\\s-]+(?:times|fold)\\b` +
+    `|\\b(?:twice|double|triple|quadruple)\\s+(?:as|the)\\b` +
+    `|\\b(?:half|a\\s+third|a\\s+quarter|two[\\s-]thirds|three[\\s-]quarters)\\s+of\\b` +
+    `|\\b(?:halved|doubled|tripled|quadrupled)\\b`,
+  "gi",
+);
+
+/** Letters of a script that is easily mistaken for Latin, used to spot disguised words. */
+const LOOKALIKE_SCRIPT = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
+const LATIN = /\p{Script=Latin}/u;
 
 export interface DraftAnalysis {
   /** 0..1 per criterion, derived only from the observations in `signals`. */
@@ -53,14 +79,31 @@ function keywords(phrases: readonly string[]): string[] {
 }
 
 /**
- * Whole-phrase match, case-insensitive. Common inflections of the last word also match
- * ("guarantee" catches "guaranteed" and "guarantees"): a mandatory constraint should err
- * towards refusing.
+ * Whole-phrase match, case-insensitive, for mandatory constraints, which err towards
+ * refusing. The words of the phrase may be joined, hyphenated or spaced ("AI-powered"
+ * catches "AI powered" and "AIpowered"), and common inflections of the last word match
+ * ("guarantee" catches "guaranteed"). A longer, different word does not match.
  */
 function containsPhrase(haystack: string, phrase: string): boolean {
-  const escaped = phrase.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-  if (!escaped) return false;
-  return new RegExp(`(?<![a-z0-9])${escaped}(?:s|es|d|ed|ing)?(?![a-z0-9])`, "i").test(haystack);
+  const parts = phrase.toLowerCase().match(/[a-z0-9]+/g);
+  if (!parts) return false;
+  const pattern = parts.join("[\\s\\-_./\u2010-\u2015]*");
+  return new RegExp(`(?<![a-z0-9])${pattern}(?:s|es|d|ed|ing)?(?![a-z0-9])`, "i").test(haystack);
+}
+
+/** Letters and digits only, lower case. Used where words are run together, as in hashtags. */
+function squash(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** The numbers written in digits in a text, without clock times, as plain digit strings. */
+function numbersIn(text: string): string[] {
+  const found = text.replace(CLOCK_TIME, " ").match(NUMBER) ?? [];
+  return [...new Set(found.map((n) => n.replace(/,/g, "").replace(/\.$/, "")))];
+}
+
+function hasNumber(text: string, number: string): boolean {
+  return numbersIn(text).includes(number);
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
@@ -78,7 +121,10 @@ export function analyseDraft(
 ): DraftAnalysis {
   const signals: Signal[] = [];
   const failures: EligibilityFailure[] = [];
-  const body = draft.body;
+  // Every rule below reads the canonical form of the text. A post that differs from its own
+  // canonical form is carrying invisible or compatibility characters and is refused.
+  const body = canonicalText(draft.body);
+  const hashtags = draft.hashtags.map(canonicalText);
   const bodyWords = new Set(words(body));
 
   // Relevance: vocabulary shared with the stated audience and its problems.
@@ -124,32 +170,53 @@ export function analyseDraft(
   });
 
   // Grounding: checkable claims and figures must point at a reference in the brief.
-  const referenceIds = new Set(brief.references.map((r) => r.id));
+  const references = new Map(brief.references.map((r) => [r.id, canonicalText(`${r.title ?? ""} ${r.summary ?? ""}`)]));
   const checkable = draft.claims.filter((c) => c.needsEvidence);
-  const supported = checkable.filter((c) => c.evidenceRef !== null && referenceIds.has(c.evidenceRef));
+  const supported = checkable.filter((c) => c.evidenceRef !== null && references.has(c.evidenceRef));
   for (const claim of checkable) {
     if (claim.evidenceRef === null) {
       failures.push({ rule: "unsupported-claim", detail: `No reference cited for: "${claim.text.slice(0, 200)}"` });
-    } else if (!referenceIds.has(claim.evidenceRef)) {
+    } else if (!references.has(claim.evidenceRef)) {
       failures.push({
         rule: "unknown-evidence-reference",
         detail: `Reference "${claim.evidenceRef}" is not in the brief (claim: "${claim.text.slice(0, 160)}")`,
       });
     }
   }
-  const figures = [...new Set((body.match(STATISTIC) ?? []).map((f) => f.trim()))];
-  const supportedText = supported.map((c) => c.text.toLowerCase()).join(" \n ");
-  const unlisted = figures.filter((f) => !supportedText.includes(f.toLowerCase().replace(/\s+/g, " ")));
+  // Every number in the post or its hashtags (clock times aside) must appear in a claim that
+  // cites a reference, and in that reference itself. Citing a reference that does not
+  // contain the figure does not support it.
+  const published = `${body}\n${hashtags.join(" ")}`;
+  const figures = numbersIn(published);
+  const citing = draft.claims.filter((c) => c.evidenceRef !== null && references.has(c.evidenceRef));
+  const unlisted = figures.filter(
+    (figure) => !citing.some((c) => hasNumber(canonicalText(c.text), figure) && hasNumber(references.get(c.evidenceRef as string) as string, figure)),
+  );
   for (const figure of unlisted) {
-    failures.push({ rule: "unlisted-statistic", detail: `The figure "${figure}" appears in the post without a supported claim` });
+    failures.push({
+      rule: "unlisted-statistic",
+      detail: `The figure "${figure}" is not backed by a claim that cites a brief reference containing it`,
+    });
   }
-  const grounding = unlisted.length > 0 ? 0 : checkable.length === 0 ? 0.75 : supported.length / checkable.length;
+  const spelled = [...new Set((published.match(SPELLED_QUANTITY) ?? []).map((m) => m.trim().toLowerCase()))];
+  for (const quantity of spelled) {
+    failures.push({
+      rule: "unlisted-statistic",
+      detail: `The quantity "${quantity}" is written in words; state figures in digits exactly as the cited reference does`,
+    });
+  }
+  const ungrounded = unlisted.length + spelled.length;
+  const grounding = ungrounded > 0 ? 0 : checkable.length === 0 ? 0.75 : supported.length / checkable.length;
   signals.push({
     criterion: "grounding",
     observation:
       `${supported.length} of ${checkable.length} checkable claims cite a brief reference; ` +
-      `${figures.length} figures in the post, ${unlisted.length} without a supported claim`,
-    evidence: [...supported.map((c) => `${c.evidenceRef}: ${c.text.slice(0, 120)}`), ...unlisted.map((f) => `unsupported figure: ${f}`)].slice(0, 12),
+      `${figures.length + spelled.length} figures in the post, ${ungrounded} not backed by a cited reference`,
+    evidence: [
+      ...supported.map((c) => `${c.evidenceRef}: ${c.text.slice(0, 120)}`),
+      ...unlisted.map((f) => `unsupported figure: ${f}`),
+      ...spelled.map((q) => `figure in words: ${q}`),
+    ].slice(0, 12),
   });
 
   // Opening line.
@@ -182,14 +249,30 @@ export function analyseDraft(
 
   // Mandatory constraints that do not depend on any score.
   if (body.trim().length === 0) failures.push({ rule: "empty-body", detail: "The post has no text" });
-  const published = body.length + (draft.hashtags.length ? 2 + draft.hashtags.join(" ").length : 0);
-  if (published > limits.linkedinMaxChars) {
-    failures.push({ rule: "over-length", detail: `${published} characters with hashtags; the limit is ${limits.linkedinMaxChars}` });
+  const length = body.length + (hashtags.length ? 2 + hashtags.join(" ").length : 0);
+  if (length > limits.linkedinMaxChars) {
+    failures.push({ rule: "over-length", detail: `${length} characters with hashtags; the limit is ${limits.linkedinMaxChars}` });
   }
+  const squashedTags = hashtags.map(squash);
   for (const term of brief.constraints.mustAvoid) {
-    if (containsPhrase(body, term) || containsPhrase(draft.hashtags.join(" "), term)) {
+    const squashedTerm = squash(term);
+    // Hashtags run words together, so a ruled-out term is looked for inside each one.
+    const inHashtag = squashedTerm.length >= 4 && squashedTags.some((tag) => tag.includes(squashedTerm));
+    if (containsPhrase(body, term) || inHashtag) {
       failures.push({ rule: "must-avoid-term", detail: `Contains "${term}", which the brief rules out` });
     }
+  }
+  // Text that tries to slip past the rules above: invisible or compatibility characters,
+  // control characters, and words that mix Latin letters with look-alike scripts.
+  const raw = `${draft.body}\n${draft.hashtags.join(" ")}`;
+  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => LATIN.test(word) && LOOKALIKE_SCRIPT.test(word));
+  if (canonicalText(raw) !== raw) {
+    failures.push({ rule: "suspicious-characters", detail: "Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)" });
+  } else if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(raw)) {
+    failures.push({ rule: "suspicious-characters", detail: "Contains control characters" });
+  }
+  if (disguised.length > 0) {
+    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) mixing Latin letters with look-alike letters from another script` });
   }
 
   return {

@@ -56,14 +56,15 @@ test("mandatory constraints: must-avoid term, over-length, empty body", () => {
 
 test("mandatory constraints: claims and figures must cite a reference in the brief", () => {
   const figure = "In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures.";
-  assert.deepEqual(rules(draft("unlisted", figure)), ["unlisted-statistic"]);
+  // The sentence carries two figures, 120 and 62; each needs backing.
+  assert.deepEqual(rules(draft("unlisted", figure)), ["unlisted-statistic", "unlisted-statistic"]);
   assert.deepEqual(
     rules(draft("unsupported", figure, { claims: [{ text: figure, needsEvidence: true, evidenceRef: null }] })).sort(),
-    ["unlisted-statistic", "unsupported-claim"],
+    ["unlisted-statistic", "unlisted-statistic", "unsupported-claim"],
   );
   assert.deepEqual(
     rules(draft("invented-ref", figure, { claims: [{ text: figure, needsEvidence: true, evidenceRef: "ref-made-up" }] })).sort(),
-    ["unknown-evidence-reference", "unlisted-statistic"],
+    ["unknown-evidence-reference", "unlisted-statistic", "unlisted-statistic"],
   );
   assert.deepEqual(rules(draft("supported", figure, { claims: [{ text: figure, needsEvidence: true, evidenceRef: "ref-survey" }] })), []);
   // A supported claim does not license a different figure elsewhere in the post.
@@ -71,6 +72,46 @@ test("mandatory constraints: claims and figures must cite a reference in the bri
     rules(draft("extra", `${figure}\n\nTeams also cut costs by 40%.`, { claims: [{ text: figure, needsEvidence: true, evidenceRef: "ref-survey" }] })),
     ["unlisted-statistic"],
   );
+});
+
+test("mandatory constraints cannot be slipped past with disguised text", () => {
+  // Each of these was shown by the independent review to pass the earlier rules.
+  const zeroWidth = "guar\u200bantee";
+  const softHyphen = "guar\u00adantee";
+  const cyrillic = "gu\u0430rantee"; // Cyrillic "а" in place of Latin "a"
+  assert.deepEqual(rules(draft("zw", `We ${zeroWidth} results.`)).sort(), ["must-avoid-term", "suspicious-characters"]);
+  assert.deepEqual(rules(draft("sh", `We ${softHyphen} results.`)).sort(), ["must-avoid-term", "suspicious-characters"]);
+  assert.deepEqual(rules(draft("cy", `We ${cyrillic} results.`)), ["suspicious-characters"]);
+  assert.deepEqual(rules(draft("fw", "Trust fell to \uff16\uff12\uff05 last year.")).sort(), ["suspicious-characters", "unlisted-statistic"]);
+
+  // Ruled-out terms written joined, spaced, or inside a hashtag.
+  assert.deepEqual(rules(draft("joined", "Our AIpowered checks help.")), ["must-avoid-term"]);
+  assert.deepEqual(rules(draft("spaced", "Our AI powered checks help.")), ["must-avoid-term"]);
+  assert.deepEqual(rules(draft("tag-a", "", { hashtags: ["#AIpowered"] })), ["must-avoid-term"]);
+  assert.deepEqual(rules(draft("tag-b", "", { hashtags: ["#GameChanging", "#Ops"] })), ["must-avoid-term"]);
+});
+
+test("every figure must be in digits and traceable to the reference it cites", () => {
+  const cited = (text: string, ref: string) => [{ text, needsEvidence: true, evidenceRef: ref }];
+  const survey = "In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures.";
+
+  // Figures written in words cannot be checked, so they are refused.
+  for (const phrase of ["Sixty-two percent of leaders agree.", "Three in four teams reconcile by hand.", "Nine out of ten reports are late.", "Teams work twice as fast.", "Half of the week is lost."]) {
+    assert.deepEqual(rules(draft("words", phrase)), ["unlisted-statistic"], phrase);
+  }
+  // Plain numbers with no percent sign are figures too.
+  assert.deepEqual(rules(draft("ratio", "Roughly 3 in 4 teams reconcile by hand.")), ["unlisted-statistic", "unlisted-statistic"]);
+  assert.deepEqual(rules(draft("hours", "That is 14 hours a week.")), ["unlisted-statistic"]);
+  assert.deepEqual(rules(draft("tag", "", { hashtags: ["#62Percent"] })), ["unlisted-statistic"]);
+  // A clock time is not a figure.
+  assert.deepEqual(rules(draft("clock", "The report goes out at 4pm on Friday, or 16:30 at the latest.")), []);
+
+  // A figure is supported only if the cited reference actually contains it.
+  assert.deepEqual(rules(draft("ok", survey, { claims: cited(survey, "ref-survey") })), []);
+  assert.deepEqual(rules(draft("laundered", "Errors fall by 90%.", { claims: cited("Errors fall by 90%.", "ref-product") })), ["unlisted-statistic"]);
+  assert.deepEqual(rules(draft("wrong-ref", survey, { claims: cited(survey, "ref-benchmark") })), ["unlisted-statistic", "unlisted-statistic"]);
+  // Marking the claim as not needing evidence does not exempt its figure.
+  assert.deepEqual(rules(draft("unflagged", "Errors fall by 90%.", { claims: [{ text: "Errors fall by 90%.", needsEvidence: false, evidenceRef: null }] })), ["unlisted-statistic"]);
 });
 
 test("the mock evaluator is deterministic and is labelled as not live and not JEV", async () => {
@@ -137,13 +178,17 @@ test("the live JEV evaluator cannot be selected", () => {
   assert.equal(createJevTransport("mock-jev", DEFAULT_LIMITS).kind, "mock-jev");
 });
 
-test("the evaluator request is one fan-out, leaves out client identity and is redacted", () => {
+test("the evaluator request is one fan-out, carries no client name and is redacted", () => {
   const brief = syntheticBrief();
   brief.audience.icp = "Leaders reachable at ops.lead@example.com or +44 20 7946 0958, see https://example.com/private?token=abc";
-  const request = buildJevRequest(brief, slot, [draft("draft-a"), draft("draft-b")], DEFAULT_CRITERIA);
+  // The client's name appears in a draft and in a reference, as it does in real material.
+  brief.references[2]!.summary = "Harbourline Analytics runs scheduled checks. Harbourline does not change records.";
+  const named = draft("draft-b", "Harbourline Analytics built this for operations teams. Ask Harbourline how.");
+  const request = buildJevRequest(brief, slot, [draft("draft-a"), named], DEFAULT_CRITERIA);
   const serialised = JSON.stringify(request);
+  assert.match(serialised, /\[client\] built this/);
   assert.equal(Object.keys(request.questions).length, 2 * DEFAULT_CRITERIA.length + 2);
-  assert.ok(!serialised.includes("Harbourline"), "the client's name is not sent");
+  assert.ok(!/harbourline/i.test(serialised), "the client's name is not sent, in the brief, the references or the drafts");
   assert.ok(!serialised.includes("example.com"));
   assert.ok(!serialised.includes("7946"));
   assert.match(serialised, /\[email\]/);

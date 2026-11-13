@@ -1,0 +1,55 @@
+{
+  "purpose": "linkedin-draft.slot-1",
+  "schemaName": "post_drafts",
+  "requestSha256": "7335507692bc32189aae016120d800557603b1dd0fa5e212999d25c82c3f1d9d",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T02:04:33.611Z",
+  "usage": {
+    "promptTokens": 1722,
+    "completionTokens": 4234,
+    "reasoningTokens": 3585
+  },
+  "value": {
+    "variants": [
+      {
+        "variant": "story-led",
+        "approach": "Opens with a concrete Monday-morning scene of the hand-check ritual, then connects it to the survey figure and the operations framing.",
+        "hook": "Monday 7am. The weekly report is done, but nobody acts on it until someone checks the inventory numbers by hand.",
+        "body": "Monday 7am. The weekly report is done, but nobody acts on it until someone checks the inventory numbers by hand.\n\nThat hand-check is not a small thing. It means reconciling inventory against order records before anyone acts, while the week's decisions wait.\n\nIn a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report. When a number needs a human stamp before anyone uses it, the data quality problem is sitting in operations, not in the IT department.\n\nThe report looks finished. The trust is not.\n\nThink about the last report you had to verify by hand before sending it out.",
+        "callToAction": "Think about the last report you had to verify by hand before sending it out.",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Logistics"
+        ],
+        "claims": [
+          {
+            "text": "In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-survey"
+          }
+        ]
+      },
+      {
+        "variant": "question-led",
+        "approach": "Opens with a direct question about time spent, answers it with the reconciliation habit, then uses the survey figure to frame the trust gap.",
+        "hook": "How many hours did your team spend last week checking the weekly report by hand?",
+        "body": "How many hours did your team spend last week checking the weekly report by hand?\n\nNot a rhetorical question. Inventory figures get reconciled against order records before the report goes out, because nobody wants to act on numbers they do not trust.\n\nIn a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report. That distrust is a data quality problem, and it lives in operations, not in the IT department.\n\nWhen every report needs a hand-check before anyone acts, the week gets shorter and the decisions get slower.\n\nThink about the last report you had to verify by hand before sending it out.",
+        "callToAction": "Think about the last report you had to verify by hand before sending it out.",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Warehouse"
+        ],
+        "claims": [
+          {
+            "text": "In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-survey"
+          }
+        ]
+      }
+    ]
+  }
+}

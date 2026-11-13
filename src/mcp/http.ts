@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -11,14 +11,26 @@ export interface HttpOptions {
   /** Bearer token clients must present. Null only for loopback use that was asked for explicitly. */
   token: string | null;
   maxBodyBytes: number;
+  /** Host names (without port) a request may be addressed to. Guards against DNS rebinding. */
+  allowedHosts: string[];
+  /** Origins a browser-based client may call from. Empty means no browser may call at all. */
+  allowedOrigins: string[];
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
+function positiveInteger(name: string, raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^[0-9]+$/.test(raw) || Number(raw) < 1) throw new Error(`${name} must be a positive whole number.`);
+  return Number(raw);
+}
+
+const list = (raw: string | undefined) => (raw ?? "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+
 export function loadHttpOptions(env: NodeJS.ProcessEnv = process.env): HttpOptions {
   const host = env.KIC_MCP_HOST ?? "127.0.0.1";
-  const port = Number(env.KIC_MCP_PORT ?? "8790");
-  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("KIC_MCP_PORT must be a port number.");
+  const portRaw = env.KIC_MCP_PORT ?? "8790";
+  if (!/^[0-9]+$/.test(portRaw) || Number(portRaw) > 65535) throw new Error("KIC_MCP_PORT must be a port number.");
   const token = env.KIC_MCP_TOKEN ?? null;
   if (token !== null && token.length < 24) throw new Error("KIC_MCP_TOKEN must be at least 24 characters.");
   if (token === null) {
@@ -27,7 +39,21 @@ export function loadHttpOptions(env: NodeJS.ProcessEnv = process.env): HttpOptio
     }
     if (!LOOPBACK.has(host)) throw new Error("Unauthenticated use is allowed only on a loopback address.");
   }
-  return { host, port, token, maxBodyBytes: Number(env.KIC_MCP_MAX_BODY_BYTES ?? 1_048_576) };
+  return {
+    host,
+    port: Number(portRaw),
+    token,
+    maxBodyBytes: positiveInteger("KIC_MCP_MAX_BODY_BYTES", env.KIC_MCP_MAX_BODY_BYTES, 1_048_576),
+    allowedHosts: [...new Set([...LOOPBACK, host.toLowerCase(), ...list(env.KIC_MCP_ALLOWED_HOSTS)])],
+    allowedOrigins: list(env.KIC_MCP_ALLOWED_ORIGINS),
+  };
+}
+
+/** The host a request was addressed to, without its port. Handles bracketed IPv6. */
+function hostOf(header: string | undefined): string {
+  const value = (header ?? "").trim().toLowerCase();
+  if (value.startsWith("[")) return value.slice(1, value.indexOf("]"));
+  return value.split(":")[0] ?? "";
 }
 
 function send(res: ServerResponse, status: number, body: Record<string, unknown>): void {
@@ -37,9 +63,9 @@ function send(res: ServerResponse, status: number, body: Record<string, unknown>
 function authorised(req: IncomingMessage, token: string | null): boolean {
   if (token === null) return true;
   const header = req.headers.authorization ?? "";
-  const presented = Buffer.from(header.startsWith("Bearer ") ? header.slice(7) : "");
-  const expected = Buffer.from(token);
-  return presented.length === expected.length && timingSafeEqual(presented, expected);
+  // Both sides are hashed first, so the comparison reveals nothing about the token's length.
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(header.startsWith("Bearer ") ? header.slice(7) : ""), digest(token));
 }
 
 async function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
@@ -61,6 +87,12 @@ async function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
 export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Server {
   return createServer(async (req, res) => {
     const path = (req.url ?? "").split("?")[0];
+    // A page on another site must not be able to reach this server by pointing a name at it
+    // or by calling it from a browser: the Host must be one we answer to, and an Origin must
+    // be one that was explicitly allowed.
+    if (!options.allowedHosts.includes(hostOf(req.headers.host))) return send(res, 403, { error: "host not allowed" });
+    const origin = req.headers.origin;
+    if (origin !== undefined && !options.allowedOrigins.includes(origin.toLowerCase())) return send(res, 403, { error: "origin not allowed" });
     if (path === "/healthz" && req.method === "GET") return send(res, 200, { ok: true });
     if (path !== "/mcp") return send(res, 404, { error: "not found" });
     if (!authorised(req, options.token)) return send(res, 401, { error: "unauthorised" });

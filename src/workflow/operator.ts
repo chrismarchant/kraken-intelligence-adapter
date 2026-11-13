@@ -9,6 +9,22 @@ export interface DecisionNotice {
   subject: DecisionSubject;
   action: DecisionAction;
   summary: string;
+  /** Why the requester proposes this. Written by the requester, so not to be relied on. */
+  proposedRationale: string;
+  revisionInstruction: string | null;
+  requestedBy: string;
+  /** The content the decision applies to, taken from the campaign record, not from the requester. */
+  content: {
+    kind: "narrative" | "draft";
+    title: string;
+    text: string;
+    hashtags: string[];
+    /** Mandatory constraints the content fails. A draft with any cannot be approved. */
+    eligibilityFailures: string[];
+    evaluation: string | null;
+  };
+  /** SHA-256 of that content. Confirmation fails if the content has changed since. */
+  contentSha256: string;
   /** The one-time code. It goes to the operator and nowhere else. */
   code: string;
   expiresAt: string;

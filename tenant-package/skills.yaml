@@ -1,0 +1,77 @@
+# Skills are instructions. They grant nothing: what the Bot may call is what it has been granted
+# in the workspace. Tool references use the id the KIC MCP server is given when it is added by
+# URL; `kic` is assumed here and must match.
+skills:
+  - slug: kic-campaign-brief
+    title: Start a campaign from a brief
+    summary: Validate a client brief, open a campaign and summarise objectives, audience, risks and open questions.
+    instructions: >-
+      Ask for the brief if you do not have it. Create the campaign, then interpret the brief and
+      show the editor the objectives, audience, key messages, risks and open questions. If the
+      brief is refused, show the problems exactly as reported and ask for a corrected brief. Do not
+      fill gaps in the brief yourself.
+    tools:
+      - kic/kic_create_campaign
+      - kic/kic_interpret_brief
+      - kic/kic_get_campaign
+      - kic/kic_list_skills
+
+  - slug: kic-narratives
+    title: Explore narratives
+    summary: Propose alternative campaign narratives and plan the programme once the editor has chosen one.
+    instructions: >-
+      Generate narrative alternatives and present each with its angle, core message, evidence
+      requirements and risks. Do not recommend one as if the choice were yours; ask the editor
+      which to select. After the editor has confirmed a selection, plan the programme and show
+      the sequence of posts with the reason each sits where it does.
+    tools:
+      - kic/kic_generate_narratives
+      - kic/kic_plan_programme
+      - kic/kic_get_campaign
+
+  - slug: kic-drafts
+    title: Write draft alternatives
+    summary: Write at least two alternative LinkedIn drafts for each planned post, and revise one when the editor asks.
+    instructions: >-
+      Write the drafts with the drafting tool; do not write post text yourself in the chat. Revise
+      a draft only after the editor has confirmed a revision request, then evaluate that post
+      again. Tell the editor when a limit on variants or revision passes has been reached.
+    tools:
+      - kic/kic_generate_drafts
+      - kic/kic_revise_draft
+      - kic/kic_get_campaign
+
+  - slug: kic-compare
+    title: Compare drafts
+    summary: Evaluate the drafts for each post against explicit criteria and show the comparison with its evidence and limits.
+    instructions: >-
+      Evaluate, then show the comparison as returned. Point out any draft marked as not eligible
+      and the rule it fails; such a draft cannot be approved whatever it scores. State that the
+      scores come from a deterministic stand-in evaluator and are not measurements.
+    tools:
+      - kic/kic_evaluate_drafts
+      - kic/kic_compare_drafts
+
+  - slug: kic-editorial-decision
+    title: Ask for an editorial decision
+    summary: Ask the editor to select, approve, reject or request a revision, and report the outcome once they have decided.
+    instructions: >-
+      Request the decision and give the editor the request id. The editor reviews the content
+      and confirms or declines with their own operator tool, outside this conversation; you
+      have no tool that records a decision and must not ask for or handle confirmation codes.
+      Check the campaign to see whether the decision has been made before continuing, and say
+      plainly when you are waiting for the editor.
+    tools:
+      - kic/kic_request_decision
+      - kic/kic_get_campaign
+
+  - slug: kic-assemble
+    title: Assemble the programme package
+    summary: Build and export the programme package from the drafts the editor approved.
+    instructions: >-
+      Assemble the programme and report which posts are approved and which are pending, and where
+      the package was exported. Ask before assembling a partial programme. Remind the editor that
+      the publishing commands in the package are provisional and non-executable.
+    tools:
+      - kic/kic_assemble_programme
+      - kic/kic_get_campaign

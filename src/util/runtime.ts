@@ -68,21 +68,60 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
+export type Settled<R> = { status: "fulfilled"; value: R } | { status: "rejected"; reason: unknown } | { status: "skipped" };
+
+/**
+ * Run tasks with at most `limit` in flight and report how each ended, in input order.
+ * After the first failure no further task is started (those are "skipped") and `onFailure`
+ * is called once, so the caller can cancel what is in flight. Tasks already running are
+ * always awaited, so what they cost can still be recorded.
+ */
+export async function mapLimitSettled<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+  onFailure?: () => void,
+): Promise<Settled<R>[]> {
+  const results: Settled<R>[] = items.map(() => ({ status: "skipped" }));
+  let next = 0;
+  let failed = false;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    for (;;) {
+      if (failed) return;
+      const index = next++;
+      if (index >= items.length) return;
+      try {
+        results[index] = { status: "fulfilled", value: await fn(items[index] as T, index) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+        if (!failed) {
+          failed = true;
+          onFailure?.();
+        }
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 /** Run tasks with at most `limit` in flight. Results keep input order. The first failure rejects. */
 export async function mapLimit<T, R>(
   items: readonly T[],
   limit: number,
   fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    for (;;) {
-      const index = next++;
-      if (index >= items.length) return;
-      results[index] = await fn(items[index] as T, index);
-    }
-  });
-  await Promise.all(workers);
-  return results;
+  const settled = await mapLimitSettled(items, limit, fn);
+  const failure = settled.find((s) => s.status === "rejected");
+  if (failure && failure.status === "rejected") throw failure.reason;
+  return settled.map((s) => (s as { status: "fulfilled"; value: R }).value);
+}
+
+/**
+ * Bring text to one canonical form before any rule looks at it: compatibility characters
+ * are folded (full-width digits and signs become ordinary ones) and invisible format
+ * characters (zero-width spaces, soft hyphens, direction marks) are removed.
+ */
+export function canonicalText(text: string): string {
+  return text.normalize("NFKC").replace(/\p{Cf}/gu, "");
 }

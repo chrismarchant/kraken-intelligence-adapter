@@ -11,6 +11,8 @@ import { assembleProgramme, exportProgramme } from "../workflow/assemble.ts";
 import { comparisonMarkdown } from "../workflow/comparison.ts";
 import { MemoryOperatorChannel } from "../workflow/operator.ts";
 import { CampaignService } from "../workflow/service.ts";
+import type { DecisionKeyPair } from "../workflow/signing.ts";
+import { generateDecisionKeyPair } from "../workflow/signing.ts";
 
 /**
  * The scripted stand-in for the editor in the synthetic scenario. It is labelled as such in
@@ -30,6 +32,8 @@ export interface ScenarioOptions {
   store?: CampaignStore;
   narratives?: number;
   variants?: number;
+  /** The operator key for this run. A fresh one is generated when none is given. */
+  keys?: DecisionKeyPair;
   log?: (line: string) => void;
 }
 
@@ -56,7 +60,11 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
   const clock = fixedClock();
   const operator = new MemoryOperatorChannel();
   const store = options.store ?? new MemoryCampaignStore();
+  // The scripted editor holds the operator key, as the operator's tool would.
+  const keys = options.keys ?? generateDecisionKeyPair();
   const service = new CampaignService({
+    signer: keys.signer,
+    verifier: keys.verifier,
     store,
     gateway: options.gateway,
     evaluator: createJevTransport("mock-jev", DEFAULT_LIMITS),
@@ -150,13 +158,14 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
   record = await service.getCampaign(id);
   evaluations = record.evaluations;
   const comparison = comparisonMarkdown(record);
-  const pkg = assembleProgramme(record, { allowPartial: pending.length > 0, clock, limits: service.limits });
+  const pkg = assembleProgramme(record, { allowPartial: pending.length > 0, clock, limits: service.limits, verifier: keys.verifier });
   const exported = await exportProgramme(pkg, options.exportRoot);
   log(
     `6. Programme ${pkg.programmeId} assembled (${pkg.approvalState}): ${pkg.provisionalCommands.length} provisional commands, all ${pkg.provisionalCommands[0]?.status}.`,
   );
   log(
-    `   Model calls: ${record.budget.modelCalls}; completion tokens: ${record.budget.usage.completionTokens} (reasoning ${record.budget.usage.reasoningTokens}).`,
+    `   Model steps: ${record.budget.modelCalls}; provider requests: ${record.budget.providerRequests}; prompt tokens: ${record.budget.usage.promptTokens}; ` +
+      `completion tokens: ${record.budget.usage.completionTokens} (reasoning ${record.budget.usage.reasoningTokens}).`,
   );
   return { record, package: pkg, export: exported, comparison, steps };
 }

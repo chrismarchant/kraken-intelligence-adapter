@@ -47,6 +47,7 @@ export const EligibilityFailure = z.strictObject({
     "unsupported-claim",
     "unknown-evidence-reference",
     "unlisted-statistic",
+    "suspicious-characters",
     "empty-body",
   ]),
   detail: ShortText,

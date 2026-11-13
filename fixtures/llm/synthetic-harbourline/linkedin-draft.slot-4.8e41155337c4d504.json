@@ -1,0 +1,49 @@
+{
+  "purpose": "linkedin-draft.slot-4",
+  "schemaName": "post_drafts",
+  "requestSha256": "8e41155337c4d50404f3679c41bb59cf3cdea4195ccb1435980b696d2bb6adb3",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T02:05:20.943Z",
+  "usage": {
+    "promptTokens": 1719,
+    "completionTokens": 6325,
+    "reasoningTokens": 5706
+  },
+  "value": {
+    "variants": [
+      {
+        "variant": "question-led",
+        "approach": "Opens with the direct question about trusting the weekly report, uses the survey figure to underline the trust gap, then invites a specific answer in the comments.",
+        "hook": "What would you change in your weekly report if you trusted every number in it?",
+        "body": "What would you change in your weekly report if you trusted every number in it?\n\nRight now, many of us hand-check inventory figures before the weekly report goes out. That check is there because the numbers have to be right. But it also means decisions wait while someone reconciles the records.\n\nIn a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report. The data quality issue sits in operations, not in the IT department. It shows up as hours spent reconciling records and reports that nobody acts on straight away.\n\nIf your weekly figures needed no hand-checking, what would you change about how you run your operations?\n\nTell us in the comments.",
+        "callToAction": "Tell us in the comments.",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Logistics"
+        ],
+        "claims": [
+          {
+            "text": "In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report.",
+            "needsEvidence": true,
+            "evidenceRef": "ref-survey"
+          }
+        ]
+      },
+      {
+        "variant": "scenario-led",
+        "approach": "Paints a concrete Monday morning reporting routine to make the hand-check feel real, then pivots to the invitation without using statistics.",
+        "hook": "Monday morning. The weekly report is due at nine.",
+        "body": "Monday morning. The weekly report is due at nine.\n\nYou open the inventory system, then the order system, and start comparing line by line. It is the same routine every week. The numbers have to match before anyone acts on the report, so the data quality check happens by hand in operations. That time could go into routing, staffing or fixing the bottlenecks you already know about.\n\nMost weeks the reconciliation takes time away from the work of running the warehouse. That is an operations problem, not an IT problem. It shows up in delayed decisions and reports that sit unread until someone checks them.\n\nWhen the figures needed no hand-checking before the meeting, the conversation would shift from whether the numbers are right to what to do next.\n\nIf your weekly report was trusted the moment it landed, what would you change about how you run your operations?\n\nShare it in the comments.",
+        "callToAction": "Share it in the comments.",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Reporting"
+        ],
+        "claims": []
+      }
+    ]
+  }
+}

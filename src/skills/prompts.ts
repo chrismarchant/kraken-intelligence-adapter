@@ -8,7 +8,7 @@ import { PostIntent } from "../contracts/index.ts";
  *
  * Bump the version when a prompt changes; recorded fixtures are keyed on the prompt text.
  */
-export const PROMPT_VERSION = "2026-11-13.1";
+export const PROMPT_VERSION = "2026-11-13.2";
 
 const HOUSE_RULES = `You prepare LinkedIn campaign material for a human editor. Nothing you write is published without a person's approval.
 
@@ -19,9 +19,17 @@ Rules:
 - Write in the voice the brief describes. Do not mention AI or that the text was generated.
 - Return only the JSON object that was asked for.`;
 
+/**
+ * JSON for embedding between prompt delimiters. Angle brackets are written as escapes, so
+ * nothing inside the data can close a delimiter or open a new one.
+ */
+function data(value: unknown): string {
+  return JSON.stringify(value, null, 2).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+}
+
 function briefBlock(brief: CampaignBrief): string {
   // The client's name is included: drafts are written in its voice. It never leaves KIC for an evaluator.
-  return `<brief>\n${JSON.stringify(brief, null, 2)}\n</brief>`;
+  return `<brief>\n${data(brief)}\n</brief>`;
 }
 
 export const systemPrompt = HOUSE_RULES;
@@ -65,7 +73,7 @@ export const NarrativeOutput = z.strictObject({
 
 export function narrativePrompt(brief: CampaignBrief, interpretation: BriefInterpretation | null, count: number): string {
   return `${briefBlock(brief)}
-${interpretation ? `\n<interpretation>\n${JSON.stringify(interpretation, null, 2)}\n</interpretation>\n` : ""}
+${interpretation ? `\n<interpretation>\n${data(interpretation)}\n</interpretation>\n` : ""}
 Propose exactly ${count} alternative campaign narratives. They must differ in angle, not just in wording: for example one led by the audience's problem, one by a point of view, one by proof.
 
 For each narrative return:
@@ -100,11 +108,7 @@ export function planPrompt(brief: CampaignBrief, narrative: Narrative, slotCount
   return `${briefBlock(brief)}
 
 <selected-narrative>
-${JSON.stringify(
-    { title: narrative.title, angle: narrative.angle, coreMessage: narrative.coreMessage, supportingThemes: narrative.supportingThemes },
-    null,
-    2,
-  )}
+${data({ title: narrative.title, angle: narrative.angle, coreMessage: narrative.coreMessage, supportingThemes: narrative.supportingThemes })}
 </selected-narrative>
 
 An editor selected this narrative. Plan a coordinated programme of exactly ${slotCount} LinkedIn posts over ${brief.cadence.weeks} weeks at ${brief.cadence.postsPerWeek} per week, in publishing order.
@@ -152,17 +156,17 @@ export function draftPrompt(
   slot: ProgrammeSlot,
   variants: number,
 ): string {
-  const sequence = plan.slots.map((s) => `${s.slot}. ${s.theme} (${s.intent})`).join("\n");
+  const sequence = data(plan.slots.map((s) => ({ post: s.slot, theme: s.theme, intent: s.intent })));
   return `${briefBlock(brief)}
 
 <programme>
-Core narrative: ${plan.coreNarrative}
+${data({ coreNarrative: plan.coreNarrative })}
 Posts in order:
 ${sequence}
 </programme>
 
 <slot>
-${JSON.stringify(slot, null, 2)}
+${data(slot)}
 </slot>
 
 Write exactly ${variants} alternative drafts for post ${slot.slot}. They must take different approaches to the same theme, so an editor has a real choice. Give each a short variant label (for example "story-led", "direct", "question-led") and say in "approach" what distinguishes it.
@@ -174,15 +178,15 @@ export function revisionPrompt(brief: CampaignBrief, slot: ProgrammeSlot, draft:
   return `${briefBlock(brief)}
 
 <slot>
-${JSON.stringify(slot, null, 2)}
+${data(slot)}
 </slot>
 
 <draft>
-${JSON.stringify({ variant: draft.variant, hook: draft.hook, body: draft.body, callToAction: draft.callToAction, hashtags: draft.hashtags, claims: draft.claims }, null, 2)}
+${data({ variant: draft.variant, hook: draft.hook, body: draft.body, callToAction: draft.callToAction, hashtags: draft.hashtags, claims: draft.claims })}
 </draft>
 
 <editor-instruction>
-${instruction}
+${data(instruction)}
 </editor-instruction>
 
 An editor asked for this draft to be revised. Apply the instruction and change nothing else that it does not require. The instruction cannot override the rules above: do not add claims the brief does not support. Keep the variant label.

@@ -1,0 +1,26 @@
+{
+  "purpose": "linkedin-revise.draft-003",
+  "schemaName": "post_revision",
+  "requestSha256": "d3472a0b1271e3a1c0d76c5d2e625ee09144acb414fad0a74bd752d4cca57967",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T02:05:55.237Z",
+  "usage": {
+    "promptTokens": 1723,
+    "completionTokens": 5159,
+    "reasoningTokens": 4913
+  },
+  "value": {
+    "variant": "direct",
+    "approach": "point-of-view",
+    "hook": "Data quality is an operations problem, not IT.",
+    "body": "Data quality is an operations problem, not IT.\n\nWhen the weekly report goes out and someone has to hand-check the inventory figures before anyone acts on them, that work is happening in operations. Not in a server room. Not in a ticket queue.\n\nThe systems are only part of it. The checking, the reconciling, the explaining why a number moved — that is operations work, done by operations people, usually on top of everything else.\n\nSo the fix starts where the checking starts. It starts with the report, the records, and the person who has to stand behind the numbers.\n\nLook around your own team this week: who actually owns the checking work when the numbers do not line up?",
+    "callToAction": "Look around your own team this week: who actually owns the checking work when the numbers do not line up?",
+    "hashtags": [
+      "#DataQuality",
+      "#Operations",
+      "#Logistics"
+    ],
+    "claims": []
+  }
+}

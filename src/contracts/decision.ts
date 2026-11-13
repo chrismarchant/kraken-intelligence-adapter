@@ -25,6 +25,8 @@ export const DecisionRequest = z.strictObject({
   requestedBy: ShortText,
   requestedAt: IsoDateTime,
   expiresAt: IsoDateTime,
+  /** SHA-256 of the subject's content when the request was made. A changed subject voids the request. */
+  subjectContentSha256: z.string().regex(/^[0-9a-f]{64}$/),
   /** SHA-256 of the one-time code. The code itself is never stored or returned to the agent. */
   codeHash: z.string().regex(/^[0-9a-f]{64}$/),
   failedAttempts: z.number().int().min(0),
@@ -44,5 +46,16 @@ export const EditorialDecision = z.strictObject({
   decidedAt: IsoDateTime,
   /** SHA-256 of the content the editor decided on, so a later edit cannot inherit the decision. */
   subjectContentSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  /**
+   * Signature by the operator's key over the campaign id and every field above.
+   * Null only where unsigned decisions were explicitly allowed (development).
+   */
+  signature: z
+    .strictObject({
+      alg: z.literal("ed25519"),
+      keyId: z.string().regex(/^[0-9a-f]{16}$/),
+      value: z.string().min(1),
+    })
+    .nullable(),
 });
 export type EditorialDecision = z.infer<typeof EditorialDecision>;

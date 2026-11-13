@@ -2,13 +2,18 @@ import { readFileSync } from "node:fs";
 import type { CampaignBrief, DecisionAction, DecisionSubject, HumanActor } from "../../src/contracts/index.ts";
 import { MockJevTransport } from "../../src/evaluation/jev.ts";
 import type { GenerateRequest, GenerateResult, ModelGateway } from "../../src/gateway/gateway.ts";
+import { ModelOutputError } from "../../src/gateway/gateway.ts";
 import type { Limits } from "../../src/limits.ts";
 import { DEFAULT_LIMITS } from "../../src/limits.ts";
 import { MemoryCampaignStore } from "../../src/store/store.ts";
 import type { Clock } from "../../src/util/runtime.ts";
 import { sequentialIds } from "../../src/util/runtime.ts";
+import type { CampaignRecord } from "../../src/contracts/index.ts";
+import type { CampaignStore } from "../../src/store/store.ts";
+import { assembleProgramme } from "../../src/workflow/assemble.ts";
 import { MemoryOperatorChannel } from "../../src/workflow/operator.ts";
 import { CampaignService } from "../../src/workflow/service.ts";
+import { generateDecisionKeyPair } from "../../src/workflow/signing.ts";
 
 export const BRIEF_PATH = "fixtures/campaigns/synthetic-harbourline.brief.json";
 
@@ -31,7 +36,10 @@ export interface DraftSpec {
 const CTA = "What did you last check by hand before sending a report?";
 
 export function cleanDraft(label: string, extra = ""): DraftSpec {
-  const hook = `How much of your week goes on checking ${label} numbers?`;
+  // Digits in a label become letters in the post text: any number in a post must be backed by a
+  // cited reference, and these scripted drafts are meant to be clean.
+  const word = label.replace(/\d/g, (d) => "abcdefghij"[Number(d)] as string);
+  const hook = `How much of your week goes on checking ${word} numbers?`;
   return {
     variant: label,
     approach: `Scripted ${label} approach`,
@@ -57,6 +65,12 @@ export interface ScriptOptions {
   revision?: (purpose: string) => DraftSpec;
   /** Force a wrong number of narratives, to test count checks. */
   narrativeCount?: number;
+  /** Make calls whose purpose matches fail with rejected output, after "spending" tokens. */
+  failPurpose?: RegExp;
+  /** Delay before every answer, so that calls overlap. */
+  delayMs?: number;
+  /** Never answer; wait until the call is cancelled. For timeout tests. */
+  hang?: boolean;
 }
 
 const usage = { promptTokens: 100, completionTokens: 400, reasoningTokens: 300 };
@@ -64,6 +78,11 @@ const usage = { promptTokens: 100, completionTokens: 400, reasoningTokens: 300 }
 /** A stand-in model that answers each step from a script. Offline and deterministic. */
 export class ScriptedGateway implements ModelGateway {
   readonly calls: string[] = [];
+  /** Calls that were cancelled through their abort signal. */
+  readonly cancelled: string[] = [];
+  /** The most calls that were in flight at one moment. */
+  peak = 0;
+  private inFlight = 0;
   private readonly options: ScriptOptions;
 
   constructor(options: ScriptOptions = {}) {
@@ -72,6 +91,30 @@ export class ScriptedGateway implements ModelGateway {
 
   async generateJson<T>(request: GenerateRequest<T>): Promise<GenerateResult<T>> {
     this.calls.push(request.purpose);
+    this.inFlight += 1;
+    this.peak = Math.max(this.peak, this.inFlight);
+    try {
+      // A scripted failure happens at once, so that it lands while other calls are in flight.
+      if (this.options.failPurpose?.test(request.purpose)) {
+        throw new ModelOutputError(request.purpose, "scripted failure", { usage, providerRequests: 3 });
+      }
+      if (this.options.hang || this.options.delayMs) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = this.options.hang ? null : setTimeout(resolve, this.options.delayMs);
+          request.signal?.addEventListener("abort", () => {
+            if (timer) clearTimeout(timer);
+            this.cancelled.push(request.purpose);
+            reject(new Error("cancelled"));
+          });
+        });
+      }
+      return this.answer(request);
+    } finally {
+      this.inFlight -= 1;
+    }
+  }
+
+  private answer<T>(request: GenerateRequest<T>): GenerateResult<T> {
     const asked = (pattern: RegExp) => Number(pattern.exec(request.user)?.[1] ?? "0");
     let value: unknown;
     if (request.purpose === "campaign-brief") {
@@ -113,7 +156,7 @@ export class ScriptedGateway implements ModelGateway {
     } else {
       throw new Error(`ScriptedGateway has no script for "${request.purpose}".`);
     }
-    return { value: request.schema.parse(value), provider: "scripted", model: "scripted-model", source: "fixture", usage, latencyMs: 0 };
+    return { value: request.schema.parse(value), provider: "scripted", model: "scripted-model", source: "fixture", usage, providerRequests: 1, latencyMs: 0 };
   }
 }
 
@@ -132,21 +175,20 @@ export class TestClock implements Clock {
   }
 }
 
-export function makeService(options: { script?: ScriptOptions; limits?: Partial<Limits> } = {}) {
+export function makeService(options: { script?: ScriptOptions; limits?: Partial<Limits>; store?: CampaignStore } = {}) {
   const gateway = new ScriptedGateway(options.script);
   const operator = new MemoryOperatorChannel();
-  const store = new MemoryCampaignStore();
+  const store = options.store ?? new MemoryCampaignStore();
   const clock = new TestClock();
   const limits = { ...DEFAULT_LIMITS, ...options.limits };
-  const service = new CampaignService({
-    store,
-    gateway,
-    evaluator: new MockJevTransport(limits),
-    operator,
-    clock,
-    ids: sequentialIds(),
-    limits,
-  });
+  const ids = sequentialIds();
+  // The operator's key pair. `service` holds both halves, as the operator's tool does.
+  // `agentService` holds only the public half, as the agent-facing server does.
+  const keys = generateDecisionKeyPair();
+  const shared = { store, gateway, evaluator: new MockJevTransport(limits), operator, clock, ids, limits };
+  const service = new CampaignService({ ...shared, signer: keys.signer, verifier: keys.verifier });
+  const agentService = new CampaignService({ ...shared, signer: null, verifier: keys.verifier });
+  const assemble = (record: CampaignRecord, allowPartial = false) => assembleProgramme(record, { allowPartial, clock, limits, verifier: keys.verifier });
 
   /** Request a decision and confirm it as the editor would, with the code from the operator channel. */
   const decide = async (campaignId: string, subject: DecisionSubject, action: DecisionAction, instruction?: string) => {
@@ -184,5 +226,5 @@ export function makeService(options: { script?: ScriptOptions; limits?: Partial<
     return id;
   };
 
-  return { service, gateway, operator, store, clock, limits, decide, planned, evaluated };
+  return { service, agentService, keys, assemble, gateway, operator, store, clock, limits, decide, planned, evaluated };
 }

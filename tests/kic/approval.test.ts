@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_LIMITS } from "../../src/limits.ts";
-import { approvalOf, assembleProgramme } from "../../src/workflow/assemble.ts";
+import { approvalOf } from "../../src/workflow/assemble.ts";
 import { WorkflowError } from "../../src/workflow/service.ts";
 import { EDITOR, cleanDraft, makeService, syntheticBrief } from "./support.ts";
 
@@ -166,7 +165,7 @@ test("a draft that fails a mandatory constraint cannot be approved, whatever it 
 });
 
 test("approval is recorded against the exact text, with the editor's name and reason", async () => {
-  const { service, evaluated, decide } = makeService();
+  const { service, evaluated, decide, keys } = makeService();
   const id = await evaluated();
   const record = await service.getCampaign(id);
   const draft = record.drafts.find((d) => d.slot === 1)!;
@@ -175,7 +174,8 @@ test("approval is recorded against the exact text, with the editor's name and re
   const approved = after.drafts.find((d) => d.id === draft.id)!;
   assert.equal(approved.status, "approved");
   assert.deepEqual(decision.actor, EDITOR);
-  assert.equal(approvalOf(after, approved)?.id, decision.id);
+  assert.equal(approvalOf(after, approved, keys.verifier)?.id, decision.id);
+  assert.equal(decision.signature?.keyId, keys.signer.keyId, "the decision is signed with the operator key");
   assert.match(after.audit.at(-1)!.detail, /Test Editor/);
 });
 
@@ -243,73 +243,71 @@ test("a draft is revised only on an editor's confirmed request, and only a bound
 });
 
 test("nothing can be assembled until a person has approved something", async () => {
-  const { service, evaluated, clock } = makeService();
+  const { service, evaluated, assemble } = makeService();
   const id = await evaluated();
   const record = await service.getCampaign(id);
   assert.throws(
-    () => assembleProgramme(record, { clock, limits: DEFAULT_LIMITS }),
+    () => assemble(record),
     (error: unknown) => error instanceof WorkflowError && error.code === "nothing-approved",
   );
 });
 
 test("a programme with unapproved posts is refused unless a partial package is asked for", async () => {
-  const { service, evaluated, decide, clock } = makeService();
+  const { service, evaluated, decide, assemble } = makeService();
   const id = await evaluated();
   const first = (await service.getCampaign(id)).drafts.find((d) => d.slot === 1)!;
   await decide(id, { kind: "draft", id: first.id }, "approve");
   const record = await service.getCampaign(id);
   assert.throws(
-    () => assembleProgramme(record, { clock, limits: DEFAULT_LIMITS }),
+    () => assemble(record),
     (error: unknown) => error instanceof WorkflowError && error.code === "slots-pending",
   );
-  const partial = assembleProgramme(record, { allowPartial: true, clock, limits: DEFAULT_LIMITS });
+  const partial = assemble(record, true);
   assert.equal(partial.approvalState, "partial");
   assert.equal(partial.provisionalCommands.length, 1, "commands exist only for approved posts");
   assert.deepEqual(partial.posts.map((p) => p.state), ["approved", "pending", "pending", "pending"]);
 });
 
 test("text changed after approval is not treated as approved", async () => {
-  const { service, store, evaluated, decide, clock } = makeService();
+  const { service, store, evaluated, decide, assemble, keys } = makeService();
   const id = await evaluated();
   const first = (await service.getCampaign(id)).drafts.find((d) => d.slot === 1)!;
   await decide(id, { kind: "draft", id: first.id }, "approve");
 
   // Tamper with the stored record directly, bypassing the service.
-  const tampered = await store.get(id);
-  tampered.drafts.find((d) => d.id === first.id)!.body += "\n\nAn extra paragraph nobody approved.";
-  tampered.revision += 1;
-  await store.put(tampered);
+  await store.update(id, (tampered) => {
+    tampered.drafts.find((d) => d.id === first.id)!.body += "\n\nAn extra paragraph nobody approved.";
+  });
 
   const record = await service.getCampaign(id);
-  assert.equal(approvalOf(record, record.drafts.find((d) => d.id === first.id)!), null);
+  assert.equal(approvalOf(record, record.drafts.find((d) => d.id === first.id)!, keys.verifier), null);
   assert.throws(
-    () => assembleProgramme(record, { allowPartial: true, clock, limits: DEFAULT_LIMITS }),
+    () => assemble(record, true),
     (error: unknown) => error instanceof WorkflowError && error.code === "nothing-approved",
   );
 });
 
 test("a status flipped to approved without a decision is not treated as approved", async () => {
-  const { service, store, evaluated, clock } = makeService();
+  const { service, store, evaluated, assemble } = makeService();
   const id = await evaluated();
-  const forged = await store.get(id);
-  for (const draft of forged.drafts) draft.status = "approved";
-  forged.revision += 1;
-  await store.put(forged);
+  await store.update(id, (forged) => {
+    for (const draft of forged.drafts) draft.status = "approved";
+  });
   const record = await service.getCampaign(id);
   assert.throws(
-    () => assembleProgramme(record, { allowPartial: true, clock, limits: DEFAULT_LIMITS }),
+    () => assemble(record, true),
     (error: unknown) => error instanceof WorkflowError && error.code === "nothing-approved",
   );
 });
 
 test("every provisional command in an assembled programme is non-executable and tied to its approval", async () => {
-  const { service, evaluated, decide, clock } = makeService();
+  const { service, evaluated, decide, assemble } = makeService();
   const id = await evaluated();
   const record = await service.getCampaign(id);
   for (const slot of record.plan!.slots) {
     await decide(id, { kind: "draft", id: record.drafts.find((d) => d.slot === slot.slot)!.id }, "approve");
   }
-  const pkg = assembleProgramme(await service.getCampaign(id), { clock, limits: DEFAULT_LIMITS });
+  const pkg = assemble(await service.getCampaign(id));
   assert.equal(pkg.approvalState, "complete");
   assert.equal(pkg.provisionalCommands.length, 4);
   for (const command of pkg.provisionalCommands) {

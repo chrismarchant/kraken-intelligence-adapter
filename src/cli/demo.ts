@@ -49,17 +49,19 @@ if (values.mode === "live") {
   throw new Error(`Unknown mode "${values.mode}". Use "fixture", "fill" or "live".`);
 }
 
+// Each run exports into its own directory, so an earlier run is never overwritten.
+const exportRoot = join(resolve(values.out), new Date().toISOString().replace(/[:.]/g, "-"));
 console.log(`Synthetic campaign scenario — model output: ${values.mode}${values.record ? " (recording)" : ""}`);
 const started = Date.now();
 const result = await runSyntheticCampaign({
   gateway,
   briefPath: resolve(values.brief),
-  exportRoot: resolve(values.out),
+  exportRoot,
   variants: Number(values.variants),
   narratives: Number(values.narratives),
   log: (line) => console.log(line),
 });
-const comparisonPath = join(resolve(values.out), result.package.programmeId, "comparison.md");
+const comparisonPath = join(result.export.directory, "comparison.md");
 await writeFile(comparisonPath, result.comparison);
 console.log(`\nExported in ${Math.round((Date.now() - started) / 1000)} s:`);
 console.log(`  ${result.export.packagePath}`);

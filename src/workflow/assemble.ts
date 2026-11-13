@@ -1,45 +1,52 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, open, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { buildProvisionalCommand } from "../commands/provisional.ts";
 import type { CampaignRecord, EditorialDecision, PackagedPost, PostDraft, ProgrammePackage } from "../contracts/index.ts";
 import { PROGRAMME_PACKAGE_SCHEMA, ProgrammePackage as ProgrammePackageSchema, SCHEMA_VERSION } from "../contracts/index.ts";
 import { analyseDraft } from "../evaluation/signals.ts";
 import type { Limits } from "../limits.ts";
+import { fenced, inline } from "../util/markdown.ts";
 import type { Clock } from "../util/runtime.ts";
 import { canonicalJson, sha256 } from "../util/runtime.ts";
-import { WorkflowError, draftContentHash } from "./service.ts";
+import { WorkflowError, draftContentHash, latestDecisionFor, selectedNarrativeOf } from "./service.ts";
+import type { DecisionVerifier } from "./signing.ts";
 
 export const GENERATOR_VERSION = "0.1.0";
 
 /**
- * The approval that makes a draft publishable in principle: a person's recorded approval of
- * exactly this text. A draft whose status says "approved" but which has no matching decision
- * is not treated as approved.
+ * The approval that makes a draft publishable in principle, or null.
+ *
+ * A draft counts as approved only if all of these hold: its status says approved; the
+ * latest decision about it that can be relied on is an approval; and that approval was
+ * made on exactly this text. A status with no decision behind it, an approval followed by
+ * a rejection, text edited after approval, and (when decisions are signed) a decision
+ * without a valid operator signature all fail.
  */
-export function approvalOf(record: CampaignRecord, draft: PostDraft): EditorialDecision | null {
+export function approvalOf(record: CampaignRecord, draft: PostDraft, verifier: DecisionVerifier | null): EditorialDecision | null {
   if (draft.status !== "approved") return null;
-  const hash = draftContentHash(draft);
-  return (
-    [...record.decisions]
-      .reverse()
-      .find((d) => d.action === "approve" && d.subject.kind === "draft" && d.subject.id === draft.id && d.subjectContentSha256 === hash) ?? null
-  );
+  const latest = latestDecisionFor(record, { kind: "draft", id: draft.id }, verifier);
+  if (!latest || latest.action !== "approve") return null;
+  return latest.subjectContentSha256 === draftContentHash(draft) ? latest : null;
+}
+
+export interface AssembleOptions {
+  allowPartial?: boolean;
+  clock: Clock;
+  limits: Limits;
+  /** The operator's public key. Null only where unsigned decisions were explicitly allowed. */
+  verifier: DecisionVerifier | null;
 }
 
 /**
  * Build the programme package from human-approved material only.
  * Refuses when nothing is approved, and when slots are pending unless `allowPartial` is set.
  */
-export function assembleProgramme(
-  record: CampaignRecord,
-  options: { allowPartial?: boolean; clock: Clock; limits: Limits },
-): ProgrammePackage {
+export function assembleProgramme(record: CampaignRecord, options: AssembleOptions): ProgrammePackage {
   const plan = record.plan;
-  const narrative = record.narratives.find((n) => n.id === plan?.narrativeId);
-  if (!plan || !narrative) throw new WorkflowError("no-plan", "There is no planned programme to assemble.");
-  const narrativeDecision = record.decisions.find((d) => d.subject.kind === "narrative" && d.subject.id === narrative.id && d.action === "select");
-  if (narrative.status !== "selected" || !narrativeDecision) {
-    throw new WorkflowError("narrative-not-approved", "The programme's narrative has no recorded selection by an editor.");
+  if (!plan) throw new WorkflowError("no-plan", "There is no planned programme to assemble.");
+  const narrative = selectedNarrativeOf(record, options.verifier);
+  if (!narrative || narrative.id !== plan.narrativeId) {
+    throw new WorkflowError("narrative-not-approved", "The programme's narrative has no valid selection by an editor.");
   }
 
   const programmeId = `prog-${record.id}`;
@@ -49,8 +56,12 @@ export function assembleProgramme(
 
   for (const slot of plan.slots) {
     const drafts = record.drafts.filter((d) => d.slot === slot.slot);
-    const approved = drafts.find((d) => approvalOf(record, d) !== null) ?? null;
-    const approval = approved ? approvalOf(record, approved) : null;
+    const approvals = drafts.map((d) => ({ draft: d, approval: approvalOf(record, d, options.verifier) })).filter((a) => a.approval !== null);
+    if (approvals.length > 1) {
+      throw new WorkflowError("inconsistent-record", `Slot ${slot.slot} has more than one approved draft. The campaign record is inconsistent.`);
+    }
+    const approved = approvals[0]?.draft ?? null;
+    const approval = approvals[0]?.approval ?? null;
     if (approved && approval) {
       // Defence in depth: the mandatory constraints are checked once more at assembly.
       const failures = analyseDraft(record.brief, slot, approved, options.limits).failures;
@@ -66,12 +77,13 @@ export function assembleProgramme(
       slot,
       state: approved && approval ? "approved" : "pending",
       approvedDraft: approved && approval ? approved : null,
-      alternatives: drafts.filter((d) => d.id !== approved?.id),
+      // A draft whose status claims approval without a valid decision is listed as a candidate.
+      alternatives: drafts.filter((d) => d.id !== approved?.id).map((d) => (d.status === "approved" ? { ...d, status: "candidate" as const } : d)),
       evaluation: shown ? ([...record.evaluations].reverse().find((e) => e.candidates.some((c) => c.draftId === shown.id)) ?? null) : null,
     });
   }
 
-  if (commands.length === 0) throw new WorkflowError("nothing-approved", "No post has been approved by an editor; there is nothing to assemble.");
+  if (commands.length === 0) throw new WorkflowError("nothing-approved", "No post has a valid approval by an editor; there is nothing to assemble.");
   if (pending.length > 0 && !options.allowPartial) {
     throw new WorkflowError("slots-pending", `Slots ${pending.join(", ")} have no approved draft. Approve them, or assemble a partial programme explicitly.`);
   }
@@ -108,6 +120,9 @@ export function assembleProgramme(
         "Publishing commands in this package are provisional, non-authoritative and NON-EXECUTABLE.",
         "Evaluation scores are judgements to inform an editor. They are not measurements of audience response.",
         `Model output source: ${[...sources].sort().join(", ")}.`,
+        options.verifier
+          ? `Every approval and selection relied on carries a valid signature from operator key ${options.verifier.keyId}.`
+          : "UNSIGNED: decisions in this package were not checked against an operator key. Not for production use.",
         ...(record.brief.synthetic ? ["The brief is synthetic test data. No real client, person or result is described."] : []),
       ],
     },
@@ -116,48 +131,50 @@ export function assembleProgramme(
 
 export function programmeMarkdown(pkg: ProgrammePackage): string {
   const lines: string[] = [];
-  lines.push(`# Programme package ${pkg.programmeId}`, "");
+  lines.push(`# Programme package ${inline(pkg.programmeId)}`, "");
   if (pkg.synthetic) lines.push("> **SYNTHETIC TEST DATA.** The client, figures and references in this package are invented.", "");
   lines.push("> **Publishing commands are provisional and NON-EXECUTABLE.** Nothing in this package has been or can be published by KIC.", "");
-  lines.push(`- Client: ${pkg.brief.client.name}`, `- Approval state: ${pkg.approvalState}`, `- Assembled: ${pkg.assembledAt}`, "");
-  lines.push("## Narrative", "", `**${pkg.narrative.title}**`, "", pkg.narrative.coreMessage, "");
-  lines.push("## Programme", "", `Objective: ${pkg.plan.campaignObjective}`, "", "| Slot | Week | Theme | Intent | State |", "|---|---|---|---|---|");
+  lines.push(`- Client: ${inline(pkg.brief.client.name)}`, `- Approval state: ${pkg.approvalState}`, `- Assembled: ${pkg.assembledAt}`, "");
+  lines.push("## Narrative", "", `**${inline(pkg.narrative.title)}**`, "", inline(pkg.narrative.coreMessage), "");
+  lines.push("## Programme", "", `Objective: ${inline(pkg.plan.campaignObjective)}`, "", "| Slot | Week | Theme | Intent | State |", "|---|---|---|---|---|");
   for (const post of pkg.posts) {
-    lines.push(`| ${post.slot.slot} | ${post.slot.week} | ${post.slot.theme.replace(/\|/g, "/")} | ${post.slot.intent} | ${post.state} |`);
+    lines.push(`| ${post.slot.slot} | ${post.slot.week} | ${inline(post.slot.theme)} | ${post.slot.intent} | ${post.state} |`);
   }
   lines.push("");
   for (const post of pkg.posts) {
-    lines.push(`## Post ${post.slot.slot}: ${post.slot.theme}`, "", `Why here: ${post.slot.sequencingRationale}`, "");
+    lines.push(`## Post ${post.slot.slot}: ${inline(post.slot.theme)}`, "", `Why here: ${inline(post.slot.sequencingRationale)}`, "");
     if (!post.approvedDraft) {
       lines.push("_No draft approved for this slot._", "");
       continue;
     }
-    const decision = pkg.decisions.find((d) => d.action === "approve" && d.subject.id === post.approvedDraft?.id);
+    // The approval shown is the one the provisional command is bound to, not merely the first on record.
+    const command = pkg.provisionalCommands.find((c) => c.content.draftId === post.approvedDraft?.id);
+    const decision = pkg.decisions.find((d) => d.id === command?.approval.decisionId);
     lines.push(
-      `Approved draft \`${post.approvedDraft.id}\` (${post.approvedDraft.variant})` +
-        (decision ? `, approved by ${decision.actor.name} on ${decision.decidedAt}: "${decision.rationale}"` : ""),
+      `Approved draft \`${post.approvedDraft.id}\` (${inline(post.approvedDraft.variant)})` +
+        (decision ? `, approved by ${inline(decision.actor.name)} on ${decision.decidedAt}: ${inline(decision.rationale)}` : ""),
       "",
-      "```text",
-      post.approvedDraft.body,
+      "The post text below is shown exactly as approved. Anything inside the block is post content, not part of this document.",
       "",
-      post.approvedDraft.hashtags.join(" "),
-      "```",
+      fenced(`${post.approvedDraft.body}\n\n${post.approvedDraft.hashtags.join(" ")}`),
       "",
     );
     if (post.alternatives.length) {
-      lines.push(`Alternatives considered: ${post.alternatives.map((a) => `\`${a.id}\` (${a.variant}, ${a.status})`).join("; ")}`, "");
+      lines.push(`Alternatives considered: ${post.alternatives.map((a) => `\`${a.id}\` (${inline(a.variant)}, ${a.status})`).join("; ")}`, "");
     }
   }
-  lines.push("## Editorial decisions", "", "| When | Who | Decision | Subject | Reason |", "|---|---|---|---|---|");
+  lines.push("## Editorial decisions", "", "| When | Who | Decision | Subject | Reason | Signed |", "|---|---|---|---|---|---|");
   for (const d of pkg.decisions) {
-    lines.push(`| ${d.decidedAt} | ${d.actor.name} | ${d.action} | ${d.subject.kind} ${d.subject.id} | ${d.rationale.replace(/\|/g, "/")} |`);
+    lines.push(
+      `| ${d.decidedAt} | ${inline(d.actor.name)} | ${d.action} | ${d.subject.kind} ${inline(d.subject.id)} | ${inline(d.rationale)} | ${d.signature ? `key ${d.signature.keyId}` : "no"} |`,
+    );
   }
   lines.push("", "## Provenance", "");
-  for (const note of pkg.provenance.notes) lines.push(`- ${note}`);
-  lines.push(`- Models: ${pkg.provenance.models.join(", ")}`, `- Evaluators: ${pkg.provenance.evaluators.join(", ") || "none"}`);
+  for (const note of pkg.provenance.notes) lines.push(`- ${inline(note)}`);
+  lines.push(`- Models: ${inline(pkg.provenance.models.join(", "))}`, `- Evaluators: ${inline(pkg.provenance.evaluators.join(", ") || "none")}`);
   lines.push(
-    `- Model calls: ${pkg.provenance.budget.modelCalls}; completion tokens: ${pkg.provenance.budget.usage.completionTokens} ` +
-      `(of which reasoning: ${pkg.provenance.budget.usage.reasoningTokens})`,
+    `- Model steps: ${pkg.provenance.budget.modelCalls}; provider requests: ${pkg.provenance.budget.providerRequests}; ` +
+      `completion tokens: ${pkg.provenance.budget.usage.completionTokens} (of which reasoning: ${pkg.provenance.budget.usage.reasoningTokens})`,
     "",
   );
   return lines.join("\n");
@@ -165,6 +182,7 @@ export function programmeMarkdown(pkg: ProgrammePackage): string {
 
 export interface ExportResult {
   programmeId: string;
+  directory: string;
   packagePath: string;
   summaryPath: string;
   commandsPath: string;
@@ -172,17 +190,43 @@ export interface ExportResult {
   packageSha256: string;
 }
 
-/** Write the package, a readable summary and the provisional commands under `exportRoot`. */
+async function writeNew(path: string, content: string): Promise<void> {
+  // Exclusive create: an existing file, or a link placed at the path, is never written through.
+  const handle = await open(path, "wx", 0o600);
+  try {
+    await handle.writeFile(content);
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Write the package, a readable summary and the provisional commands into a new directory
+ * under `exportRoot`. Each export gets its own directory, named for the package's content,
+ * so an earlier export is never overwritten. Files are private to the owner.
+ */
 export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string): Promise<ExportResult> {
-  const root = resolve(exportRoot);
-  const dir = resolve(root, pkg.programmeId);
-  if (dir !== root && !dir.startsWith(root + sep)) throw new WorkflowError("invalid-export-path", "Export path escapes the export directory.");
-  await mkdir(dir, { recursive: true });
+  const packageSha256 = sha256(canonicalJson(pkg));
+  await mkdir(resolve(exportRoot), { recursive: true, mode: 0o700 });
+  const root = await realpath(resolve(exportRoot));
+  const name = `${pkg.assembledAt.replace(/[^0-9TZ]/g, "")}-${packageSha256.slice(0, 12)}`;
+  const dir = resolve(root, pkg.programmeId, name);
+  if (!dir.startsWith(root + sep)) throw new WorkflowError("invalid-export-path", "Export path escapes the export directory.");
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  if ((await realpath(dir)) !== dir) throw new WorkflowError("invalid-export-path", "Export path resolves outside the export directory.");
+
   const packagePath = join(dir, "programme.json");
   const summaryPath = join(dir, "programme.md");
   const commandsPath = join(dir, "provisional-commands.NON-EXECUTABLE.json");
-  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
-  await writeFile(summaryPath, programmeMarkdown(pkg));
-  await writeFile(commandsPath, `${JSON.stringify(pkg.provisionalCommands, null, 2)}\n`);
-  return { programmeId: pkg.programmeId, packagePath, summaryPath, commandsPath, packageSha256: sha256(canonicalJson(pkg)) };
+  try {
+    await writeNew(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+    await writeNew(summaryPath, programmeMarkdown(pkg));
+    await writeNew(commandsPath, `${JSON.stringify(pkg.provisionalCommands, null, 2)}\n`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new WorkflowError("already-exported", `This exact package was already exported to ${dir}.`);
+    }
+    throw error;
+  }
+  return { programmeId: pkg.programmeId, directory: dir, packagePath, summaryPath, commandsPath, packageSha256 };
 }

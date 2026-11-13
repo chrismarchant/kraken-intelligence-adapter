@@ -1,0 +1,7 @@
+# The model is reached through the normalising shim (see docs/architecture/model-shim.md):
+# set OPENAI_BASE_URL to the shim's /v1 address and COPILOTKIT_OPENAI_API=chat in the instance's
+# environment. The name below travels verbatim to that endpoint.
+model:
+  provider: openai
+  credential_secret_ref: openai-api-key
+  default_model: mistral-large-4

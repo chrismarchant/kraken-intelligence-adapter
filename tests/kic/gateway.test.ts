@@ -6,7 +6,8 @@ import { test } from "node:test";
 import { z } from "zod";
 import { FallbackGateway, FixtureGateway, FixtureMissingError, RecordingGateway } from "../../src/gateway/fixture.ts";
 import { ModelCallError, ModelOutputError, parseJsonAnswer } from "../../src/gateway/gateway.ts";
-import { MistralGateway, messageText } from "../../src/gateway/mistral.ts";
+import { costOf } from "../../src/gateway/gateway.ts";
+import { MistralGateway, checkedBaseUrl, messageText } from "../../src/gateway/mistral.ts";
 
 const Answer = z.strictObject({ theme: z.string(), score: z.number() });
 const request = { purpose: "test-step", system: "sys", user: "user", schema: Answer, schemaName: "answer", maxTokens: 1000 };
@@ -159,4 +160,49 @@ test("recorded output replays exactly, a missing recording is an error, and a st
   assert.equal((await combined.generateJson(request)).source, "fixture");
   assert.equal((await combined.generateJson({ ...request, user: "a different prompt" })).value.theme, "fresh");
   assert.deepEqual(combined.missed, ["test-step"]);
+});
+
+test("what a failed call cost is carried on the error, and provider requests are counted and capped", async () => {
+  const ok = fakeFetch([() => new Response("x", { status: 502 }), () => json(completion('{"theme":"t","score":1}'))]);
+  assert.equal((await gateway(ok.impl).generateJson(request)).providerRequests, 2, "the retry is counted");
+
+  // Three off-schema answers: the call fails, having spent three requests and their tokens.
+  const bad = fakeFetch(Array.from({ length: 3 }, () => () => json(completion('{"theme":"t"}'))));
+  const failure = await gateway(bad.impl).generateJson(request).then(
+    () => null,
+    (error: unknown) => error,
+  );
+  assert.ok(failure instanceof ModelOutputError);
+  assert.deepEqual(costOf(failure), { usage: { promptTokens: 30, completionTokens: 150, reasoningTokens: 120 }, providerRequests: 3 });
+
+  // However retries combine, one call never sends more than the cap.
+  const storm = fakeFetch(Array.from({ length: 20 }, () => () => new Response("x", { status: 503 })));
+  await assert.rejects(gateway(storm.impl, { maxProviderRequests: 3, transientAttempts: 10 }).generateJson(request), /limit of 3 provider requests/);
+  assert.equal(storm.bodies.length, 3);
+  assert.deepEqual(costOf(new Error("unrelated")).providerRequests, 0);
+});
+
+test("a cancelled call stops at once and is not retried", async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const impl = ((_url: unknown, init?: RequestInit) => {
+    calls += 1;
+    return new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    });
+  }) as typeof fetch;
+  const pending = gateway(impl).generateJson({ ...request, signal: controller.signal });
+  setTimeout(() => controller.abort(), 10);
+  await assert.rejects(pending, (error: unknown) => error instanceof ModelCallError && /cancelled/.test(error.message) && costOf(error).providerRequests === 1);
+  assert.equal(calls, 1, "no retry after cancellation");
+});
+
+test("the model endpoint must be https, or http on loopback, and carry no credentials", () => {
+  assert.equal(checkedBaseUrl("https://api.mistral.ai/v1/"), "https://api.mistral.ai/v1");
+  assert.equal(checkedBaseUrl("http://127.0.0.1:8787/v1"), "http://127.0.0.1:8787/v1");
+  assert.equal(checkedBaseUrl("http://localhost:8787/v1"), "http://localhost:8787/v1");
+  for (const bad of ["http://models.example/v1", "ftp://127.0.0.1/v1", "not a url", "https://user:pass@api.mistral.ai/v1"]) {
+    assert.throws(() => checkedBaseUrl(bad), /model base URL/, bad);
+  }
+  assert.throws(() => new MistralGateway({ baseUrl: "http://models.example/v1" }), /https/);
 });

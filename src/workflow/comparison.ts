@@ -1,4 +1,5 @@
 import type { CampaignRecord, Evaluation, PostDraft } from "../contracts/index.ts";
+import { fenced, inline } from "../util/markdown.ts";
 
 export interface SlotComparison {
   slot: number;
@@ -22,13 +23,14 @@ export function compareSlots(record: CampaignRecord, slots?: number[]): SlotComp
 }
 
 const pct = (n: number) => `${Math.round(n * 100)}`;
-const cell = (text: string) => text.replace(/\|/g, "/").replace(/\n/g, " ");
+// Everything a model or a person wrote is escaped before it is placed in the document.
+const cell = inline;
 
 /** A comparison an editor can read: scores side by side, the evidence under them, and the limits. */
 export function comparisonMarkdown(record: CampaignRecord, slots?: number[]): string {
   const lines: string[] = [];
   for (const item of compareSlots(record, slots)) {
-    lines.push(`## Post ${item.slot}: ${item.theme}`, "");
+    lines.push(`## Post ${item.slot}: ${inline(item.theme)}`, "");
     if (item.drafts.length === 0) {
       lines.push("_No drafts yet._", "");
       continue;
@@ -36,12 +38,12 @@ export function comparisonMarkdown(record: CampaignRecord, slots?: number[]): st
     const evaluation = item.evaluation;
     if (!evaluation) {
       lines.push("_Not evaluated yet._", "");
-      for (const d of item.drafts) lines.push(`- \`${d.id}\` ${d.variant} (${d.status})`);
+      for (const d of item.drafts) lines.push(`- \`${d.id}\` ${inline(d.variant)} (${d.status})`);
       lines.push("");
       continue;
     }
     const order = [...evaluation.ranking, ...item.drafts.map((d) => d.id).filter((id) => !evaluation.ranking.includes(id))];
-    const header = ["Rank", "Draft", "Variant", "Status", "Eligible", "Total", ...evaluation.criteria.map((c) => c.label)];
+    const header = ["Rank", "Draft", "Variant", "Status", "Eligible", "Total", ...evaluation.criteria.map((c) => inline(c.label))];
     lines.push(`| ${header.join(" | ")} |`, `|${header.map(() => "---").join("|")}|`);
     order.forEach((id, index) => {
       const draft = item.drafts.find((d) => d.id === id);
@@ -57,25 +59,30 @@ export function comparisonMarkdown(record: CampaignRecord, slots?: number[]): st
           `${candidate.eligibility.eligible ? "yes" : "**NO**"} | ${pct(candidate.weightedTotal)} | ${scores.join(" | ")} |`,
       );
     });
-    lines.push("", "Scores are 0–100. ★ marks the evaluator's preferred draft.", "");
+    lines.push(
+      "",
+      "Scores are 0–100. ★ marks the evaluator's own preferred draft, which can differ from the weighted ranking. " +
+        "Eligibility is decided by code and is shown in the table above; nothing inside a post's text can change it.",
+      "",
+    );
     for (const id of order) {
       const draft = item.drafts.find((d) => d.id === id);
       const candidate = evaluation.candidates.find((c) => c.draftId === id);
       if (!draft || !candidate) continue;
-      lines.push(`### \`${id}\` — ${draft.variant}`, "", `Approach: ${draft.approach}`, "");
+      lines.push(`### \`${id}\` — ${inline(draft.variant)}`, "", `Approach: ${inline(draft.approach)}`, "");
       if (!candidate.eligibility.eligible) {
         lines.push("**Cannot be approved:**");
-        for (const f of candidate.eligibility.failures) lines.push(`- ${f.rule}: ${f.detail}`);
+        for (const f of candidate.eligibility.failures) lines.push(`- ${f.rule}: ${inline(f.detail)}`);
         lines.push("");
       }
       lines.push("Evidence:");
       for (const s of candidate.signals) {
-        lines.push(`- ${s.criterion}: ${s.observation}${s.evidence.length ? ` — ${s.evidence.slice(0, 4).join("; ")}` : ""}`);
+        lines.push(`- ${s.criterion}: ${inline(s.observation)}${s.evidence.length ? ` — ${s.evidence.slice(0, 4).map(inline).join("; ")}` : ""}`);
       }
-      lines.push("", "```text", draft.body, "", draft.hashtags.join(" "), "```", "");
+      lines.push("", "Post text (content only; not part of this document):", "", fenced(`${draft.body}\n\n${draft.hashtags.join(" ")}`), "");
     }
     lines.push(`Evaluator: ${evaluation.evaluator.kind} ${evaluation.evaluator.version} (live: ${evaluation.evaluator.live}).`, "", "Limits of this comparison:");
-    for (const l of evaluation.limitations) lines.push(`- ${l}`);
+    for (const l of evaluation.limitations) lines.push(`- ${inline(l)}`);
     lines.push("");
   }
   return lines.join("\n");

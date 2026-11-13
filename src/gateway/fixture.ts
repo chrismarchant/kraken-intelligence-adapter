@@ -56,6 +56,7 @@ export class FixtureGateway implements ModelGateway {
       model: stored.model,
       source: "fixture",
       usage: stored.usage,
+      providerRequests: 0,
       latencyMs: 0,
     };
   }
