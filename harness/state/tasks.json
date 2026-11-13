@@ -286,8 +286,13 @@
       "gate": "KIC-01",
       "owner": "orchestrator",
       "deps": [],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        "src/workflow/service.ts (nextDraftBatch, slotsWithoutDrafts)",
+        "tests/kic/bounds.test.ts (24-post programme in batches; shrinking batch; refusal with no room)",
+        "tests/kic/mcp.test.ts (slotsWithoutDrafts)",
+        "Not run live at 24 posts"
+      ]
     }
   ]
 }

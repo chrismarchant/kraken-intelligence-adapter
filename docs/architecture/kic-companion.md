@@ -50,7 +50,7 @@ One instance per client. One data directory, one model key, one operator key. No
 | Decisions waiting for the editor | 25 |
 | Lifetime of a decision request | 30 minutes |
 
-One call can use at most three times its allowance: once at the allowance, and once at double if the answer was cut off. That worst case is what a step reserves, so steps started together cannot overspend between them. A consequence of the default limits: one drafting step can cover at most eleven posts (11 × 12,000 × 3 = 396,000); a longer programme is drafted in batches or with a higher limit.
+One call can use at most three times its allowance: once at the allowance, and once at double if the answer was cut off. That worst case is what a step reserves, so steps started together cannot overspend between them. A consequence of the default limits: one drafting step could reserve for at most eleven posts (11 × 12,000 × 3 = 396,000). Drafting therefore works in batches. Asked without named posts, `kic_generate_drafts` drafts the next posts that have none, at most six per call and fewer if the remaining calls or tokens cover fewer, and reports `slotsWithoutDrafts`; the caller asks again until that list is empty. Asked with named posts it drafts all of them or refuses. A 24-post programme is drafted in four calls under the default limits (tested with the scripted model, not run live).
 
 ## Configuration
 

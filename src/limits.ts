@@ -5,6 +5,8 @@ export interface Limits {
   maxVariantsPerSlot: number;
   maxRevisionPasses: number;
   maxConcurrency: number;
+  /** Posts drafted by one drafting step when the caller does not name them. */
+  maxSlotsPerDraftStep: number;
   /** Model calls allowed over the life of one campaign. */
   maxModelCalls: number;
   /** Completion tokens (including reasoning) allowed over the life of one campaign. */
@@ -28,6 +30,7 @@ export const DEFAULT_LIMITS: Limits = Object.freeze({
   maxVariantsPerSlot: 4,
   maxRevisionPasses: 2,
   maxConcurrency: 3,
+  maxSlotsPerDraftStep: 6,
   maxModelCalls: 80,
   maxCompletionTokens: 400_000,
   modelCallTimeoutMs: 180_000,

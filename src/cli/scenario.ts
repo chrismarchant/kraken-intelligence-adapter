@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { CampaignRecord, DecisionAction, DecisionSubject, HumanActor, ProgrammePackage } from "../contracts/index.ts";
+import type { CampaignRecord, DecisionAction, DecisionSubject, HumanActor, PostDraft, ProgrammePackage } from "../contracts/index.ts";
 import { createJevTransport } from "../evaluation/jev.ts";
 import type { ModelGateway } from "../gateway/gateway.ts";
 import { DEFAULT_LIMITS } from "../limits.ts";
@@ -116,7 +116,11 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
   const plan = await service.planProgramme(id);
   log(`   Programme planned: ${plan.slots.length} posts over ${created.brief.cadence.weeks} weeks.`);
 
-  const drafts = await service.generateDrafts(id, { variants: options.variants ?? 2 });
+  // One batch per call; bounded by the number of posts, since every call drafts at least one.
+  const drafts: PostDraft[] = [];
+  for (let batch = 0; batch < plan.slots.length && service.slotsWithoutDrafts(await service.getCampaign(id)).length > 0; batch += 1) {
+    drafts.push(...(await service.generateDrafts(id, { variants: options.variants ?? 2 })));
+  }
   log(`3. ${drafts.length} drafts written (${options.variants ?? 2} alternatives per post).`);
 
   let evaluations = await service.evaluateDrafts(id);

@@ -54,6 +54,8 @@ import type { DecisionSigner, DecisionVerifier, LogHead, OperatorLedger, Unsigne
 import { GENESIS_SHA256, decisionDigest, decisionPayload, logContainsHead, verifyDecisionLog } from "./signing.ts";
 
 export const SKILL_VERSION = "0.1.0";
+/** Token allowance of one drafting call (one post, all its variants). */
+const DRAFT_MAX_TOKENS = 12000;
 
 /** A request that the current state of the campaign does not allow. */
 export class WorkflowError extends Error {
@@ -652,7 +654,12 @@ export class CampaignService {
     return parsed.data;
   }
 
-  /** Write alternative drafts for the given slots (all slots without drafts by default). */
+  /**
+   * Write alternative drafts. With slots named, all of them or none: a set that does not fit
+   * the remaining budget is refused. With none named, the next batch of posts that have no
+   * drafts yet: as many as the step limit and the remaining budget allow, in plan order, so a
+   * long programme is drafted by asking again until `slotsWithoutDrafts` is empty.
+   */
   async generateDrafts(campaignId: string, options: { slots?: number[]; variants?: number } = {}): Promise<PostDraft[]> {
     const variants = options.variants ?? 2;
     if (!Number.isInteger(variants) || variants < 2) {
@@ -674,7 +681,7 @@ export class CampaignService {
       prepare: (record) => {
         const plan = record.plan;
         if (!plan) throw new WorkflowError("no-plan", "Plan the programme before drafting posts.");
-        const numbers = options.slots ?? plan.slots.filter((s) => liveCount(record, s.slot) === 0).map((s) => s.slot);
+        const numbers = options.slots ?? this.nextDraftBatch(record, plan.slots.filter((s) => liveCount(record, s.slot) === 0).map((s) => s.slot));
         if (new Set(numbers).size !== numbers.length) throw new WorkflowError("invalid-slots", "Each slot may be named once.");
         const targets = numbers.map((n) => this.slotOf(record, n));
         if (targets.length === 0) throw new WorkflowError("nothing-to-draft", "Every slot already has drafts. Name the slots to draft again.");
@@ -687,7 +694,7 @@ export class CampaignService {
             user: draftPrompt(record.brief, plan, slot, variants),
             schema: DraftOutput,
             schemaName: "post_drafts",
-            maxTokens: 12000,
+            maxTokens: DRAFT_MAX_TOKENS,
           })),
         };
       },
@@ -709,6 +716,27 @@ export class CampaignService {
         return drafts;
       },
     });
+  }
+
+  /**
+   * The posts to draft next when the caller named none: the first undrafted ones, as many as
+   * one step may take and the campaign's remaining calls and tokens cover at their worst case.
+   * Never fewer than one, so that a campaign with no room left gets the budget refusal.
+   */
+  private nextDraftBatch(record: CampaignRecord, undrafted: number[]): number[] {
+    const inFlight = record.budget.reservations.reduce((sum, r) => sum + r.completionTokens, 0);
+    const tokensLeft = this.limits.maxCompletionTokens - record.budget.usage.completionTokens - inFlight;
+    const affordable = Math.floor(tokensLeft / (DRAFT_MAX_TOKENS * MAX_TOKEN_FACTOR));
+    const callsLeft = this.limits.maxModelCalls - record.budget.modelCalls;
+    return undrafted.slice(0, Math.max(1, Math.min(this.limits.maxSlotsPerDraftStep, affordable, callsLeft)));
+  }
+
+  /** Planned posts that have no draft an editor could still choose. */
+  slotsWithoutDrafts(record: CampaignRecord): number[] {
+    if (!record.plan) return [];
+    return record.plan.slots
+      .filter((s) => !record.drafts.some((d) => d.slot === s.slot && d.status !== "superseded" && d.revisionOf === null))
+      .map((s) => s.slot);
   }
 
   /** Revise a draft. Allowed only after an editor asked for it, and only a bounded number of times. */

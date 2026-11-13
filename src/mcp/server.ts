@@ -154,11 +154,17 @@ export function createKicServer(deps: KicServerDeps): McpServer {
     "kic_generate_drafts",
     {
       title: "Write draft alternatives",
-      description: "Write alternative LinkedIn drafts for planned posts. At least two variants per post.",
+      description:
+        "Write alternative LinkedIn drafts for planned posts. At least two variants per post. Without `slots`, drafts the next batch of posts that have none; " +
+        "call again while `slotsWithoutDrafts` is not empty.",
       inputSchema: { campaignId, slots, variants: z.number().int().min(2).max(4).optional().describe("Alternatives per post. Default 2.") },
       annotations: callsModel,
     },
-    ({ campaignId: id, slots: s, variants }) => guard(async () => ok({ drafts: await service.generateDrafts(id, { slots: s, variants }) })),
+    ({ campaignId: id, slots: s, variants }) =>
+      guard(async () => {
+        const drafts = await service.generateDrafts(id, { slots: s, variants });
+        return ok({ drafts, slotsWithoutDrafts: service.slotsWithoutDrafts(await service.getCampaign(id)) });
+      }),
   );
 
   server.registerTool(

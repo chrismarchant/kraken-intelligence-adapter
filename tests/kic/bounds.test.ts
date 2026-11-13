@@ -51,15 +51,81 @@ test("model calls are counted and the campaign budget is enforced before a step 
   const { service, gateway, planned } = makeService({ limits: { maxModelCalls: 5 } });
   const id = await planned(); // narratives + plan = 2 calls
   assert.equal((await service.getCampaign(id)).budget.modelCalls, 2);
-  // Drafting four slots needs four calls; only three remain.
+  // Drafting four named slots needs four calls; only three remain. Named slots are all or none.
   const before = gateway.calls.length;
-  await assert.rejects(service.generateDrafts(id, { variants: 2 }), limit("maxModelCalls"));
+  await assert.rejects(service.generateDrafts(id, { slots: [1, 2, 3, 4], variants: 2 }), limit("maxModelCalls"));
   assert.equal(gateway.calls.length, before, "no call is made once the budget would be exceeded");
-  await service.generateDrafts(id, { slots: [1, 2, 3], variants: 2 });
+  // With no slots named, the next batch is the three posts the remaining calls cover.
+  const batch = await service.generateDrafts(id, { variants: 2 });
+  assert.deepEqual([...new Set(batch.map((d) => d.slot))], [1, 2, 3]);
+  assert.deepEqual(service.slotsWithoutDrafts(await service.getCampaign(id)), [4]);
   const record = await service.getCampaign(id);
   assert.equal(record.budget.modelCalls, 5);
   assert.equal(record.budget.usage.completionTokens, 5 * 400);
   await assert.rejects(service.generateDrafts(id, { slots: [4], variants: 2 }), limit("maxModelCalls"));
+});
+
+test("a programme longer than one step can cover is drafted in batches, each inside the budget", async () => {
+  const { service, gateway, decide, limits } = makeService();
+  const long = syntheticBrief();
+  long.cadence = { postsPerWeek: 6, weeks: 4 };
+  const campaign = await service.createCampaign(long);
+  const narratives = await service.generateNarratives(campaign.id, 2);
+  await decide(campaign.id, { kind: "narrative", id: narratives[0]!.id }, "select");
+  const plan = await service.planProgramme(campaign.id);
+  assert.equal(plan.slots.length, 24);
+
+  // All 24 named at once cannot be reserved at their worst case: refused, nothing called.
+  const before = gateway.calls.length;
+  await assert.rejects(service.generateDrafts(campaign.id, { slots: plan.slots.map((s) => s.slot), variants: 2 }), limit("maxCompletionTokens"));
+  assert.equal(gateway.calls.length, before);
+
+  const batches: number[][] = [];
+  while (service.slotsWithoutDrafts(await service.getCampaign(campaign.id)).length > 0) {
+    assert.ok(batches.length < plan.slots.length, "every call must draft at least one post");
+    const drafts = await service.generateDrafts(campaign.id, { variants: 2 });
+    batches.push([...new Set(drafts.map((d) => d.slot))]);
+    const record = await service.getCampaign(campaign.id);
+    assert.deepEqual(record.budget.reservations, [], "a finished batch holds nothing back");
+    assert.ok(record.budget.usage.completionTokens <= limits.maxCompletionTokens);
+  }
+  assert.deepEqual(batches.map((b) => b.length), [6, 6, 6, 6], "no batch is larger than the step limit");
+  assert.deepEqual(batches.flat(), plan.slots.map((s) => s.slot), "posts are drafted once each, in plan order");
+  const record = await service.getCampaign(campaign.id);
+  assert.equal(record.drafts.length, 48);
+  assert.equal(record.budget.modelCalls, 2 + 24);
+  await assert.rejects(service.generateDrafts(campaign.id), code("nothing-to-draft"));
+});
+
+test("a batch shrinks to what the remaining tokens cover, and with no room left the step is refused before any call", async () => {
+  // A drafting call reserves 36,000 tokens at its worst case. Narratives and the plan are
+  // settled by then at 400 tokens each, so 80,000 leaves room for two posts, not three.
+  const { service, gateway, planned } = makeService({ limits: { maxCompletionTokens: 80_000 } });
+  const id = await planned();
+  const first = await service.generateDrafts(id, { variants: 2 });
+  assert.deepEqual([...new Set(first.map((d) => d.slot))], [1, 2]);
+
+  // 31,000 is enough to plan (a planning call reserves 30,000) and too little for one drafting call.
+  const tight = makeService({ limits: { maxCompletionTokens: 31_000 } });
+  const tightId = await tight.planned();
+  const before = tight.gateway.calls.length;
+  await assert.rejects(tight.service.generateDrafts(tightId, { variants: 2 }), limit("maxCompletionTokens"));
+  assert.equal(tight.gateway.calls.length, before);
+  assert.deepEqual(tight.service.slotsWithoutDrafts(await tight.service.getCampaign(tightId)), [1, 2, 3, 4]);
+  assert.ok(gateway.calls.length > 0);
+});
+
+test("two drafting steps started together never draft the same post twice or overspend", async () => {
+  const { service, planned, limits } = makeService({ script: { delayMs: 15 }, limits: { maxSlotsPerDraftStep: 3 } });
+  const id = await planned();
+  const outcomes = await Promise.allSettled([service.generateDrafts(id, { variants: 2 }), service.generateDrafts(id, { variants: 2 })]);
+  const record = await service.getCampaign(id);
+  const perSlot = new Map<number, number>();
+  for (const draft of record.drafts) perSlot.set(draft.slot, (perSlot.get(draft.slot) ?? 0) + 1);
+  for (const [slot, count] of perSlot) assert.ok(count <= limits.maxVariantsPerSlot, `slot ${slot} has ${count} drafts`);
+  assert.ok(outcomes.some((o) => o.status === "fulfilled"));
+  assert.deepEqual(record.budget.reservations, []);
+  assert.ok(record.budget.usage.completionTokens <= limits.maxCompletionTokens);
 });
 
 test("fan-out never runs more calls at once than the concurrency limit", async () => {

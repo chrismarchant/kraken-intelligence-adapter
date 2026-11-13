@@ -100,7 +100,9 @@ test("a campaign can be prepared end to end through the tools; only the editor's
   assert.deepEqual(seen.map((d) => [d.by, d.signed]), [["Test Editor", true]], "the agent can see that the decision was made and signed");
 
   assert.equal((await call("kic_plan_programme", { campaignId })).structuredContent!.plan.slots.length, 4);
-  const drafts = (await call("kic_generate_drafts", { campaignId, variants: 2 })).structuredContent!.drafts as Array<{ id: string; slot: number }>;
+  const drafted = (await call("kic_generate_drafts", { campaignId, variants: 2 })).structuredContent!;
+  const drafts = drafted.drafts as Array<{ id: string; slot: number }>;
+  assert.deepEqual(drafted.slotsWithoutDrafts, [], "the tool says which posts still need drafts");
   assert.equal(drafts.length, 8);
   assert.equal((await call("kic_evaluate_drafts", { campaignId })).structuredContent!.evaluations.length, 4);
   const comparison = await call("kic_compare_drafts", { campaignId, slots: [1] });
