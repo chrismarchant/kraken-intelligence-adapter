@@ -92,6 +92,10 @@ Commissioned on 2026-11-13 after the audit, at the same commit, from two further
 
 A blocking verdict from either is bound to `2537386` and makes the review check for that commit fail, as it should.
 
+Both are remediated in commit `1d8bafe969d3ebfa3cee42a9889cdab848443081`: 28 regression tests added; 230 product and 83 harness tests pass; the secret scan is clean. What changed against each finding, and what was left as a limit, is at the end of each review's record. **New independent reviews against that exact commit are commissioned, one for each area. Until they are recorded here, `1d8bafe` has no review and the review requirement is not met at any commit.**
+
+The entries for reviews A and B in the append-only review ledger show their findings as "open", as they were when recorded.
+
 ### Evidence against the exact commit
 
 | Check | Result at `2537386` | How it was obtained |
