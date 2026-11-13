@@ -18,8 +18,11 @@ export const CAVEATS = [
   "This ranking is decision support for a person. It commissions, contacts and pays no one.",
 ];
 
-function ineligibility(candidate: CreatorCandidate, policy: ScoringPolicy, fresh: number): CreatorResult["ineligibility"] {
+function ineligibility(candidate: CreatorCandidate, policy: ScoringPolicy, fresh: number, future: number): CreatorResult["ineligibility"] {
   const reasons: CreatorResult["ineligibility"] = [];
+  if (future > 0) {
+    reasons.push({ rule: "evidence-dated-in-future", detail: `${future} evidence item(s) are dated after the time of ranking.` });
+  }
   if (candidate.availability === "unavailable") reasons.push({ rule: "unavailable", detail: "The creator is not available." });
   for (const concern of candidate.blockingConcerns) {
     reasons.push({ rule: "blocking-concern", detail: `${concern.kind}: ${concern.detail} (evidence ${concern.evidenceId})` });
@@ -33,8 +36,13 @@ function ineligibility(candidate: CreatorCandidate, policy: ScoringPolicy, fresh
   if (fresh < policy.minEvidenceItems) {
     reasons.push({ rule: "insufficient-evidence", detail: `${fresh} recent evidence item(s); at least ${policy.minEvidenceItems} are required.` });
   }
-  if (policy.maxFeePerPost !== null && candidate.indicativeFeePerPost !== null && candidate.indicativeFeePerPost > policy.maxFeePerPost) {
-    reasons.push({ rule: "over-budget", detail: `Indicative fee ${candidate.indicativeFeePerPost} ${candidate.currency} exceeds the limit of ${policy.maxFeePerPost}.` });
+  if (policy.maxFeePerPost !== null && candidate.indicativeFeePerPost !== null) {
+    if (candidate.currency !== policy.feeCurrency) {
+      // Amounts in different currencies are not compared: that would need a rate, and none is given.
+      reasons.push({ rule: "fee-currency-mismatch", detail: `The indicative fee is in ${candidate.currency}; the limit is in ${policy.feeCurrency}.` });
+    } else if (candidate.indicativeFeePerPost > policy.maxFeePerPost) {
+      reasons.push({ rule: "over-budget", detail: `Indicative fee ${candidate.indicativeFeePerPost} ${candidate.currency} exceeds the limit of ${policy.maxFeePerPost} ${policy.feeCurrency}.` });
+    }
   }
   return reasons;
 }
@@ -64,8 +72,11 @@ export function rankCreators(input: { set: unknown; assessments: unknown; policy
 
   const results: CreatorResult[] = set.candidates.map((candidate) => {
     const evidence = new Map(candidate.evidence.map((e) => [e.id, e]));
-    const isFresh = (observedAt: string) => input.now.getTime() - Date.parse(observedAt) <= policy.maxEvidenceAgeDays * DAY;
+    // Evidence dated after the time of ranking is not fresh: it is wrong, and it rules the candidate out.
+    const age = (observedAt: string) => input.now.getTime() - Date.parse(observedAt);
+    const isFresh = (observedAt: string) => age(observedAt) >= 0 && age(observedAt) <= policy.maxEvidenceAgeDays * DAY;
     const fresh = candidate.evidence.filter((e) => isFresh(e.observedAt));
+    const future = candidate.evidence.filter((e) => age(e.observedAt) < 0).length;
 
     const scored = dimensions.map((dimension: Dimension) => {
       const found = assessments.filter((a) => a.creatorId === candidate.id && a.dimension === dimension);
@@ -96,7 +107,7 @@ export function rankCreators(input: { set: unknown; assessments: unknown; policy
     // One source cannot corroborate itself: confidence is capped until a second source agrees.
     const evidenceConfidence = coverage * volume * (sources >= 2 ? 1 : 0.6);
 
-    const reasons = ineligibility(candidate, policy, fresh.length);
+    const reasons = ineligibility(candidate, policy, fresh.length, future);
     return {
       creatorId: candidate.id,
       displayName: candidate.displayName,
@@ -105,9 +116,12 @@ export function rankCreators(input: { set: unknown; assessments: unknown; policy
       dimensions: scored.map(({ backedByFresh: _unused, ...rest }) => rest),
       weightedTotal: round3(weightedTotal),
       evidenceConfidence: round3(evidenceConfidence),
+      synthetic: set.synthetic || candidate.synthetic || candidate.evidence.some((e) => e.synthetic),
     };
   });
 
   results.sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.weightedTotal - a.weightedTotal || a.creatorId.localeCompare(b.creatorId));
-  return CreatorRankingSchema.parse({ synthetic: set.synthetic, rankedAt: input.now.toISOString(), policy, results, caveats: CAVEATS });
+  // Synthetic at any level makes the ranking synthetic: a set cannot relabel what its evidence says of itself.
+  const synthetic = set.synthetic || results.some((r) => r.synthetic);
+  return CreatorRankingSchema.parse({ synthetic, rankedAt: input.now.toISOString(), policy, results, caveats: CAVEATS });
 }

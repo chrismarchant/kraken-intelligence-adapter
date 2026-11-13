@@ -1,83 +1,206 @@
-import { randomBytes } from "node:crypto";
-import { link, open, readFile, rename, stat, unlink } from "node:fs/promises";
-import { PROCESS_INSTANCE, startTimeOf } from "./store.ts";
+import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { link, open, readFile, readdir, stat, unlink } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 
 /**
- * A lock file that names its owner, for the small state files that several processes share
- * (the instance's spend account, the operator's ledger). The same rules as the campaign
- * store's lock:
- *
- * - The file names the owning process, this run of it, when it started, and a token.
- * - A lock is taken over only when its owner is known to be gone. Age alone is never a
- *   reason: a holder that is slow or paused keeps its lock, and others wait, then give up.
- * - Taking over moves the lock aside first, which only one contender can do, and checks
- *   that what was moved is the dead owner's lock; if it is not, it is put back.
- * - On release, a holder removes the lock only if it still carries its own token.
+ * Identifies this run of this process. A lock naming our own process id but another
+ * instance was left by an earlier process that had the same id, and is dead.
  */
-export async function withOwnedLock<T>(lockPath: string, what: string, task: () => Promise<T>, options: { timeoutMs?: number; ownerlessAfterMs?: number } = {}): Promise<T> {
-  const timeoutMs = options.timeoutMs ?? 10_000;
-  const ownerlessAfterMs = options.ownerlessAfterMs ?? 30_000;
-  const token = randomBytes(12).toString("hex");
-  const mine = `${process.pid} ${PROCESS_INSTANCE} ${startTimeOf(process.pid) ?? "-"} ${token}\n`;
-  const deadline = Date.now() + timeoutMs;
-  let pause = 5;
-  for (;;) {
-    try {
-      const handle = await open(lockPath, "wx", 0o600);
-      try {
-        await handle.writeFile(mine);
-      } finally {
-        await handle.close();
-      }
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
-    if (await clearDeadLock(lockPath, ownerlessAfterMs)) continue;
-    if (Date.now() > deadline) throw new Error(`${what} is locked by another process.`);
-    await new Promise((resolve) => setTimeout(resolve, pause));
-    pause = Math.min(pause * 2, 100);
-  }
-  const held = async () => (await readFile(lockPath, "utf8").catch(() => "")) === mine;
+export const PROCESS_INSTANCE = randomBytes(8).toString("hex");
+
+/** The fields of /proc/<pid>/stat after the command name, which may itself contain spaces. */
+function procStat(pid: number): string[] | null {
   try {
-    return await task();
-  } finally {
-    if (await held()) await unlink(lockPath).catch(() => undefined);
+    const text = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return text.slice(text.lastIndexOf(")") + 2).split(" ");
+  } catch {
+    return null;
   }
 }
 
-function alive(pid: number, instance: string | undefined, started: string | undefined): boolean {
+/** When a process started, as the system records it; null where that cannot be read. */
+export function startTimeOf(pid: number): string | null {
+  return procStat(pid)?.[19] ?? null;
+}
+
+/**
+ * True when the process that wrote an owner line is still running. A process id alone is not
+ * enough: ids are reused, and after a restart in a container the new process often has the
+ * old one's id. A process that has exited but has not been collected by its parent (a zombie)
+ * still has an id and a start time; it will never write again and is not running.
+ */
+export function ownerAlive(pid: number, instance: string | undefined, started: string | undefined): boolean {
   if (pid === process.pid) return instance === PROCESS_INSTANCE;
   try {
     process.kill(pid, 0);
   } catch (error) {
+    // EPERM means the process exists but belongs to someone else.
     if ((error as NodeJS.ErrnoException).code !== "EPERM") return false;
   }
-  const now = startTimeOf(pid);
+  const fields = procStat(pid);
+  if (fields === null) return true;
+  if (fields[0] === "Z" || fields[0] === "X") return false;
+  // The id is in use. It is the same process only if it started when the owner line says it did.
+  const now = fields[19] ?? null;
   return now === null || started === undefined || started === "-" || now === started;
 }
 
-/** Remove a lock whose owner no longer exists. True when the caller should try again at once. */
-async function clearDeadLock(lockPath: string, ownerlessAfterMs: number): Promise<boolean> {
+function ownerLine(token: string): string {
+  return `${process.pid} ${PROCESS_INSTANCE} ${startTimeOf(process.pid) ?? "-"} ${token}\n`;
+}
+
+/**
+ * Create `path` holding `content`, only if nothing is there. The content is written to a
+ * file of its own first and then linked into place, so the file never exists half-written:
+ * whoever sees it sees all of it.
+ */
+async function createWhole(path: string, content: string): Promise<boolean> {
+  const temporary = `${path}.${randomBytes(8).toString("hex")}.new`;
+  const handle = await open(temporary, "wx", 0o600);
+  try {
+    await handle.writeFile(content);
+  } finally {
+    await handle.close();
+  }
+  try {
+    await link(temporary, path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  } finally {
+    await unlink(temporary).catch(() => undefined);
+  }
+}
+
+export interface OwnedLock {
+  /** True while the lock file still carries this holder's token. */
+  held(): Promise<boolean>;
+  /** Remove the lock, if it is still this holder's. */
+  release(): Promise<void>;
+}
+
+/**
+ * Take a lock file that names its owner. Used for campaign records and for the small state
+ * files that several processes share (the instance's spend account, the operator's ledger).
+ *
+ * - The file names the owning process, this run of it, when it started, and a token.
+ * - A lock is taken over only when its owner is known to be gone. Age alone is never a
+ *   reason: a holder that is slow or paused keeps its lock, and others wait, then give up.
+ * - A dead owner's lock is removed by exactly one process (see clearDeadLock).
+ * - On release, a holder removes the lock only if it still carries its own token.
+ *
+ * Returns null when the lock could not be taken before the timeout.
+ */
+export async function acquireOwnedLock(lockPath: string, options: { timeoutMs?: number; ownerlessAfterMs?: number } = {}): Promise<OwnedLock | null> {
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const ownerlessAfterMs = options.ownerlessAfterMs ?? 30_000;
+  const mine = ownerLine(randomBytes(12).toString("hex"));
+  const deadline = Date.now() + timeoutMs;
+  let pause = 5;
+  for (;;) {
+    if (await createWhole(lockPath, mine)) break;
+    if (await clearDeadLock(lockPath, ownerlessAfterMs)) continue;
+    if (Date.now() > deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, pause));
+    pause = Math.min(pause * 2, 100);
+  }
+  const held = async () => (await readFile(lockPath, "utf8").catch(() => "")) === mine;
+  return {
+    held,
+    release: async () => {
+      if (await held()) await unlink(lockPath).catch(() => undefined);
+    },
+  };
+}
+
+/** Run a task while holding the lock at `lockPath`. Throws if the lock cannot be taken in time. */
+export async function withOwnedLock<T>(lockPath: string, what: string, task: () => Promise<T>, options: { timeoutMs?: number; ownerlessAfterMs?: number } = {}): Promise<T> {
+  const lock = await acquireOwnedLock(lockPath, options);
+  if (lock === null) throw new Error(`${what} is locked by another process.`);
+  try {
+    return await task();
+  } finally {
+    await lock.release();
+  }
+}
+
+/** What marks one particular lock: its content, and for one with no readable owner, the file itself. */
+async function generationOf(lockPath: string, content: string, owned: boolean): Promise<string | null> {
+  if (owned) return createHash("sha256").update(content).digest("hex").slice(0, 24);
+  const st = await stat(lockPath).catch(() => null);
+  if (st === null) return null;
+  return createHash("sha256").update(`${content}\n${st.ino} ${st.mtimeMs} ${st.size}`).digest("hex").slice(0, 24);
+}
+
+/**
+ * For tests only: called after a lock has been read and judged dead, before anything is done
+ * about it. Lets a test put other processes' steps exactly there. Always null outside tests.
+ */
+export const lockTestHooks: { afterJudgedDead: null | (() => Promise<void>) } = { afterJudgedDead: null };
+
+/** Longest chain of dead removers followed for one lock before giving up for this attempt. */
+const MAX_SUCCESSORS = 32;
+
+/**
+ * Remove a lock whose owner no longer exists. True when the caller should try to take the
+ * lock again at once; false when it should wait.
+ *
+ * Every lock that is taken is different from every other: its content carries a random
+ * token. To remove a dead owner's lock, a process must first hold the right to remove *that*
+ * lock, which is a file named after it and created only if absent, so one process holds it.
+ * The holder looks at the lock again and removes it only if it is still the same one. Nobody
+ * else removes it: its owner is dead, and the right is held. So a lock that some other
+ * process has since taken is never removed, however the steps of several processes fall.
+ *
+ * If the holder of the right dies before finishing, the right passes to a successor, again a
+ * file created only if absent, and only once the previous holder is known to be gone. The
+ * files are deleted after the lock is; a latecomer who then claims the right afresh finds a
+ * different lock, or none, and removes nothing.
+ */
+export async function clearDeadLock(lockPath: string, ownerlessAfterMs: number): Promise<boolean> {
   const content = await readFile(lockPath, "utf8").catch(() => null);
-  if (content === null) return true;
+  if (content === null) return true; // released in the meantime
   const [pidText, instance, started] = content.trim().split(" ");
   const pid = Number(pidText);
-  if (!Number.isInteger(pid) || pid <= 0 || alive(pid, instance, started)) {
-    if (Number.isInteger(pid) && pid > 0) return false;
-    // No readable owner: held until it is old enough that no holder can be part-way through writing it.
+  const owned = Number.isInteger(pid) && pid > 0;
+  if (owned) {
+    if (ownerAlive(pid, instance, started)) return false;
+  } else {
+    // No readable owner. Locks made by this code are never half-written, so this is damage or a
+    // foreign file. It is treated as held until it is old.
     const age = await stat(lockPath).then((st) => Date.now() - st.mtimeMs, () => 0);
     if (age < ownerlessAfterMs) return false;
   }
-  if ((await readFile(lockPath, "utf8").catch(() => null)) !== content) return true;
-  const grave = `${lockPath}.${randomBytes(8).toString("hex")}.dead`;
-  try {
-    await rename(lockPath, grave);
-  } catch {
-    return true;
+  const generation = await generationOf(lockPath, content, owned);
+  if (generation === null) return true;
+  if (lockTestHooks.afterJudgedDead) await lockTestHooks.afterJudgedDead();
+
+  const right = (n: number) => `${lockPath}.break.${generation}.${n}`;
+  const claim = ownerLine("remover");
+  let mine: string | null = null;
+  for (let n = 1; n <= MAX_SUCCESSORS; n++) {
+    if (await createWhole(right(n), claim)) {
+      mine = right(n);
+      break;
+    }
+    const holder = await readFile(right(n), "utf8").catch(() => null);
+    if (holder === null) return true; // the lock was removed and its files cleared; start again
+    const [holderPid, holderInstance, holderStarted] = holder.trim().split(" ");
+    // A live holder is about to finish. Wait for it.
+    if (ownerAlive(Number(holderPid), holderInstance, holderStarted)) return false;
+    // A dead holder: the right passes to the next in line.
   }
-  const moved = await readFile(grave, "utf8").catch(() => null);
-  if (moved !== content) await link(grave, lockPath).catch(() => undefined);
-  await unlink(grave).catch(() => undefined);
+  if (mine === null) return false;
+
+  const now = await readFile(lockPath, "utf8").catch(() => null);
+  if (now !== null && now === content && (await generationOf(lockPath, now, owned)) === generation) {
+    await unlink(lockPath).catch(() => undefined);
+  }
+  // The lock this right was for is gone for good. Clear the files that named it.
+  const prefix = `${basename(lockPath)}.break.${generation}.`;
+  const names = await readdir(dirname(lockPath)).catch(() => [] as string[]);
+  await Promise.all(names.filter((name) => name.startsWith(prefix)).map((name) => unlink(`${dirname(lockPath)}/${name}`).catch(() => undefined)));
   return true;
 }

@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import type { GenerateRequest, GenerateResult, ModelGateway } from "./gateway.ts";
 import { ModelOutputError } from "./gateway.ts";
 import { sha256 } from "../util/runtime.ts";
@@ -25,7 +25,8 @@ function fixturePath<T>(dir: string, request: GenerateRequest<T>): string {
 
 export class FixtureMissingError extends Error {
   constructor(purpose: string, path: string) {
-    super(`No recorded model output for "${purpose}" at ${path}. Re-record the fixtures with a live run.`);
+    // The file is named, not its directory: the message can reach a caller of the server.
+    super(`No recorded model output for "${purpose}" (${basename(path)}). Re-record the fixtures with a live run.`);
     this.name = "FixtureMissingError";
   }
 }

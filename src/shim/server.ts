@@ -474,11 +474,14 @@ export function createShimServer(config: ShimConfig): http.Server {
         else if (!res.destroyed) sendError(res, 502, "Upstream read failed", "upstream_error");
         return;
       }
-      let out = text;
+      let out: string;
       try {
         out = JSON.stringify(normalizeChatCompletion(JSON.parse(text) as unknown, normOpts));
       } catch {
-        out = text; // not JSON: pass through untouched
+        // Not JSON, or cut short. It cannot be normalised, so it is not passed on: whatever it
+        // holds, reasoning included, would go through as it is.
+        sendError(res, 502, "Upstream returned a body that is not valid JSON", "upstream_error");
+        return;
       }
       const buf = Buffer.from(out, "utf8");
       res.writeHead(up.status, { ...outHeaders, "content-length": buf.length });

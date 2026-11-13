@@ -31,10 +31,28 @@ const HYPE_TERMS = [
   "10x",
 ];
 
-/** Clock times are not figures a reader would check against a source. */
-const CLOCK_TIME = /\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\b\d{1,2}:\d{2}\b/gi;
-/** Any number written in digits. */
+/**
+ * Clock times are not figures a reader would check against a source. Only forms that cannot
+ * be a ratio or an amount are read as times: an hour from 1 to 12 with "am" or "pm"; a
+ * 24-hour time written with a leading zero or an hour from 13 to 23 ("09:30", "16:30");
+ * any other hour and minutes directly after "at" or directly before a time zone. "1:25" on
+ * its own is a ratio as far as this rule can tell, and "40 pm" is not a time.
+ */
+const CLOCK_TIME = new RegExp(
+  "\\b(?:1[0-2]|0?[1-9])(?::[0-5]\\d)?\\s?(?:am|pm)\\b" +
+    "|\\b(?:0\\d|1[3-9]|2[0-3]):[0-5]\\d\\b" +
+    "|(?<=\\bat\\s)(?:1[0-2]|[1-9]):[0-5]\\d\\b" +
+    "|\\b(?:1[0-2]|[1-9]):[0-5]\\d(?=\\s?(?:UTC|GMT|BST|CET|CEST|EST|EDT|PST|PDT)\\b)",
+  "gi",
+);
+/** Any number written in the digits 0 to 9. */
 const NUMBER = /\d(?:[\d,.]*\d)?/g;
+/**
+ * A numeral that is not one of the digits 0 to 9: digits of another script, and number signs
+ * that compatibility folding leaves alone. A figure written this way cannot be matched
+ * against a reference, so it is refused like a quantity written in words.
+ */
+const OTHER_NUMERAL = /(?:(?![0-9])\p{N})+/gu;
 
 const NUMBER_WORD =
   "(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|" +
@@ -95,15 +113,23 @@ function keywords(phrases: readonly string[]): string[] {
  * ("guarantee" catches "guaranteed"). A longer, different word does not match.
  */
 function containsPhrase(haystack: string, phrase: string): boolean {
-  const parts = phrase.toLowerCase().match(/[a-z0-9]+/g);
+  // The term is folded the way the text is (accents off, look-alike letters to plain ones), and
+  // its words are whatever letters and digits it has, in any script: "naïve" is one word.
+  const parts = fold(phrase).toLowerCase().match(/[\p{L}\p{N}]+/gu);
   if (!parts) return false;
+  const last = parts[parts.length - 1] as string;
+  const final = last.slice(-1);
+  // Inflections are matched for words of four letters or more. A short term ("AI") matches
+  // itself and its plural only: with endings it would catch other words ("aid").
+  const doubled = /[bcdfgklmnprstvz]/.test(final) ? `${final}?` : "";
+  const suffix = [...last].length >= 4 ? `(?:s|es|d|${doubled}ed|${doubled}ing)?` : "s?";
   const pattern = parts.join("[\\s\\-_./\u2010-\u2015]*");
-  return new RegExp(`(?<![a-z0-9])${pattern}(?:s|es|d|ed|ing)?(?![a-z0-9])`, "i").test(haystack);
+  return new RegExp(`(?<![\\p{L}\\p{N}])${pattern}${suffix}(?![\\p{L}\\p{N}])`, "iu").test(haystack);
 }
 
-/** Letters and digits only, lower case. Used where words are run together, as in hashtags. */
+/** Letters and digits only, folded and lower case. Used where words are run together, as in hashtags. */
 function squash(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return fold(text).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 /**
@@ -144,7 +170,30 @@ const CONFUSABLE: Record<string, string> = {
   "\u0131": "i", "\u0261": "g", "\u0251": "a", "\u0269": "i", "\u026A": "i", "\u028F": "y", "\u0299": "b", "\u1D00": "a", "\u1D04": "c",
   "\u1D05": "d", "\u1D07": "e", "\u1D0A": "j", "\u1D0B": "k", "\u1D0D": "m", "\u1D0F": "o", "\u1D18": "p", "\u1D1B": "t", "\u1D1C": "u",
   "\u1D20": "v", "\u1D21": "w", "\u1D22": "z", "\u0142": "l", "\u00F8": "o", "\u0111": "d", "\u0127": "h", "\u017F": "s", "\u01C0": "l",
+  // Greek capitals and small letters that pass for Latin ones.
+  "\u0391": "A", "\u0392": "B", "\u0395": "E", "\u0396": "Z", "\u0397": "H", "\u0399": "I", "\u039A": "K", "\u039C": "M", "\u039D": "N",
+  "\u039F": "O", "\u03A1": "P", "\u03A4": "T", "\u03A5": "Y", "\u03A7": "X", "\u03B1": "a", "\u03B2": "b", "\u03B3": "y", "\u03B5": "e",
+  "\u03B7": "n", "\u03B9": "i", "\u03BA": "k", "\u03BC": "u", "\u03BD": "v", "\u03BF": "o", "\u03C1": "p", "\u03C4": "t", "\u03C5": "u",
+  "\u03C7": "x", "\u03C9": "w", "\u03F2": "c", "\u03F9": "C", "\u03F3": "j",
+  // Cyrillic capitals and small letters that pass for Latin ones.
+  "\u0410": "A", "\u0412": "B", "\u0415": "E", "\u041A": "K", "\u041C": "M", "\u041D": "H", "\u041E": "O", "\u0420": "P", "\u0421": "C",
+  "\u0422": "T", "\u0423": "Y", "\u0425": "X", "\u0405": "S", "\u0406": "I", "\u0408": "J", "\u0430": "a", "\u0432": "b", "\u0435": "e",
+  "\u043A": "k", "\u043C": "m", "\u043D": "h", "\u043E": "o", "\u0440": "p", "\u0441": "c", "\u0442": "t", "\u0443": "y", "\u0445": "x",
+  "\u0455": "s", "\u0456": "i", "\u0458": "j", "\u0501": "d", "\u04BB": "h", "\u051B": "q", "\u051D": "w", "\u0433": "r", "\u043F": "n",
+  "\u044C": "b",
 };
+const CONFUSABLE_LETTER = new RegExp(`[${Object.keys(CONFUSABLE).join("")}]`, "gu");
+
+/**
+ * Accents off and look-alike letters to the plain ones they resemble. Applied to a ruled-out
+ * term and to the text it is looked for in, so that "ΑΙ" in Greek capitals is found as "AI".
+ */
+function fold(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(CONFUSABLE_LETTER, (c) => CONFUSABLE[c] ?? c);
+}
 
 /**
  * The forms of a text that a ruled-out term is looked for in. Besides the text itself:
@@ -153,14 +202,12 @@ const CONFUSABLE: Record<string, string> = {
  * (hyphens, emphasis marks, emoji); and with letters that were spaced out joined up.
  */
 function matchForms(text: string): string[] {
-  const folded = text
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[\u0131\u0261\u0251\u0269\u026A\u028F\u0299\u1D00-\u1D22\u0142\u00F8\u0111\u0127\u017F\u01C0]/g, (c) => CONFUSABLE[c] ?? c);
+  const folded = fold(text);
   const undotted = folded.replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ""));
-  // Anything slipped between two letters that is not itself a letter, digit or space: hyphens,
-  // emphasis marks, symbols, emoji, and any character that takes no space.
-  const unbroken = undotted.replace(/(?<=[\p{L}\p{N}])[-*_~`\u00B7\u2022\p{S}\p{Extended_Pictographic}\p{Default_Ignorable_Code_Point}\p{Cf}]+(?=[\p{L}\p{N}])/gu, "");
+  // Anything slipped between two letters that is not itself a letter, a digit or a space:
+  // hyphens and dashes of every kind, emphasis marks, punctuation, symbols, emoji, and any
+  // character that takes no space.
+  const unbroken = undotted.replace(/(?<=[\p{L}\p{N}])[^\p{L}\p{N}\s]+(?=[\p{L}\p{N}])/gu, "");
   const joined = unbroken.replace(/\b(?:[A-Za-z][ .]){3,}[A-Za-z]\b/g, (m) => m.replace(/[ .]/g, ""));
   return [...new Set([text, folded, undotted, unbroken, joined])];
 }
@@ -262,6 +309,13 @@ export function analyseDraft(
       detail: `The figure "${figure}" is not backed by a claim that cites a brief reference containing it`,
     });
   }
+  const otherNumerals = [...new Set(published.match(OTHER_NUMERAL) ?? [])];
+  for (const numeral of otherNumerals) {
+    failures.push({
+      rule: "unlisted-statistic",
+      detail: `The figure "${numeral.slice(0, 40)}" is not written in the digits 0 to 9; state figures in digits exactly as the cited reference does`,
+    });
+  }
   const spelled = [...new Set((published.match(SPELLED_QUANTITY) ?? []).map((m) => m.trim().toLowerCase()))];
   for (const quantity of spelled) {
     failures.push({
@@ -269,17 +323,18 @@ export function analyseDraft(
       detail: `The quantity "${quantity}" is written in words; state figures in digits exactly as the cited reference does`,
     });
   }
-  const ungrounded = unlisted.length + spelled.length;
+  const ungrounded = unlisted.length + spelled.length + otherNumerals.length;
   const grounding = ungrounded > 0 ? 0 : checkable.length === 0 ? 0.75 : supported.length / checkable.length;
   signals.push({
     criterion: "grounding",
     observation:
       `${supported.length} of ${checkable.length} checkable claims cite a brief reference; ` +
-      `${figures.length + spelled.length} figures in the post, ${ungrounded} not backed by a cited reference`,
+      `${figures.length + spelled.length + otherNumerals.length} figures in the post, ${ungrounded} not backed by a cited reference`,
     evidence: [
       ...supported.map((c) => `${c.evidenceRef}: ${c.text.slice(0, 120)}`),
       ...unlisted.map((f) => `unsupported figure: ${f}`),
       ...spelled.map((q) => `figure in words: ${q}`),
+      ...otherNumerals.map((n) => `figure in other numerals: ${n.slice(0, 40)}`),
     ].slice(0, 12),
   });
 
@@ -328,17 +383,24 @@ export function analyseDraft(
     }
   }
   // Text that tries to slip past the rules above: invisible or compatibility characters,
-  // control characters, and words that mix Latin letters with look-alike scripts.
+  // control characters, and words written with look-alike letters. A word that mixes Latin
+  // letters with another script is refused anywhere. In a post written mostly in Latin letters,
+  // so is any word in another script: every script has letters that pass for Latin ones, and
+  // only the Greek and Cyrillic ones are folded above.
   // Every part the editor is shown or the record keeps is checked, not only what is published.
   const raw = [draft.body, draft.hashtags.join(" "), draft.hook, draft.callToAction, ...draft.claims.map((c) => c.text)].join("\n");
-  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => (LATIN.test(word) && NON_LATIN_LETTER.test(word)) || ODD_LATIN.test(word));
+  const letters = raw.match(/\p{L}/gu) ?? [];
+  const mostlyLatin = letters.filter((c) => LATIN.test(c)).length * 2 >= letters.length;
+  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter(
+    (word) => (NON_LATIN_LETTER.test(word) && (mostlyLatin || LATIN.test(word))) || ODD_LATIN.test(word),
+  );
   if (canonicalText(raw) !== raw) {
     failures.push({ rule: "suspicious-characters", detail: "Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)" });
   } else if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(raw)) {
     failures.push({ rule: "suspicious-characters", detail: "Contains control characters" });
   }
   if (disguised.length > 0) {
-    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) written with look-alike letters from another script or alphabet` });
+    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) written with letters from another script or alphabet, which can pass for ordinary ones` });
   }
 
   return {

@@ -1,5 +1,5 @@
 import { lstat, mkdir, open, realpath } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, resolve, sep, basename } from "node:path";
 import { buildProvisionalCommand } from "../commands/provisional.ts";
 import type { CampaignRecord, EditorialDecision, HumanActor, PackagedPost, PostDraft, ProgrammePackage } from "../contracts/index.ts";
 import { HumanActor as HumanActorSchema, PROGRAMME_PACKAGE_SCHEMA, ProgrammePackage as ProgrammePackageSchema, SCHEMA_VERSION, ShortText } from "../contracts/index.ts";
@@ -333,7 +333,7 @@ export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string)
     await writeNew(commandsPath, `${JSON.stringify(commandsFile, null, 2)}\n`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      throw new WorkflowError("already-exported", `This exact package was already exported to ${dir}.`);
+      throw new WorkflowError("already-exported", `This exact package was already exported, to ${basename(dir)} in the export directory.`);
     }
     throw error;
   }

@@ -242,9 +242,11 @@ function normaliseHashtags(tags: readonly string[]): string[] {
   return out.slice(0, 8);
 }
 
-function clip(text: string, max: number): string {
+export function clip(text: string, max: number): string {
   const trimmed = text.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1).trimEnd()}…`;
+  // Three full stops, not the single ellipsis character: clipped text must still be in canonical
+  // form, or the draft it belongs to is refused as carrying compatibility characters.
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 3).trimEnd()}...`;
 }
 
 // Model text is canonicalised before it is clipped or stored, so that no rule downstream
@@ -865,6 +867,11 @@ export class CampaignService {
       const before = await this.store.get(campaignId);
       if (!before.plan) throw new WorkflowError("no-plan", "Plan the programme before evaluating drafts.");
       const live = (slot: number) => before.drafts.filter((d) => d.slot === slot && d.status !== "superseded" && d.status !== "rejected");
+      // Each post is evaluated once in a call. Evaluating makes no model call and so draws on no
+      // budget; a post named many times would otherwise store an evaluation each time.
+      if (options.slots && new Set(options.slots).size !== options.slots.length) {
+        throw new WorkflowError("duplicate-slot", "Name each post at most once.");
+      }
       const slots = (options.slots ?? before.plan.slots.map((s) => s.slot).filter((n) => live(n).length > 0)).map((n) => this.slotOf(before, n));
       if (slots.length === 0) throw new WorkflowError("nothing-to-evaluate", "There are no drafts to evaluate.");
 
@@ -882,6 +889,12 @@ export class CampaignService {
       try {
         return await this.mutate(campaignId, (record) => {
           if (record.revision !== before.revision) throw new RetryUpdate();
+          // An evaluation of the same drafts of the same post replaces the earlier one. Drafts do
+          // not change once written, so nothing is lost, and evaluating again and again does not
+          // make the record grow: it grows only with new drafts, which the budget limits.
+          const covers = (e: Evaluation) => `${e.slot}:${e.candidates.map((c) => c.draftId).sort().join(",")}`;
+          const replaced = new Set(evaluations.map(covers));
+          record.evaluations = record.evaluations.filter((e) => !replaced.has(covers(e)));
           record.evaluations.push(...evaluations);
           this.audit(record, "drafts-evaluated", `Slots ${slots.map((s) => s.slot).join(", ")} evaluated by ${this.evaluator.kind} (live: ${this.evaluator.live}).`);
           return evaluations;

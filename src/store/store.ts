@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { link, mkdir, open, readFile, readdir, rename, stat, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { mkdir, open, readdir, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { CampaignRecord, Id } from "../contracts/index.ts";
+import { acquireOwnedLock } from "./lock.ts";
 
 export class RecordNotFoundError extends Error {
   constructor(id: string) {
@@ -55,22 +56,7 @@ function sameCampaign(id: string, record: CampaignRecord): CampaignRecord {
   return record;
 }
 
-/**
- * Identifies this run of this process. A lock naming our own process id but another
- * instance was left by an earlier process that had the same id, and is dead.
- */
-export const PROCESS_INSTANCE = randomBytes(8).toString("hex");
-
-/** When a process started, as the system records it; null where that cannot be read. */
-export function startTimeOf(pid: number): string | null {
-  try {
-    // Field 22 of /proc/<pid>/stat, counted after the command name, which may contain spaces.
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] ?? null;
-  } catch {
-    return null;
-  }
-}
+export { PROCESS_INSTANCE, startTimeOf } from "./lock.ts";
 
 /** Runs tasks for the same key one after another, in arrival order. */
 class KeyedMutex {
@@ -178,96 +164,21 @@ export class FileCampaignStore implements CampaignStore {
    * only when its owner is known to be gone (the process no longer exists), never because
    * it is old: a writer that is merely slow or paused keeps its lock, and others wait and
    * then report that the campaign is busy. On release, a writer removes the lock only if
-   * it still carries its own token.
+   * it still carries its own token. How a dead owner's lock is removed, by exactly one
+   * process, is in lock.ts.
    */
   private async locked<T>(id: string, task: (assertHeld: () => Promise<void>) => Promise<T>): Promise<T> {
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    const lockPath = `${this.path(id)}.lock`;
-    const token = randomBytes(12).toString("hex");
-    // Owner: process id, this run of the process, when it started, and a token for this lock.
-    const mine = `${process.pid} ${PROCESS_INSTANCE} ${startTimeOf(process.pid) ?? "-"} ${token}\n`;
-    const deadline = Date.now() + this.lockTimeoutMs;
-    let pause = 5;
-    for (;;) {
-      try {
-        const handle = await open(lockPath, "wx", 0o600);
-        try {
-          await handle.writeFile(mine);
-        } finally {
-          await handle.close();
-        }
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-      if (await this.clearDeadLock(lockPath)) continue;
-      if (Date.now() > deadline) throw new StoreBusyError(id);
-      await new Promise((resolve) => setTimeout(resolve, pause));
-      pause = Math.min(pause * 2, 100);
-    }
-    const held = async () => (await readFile(lockPath, "utf8").catch(() => "")) === mine;
+    const lock = await acquireOwnedLock(`${this.path(id)}.lock`, { timeoutMs: this.lockTimeoutMs, ownerlessAfterMs: this.staleLockMs });
+    if (lock === null) throw new StoreBusyError(id);
     try {
       return await task(async () => {
-        if (!(await held())) throw new LockLostError();
+        if (!(await lock.held())) throw new LockLostError();
       });
     } finally {
       // Only our own lock is removed. If it is no longer ours, it is left alone.
-      if (await held()) await unlink(lockPath).catch(() => undefined);
+      await lock.release();
     }
-  }
-
-  /**
-   * Remove a lock whose owning process no longer exists. Returns true if the caller should
-   * try to take the lock again at once.
-   *
-   * The lock is first moved aside under a unique name, which only one contender can do,
-   * and is then checked again: if what was moved is not the dead owner's lock (a live
-   * writer took over in between), it is put back.
-   */
-  private async clearDeadLock(lockPath: string): Promise<boolean> {
-    const content = await readFile(lockPath, "utf8").catch(() => null);
-    if (content === null) return true; // released in the meantime
-    const [pidText, instance, started] = content.trim().split(" ");
-    const pid = Number(pidText);
-    if (!Number.isInteger(pid) || pid <= 0 || this.alive(pid, instance, started)) {
-      // A lock with no readable owner is treated as held until it is old enough to be
-      // certain that no writer is part-way through creating it.
-      if (Number.isInteger(pid) && pid > 0) return false;
-      const age = await stat(lockPath).then((st) => Date.now() - st.mtimeMs, () => 0);
-      if (age < this.staleLockMs) return false;
-    }
-    // Look once more immediately before moving it: another contender may already have taken over.
-    if ((await readFile(lockPath, "utf8").catch(() => null)) !== content) return true;
-    const grave = `${lockPath}.${randomBytes(8).toString("hex")}.dead`;
-    try {
-      await rename(lockPath, grave);
-    } catch {
-      return true; // someone else moved or released it
-    }
-    const moved = await readFile(grave, "utf8").catch(() => null);
-    if (moved !== content) {
-      // We moved a different lock from the one we judged dead. Put it back unless a new one exists.
-      await link(grave, lockPath).catch(() => undefined);
-    }
-    await unlink(grave).catch(() => undefined);
-    return true;
-  }
-
-  /**
-   * True when the lock's owner is still running. A process id alone is not enough: ids are
-   * reused, and after a restart in a container the new process often has the old one's id.
-   */
-  private alive(pid: number, instance: string | undefined, started: string | undefined): boolean {
-    if (pid === process.pid) return instance === PROCESS_INSTANCE;
-    try {
-      process.kill(pid, 0);
-    } catch (error) {
-      // EPERM means the process exists but belongs to someone else.
-      if ((error as NodeJS.ErrnoException).code !== "EPERM") return false;
-    }
-    // The id is in use. It is the same process only if it started when the lock says it did.
-    const now = startTimeOf(pid);
-    return now === null || started === undefined || started === "-" || now === started;
   }
 
   create(record: CampaignRecord): Promise<void> {
@@ -287,9 +198,18 @@ export class FileCampaignStore implements CampaignStore {
   async get(id: string): Promise<CampaignRecord> {
     let raw: string;
     try {
-      raw = await readFile(this.path(id), "utf8");
+      // A record is an ordinary file. A link put in its place is not followed: it could point
+      // anywhere the server's user can read.
+      const handle = await open(this.path(id), constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        raw = await handle.readFile("utf8");
+      } finally {
+        await handle.close();
+      }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new RecordNotFoundError(id);
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") throw new RecordNotFoundError(id);
+      if (code === "ELOOP") throw new Error(`Campaign "${id}" is not stored as an ordinary file.`);
       throw error;
     }
     return sameCampaign(id, CampaignRecord.parse(JSON.parse(raw)));

@@ -92,7 +92,9 @@ export const ScoringPolicy = z.strictObject({
   /** Evidence older than this counts for nothing towards confidence. */
   maxEvidenceAgeDays: z.number().int().min(1),
   maxFeePerPost: z.number().positive().nullable(),
-});
+  /** The currency of `maxFeePerPost`. Required with it: a fee in another currency is not compared. */
+  feeCurrency: z.string().regex(/^[A-Z]{3}$/).nullable(),
+}).refine((p) => p.maxFeePerPost === null || p.feeCurrency !== null, "feeCurrency is required when maxFeePerPost is set");
 export type ScoringPolicy = z.infer<typeof ScoringPolicy>;
 
 export const IneligibilityReason = z.strictObject({
@@ -103,6 +105,8 @@ export const IneligibilityReason = z.strictObject({
     "sponsorship-refused",
     "insufficient-evidence",
     "over-budget",
+    "evidence-dated-in-future",
+    "fee-currency-mismatch",
   ]),
   detail: ShortText,
 });
@@ -118,10 +122,13 @@ export const CreatorResult = z.strictObject({
   weightedTotal: z.number().min(0).max(1),
   /** How far the evidence can be relied on, 0..1: fresh, enough, and from more than one source. */
   evidenceConfidence: z.number().min(0).max(1),
+  /** True when the candidate, or any item of its evidence, is labelled synthetic. */
+  synthetic: z.boolean(),
 });
 export type CreatorResult = z.infer<typeof CreatorResult>;
 
 export const CreatorRanking = z.strictObject({
+  /** True when the set, any candidate or any item of evidence is labelled synthetic. */
   synthetic: z.boolean(),
   rankedAt: IsoDateTime,
   policy: ScoringPolicy,

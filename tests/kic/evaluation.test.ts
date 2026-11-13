@@ -81,7 +81,8 @@ test("mandatory constraints cannot be slipped past with disguised text", () => {
   const cyrillic = "gu\u0430rantee"; // Cyrillic "а" in place of Latin "a"
   assert.deepEqual(rules(draft("zw", `We ${zeroWidth} results.`)).sort(), ["must-avoid-term", "suspicious-characters"]);
   assert.deepEqual(rules(draft("sh", `We ${softHyphen} results.`)).sort(), ["must-avoid-term", "suspicious-characters"]);
-  assert.deepEqual(rules(draft("cy", `We ${cyrillic} results.`)), ["suspicious-characters"]);
+  // Since the scope review: look-alike letters are folded, so the ruled-out term is found as well.
+  assert.deepEqual(rules(draft("cy", `We ${cyrillic} results.`)).sort(), ["must-avoid-term", "suspicious-characters"]);
   assert.deepEqual(rules(draft("fw", "Trust fell to \uff16\uff12\uff05 last year.")).sort(), ["suspicious-characters", "unlisted-statistic"]);
 
   // Ruled-out terms written joined, spaced, or inside a hashtag.
@@ -289,5 +290,9 @@ test("redaction removes secret-shaped values and the request fails closed if one
 
   const brief = syntheticBrief();
   const leaky = draft("draft-leak", `Opaque blob ${"Z".repeat(50)} in the text.`);
-  assert.throws(() => buildJevRequest(brief, slot, [leaky], DEFAULT_CRITERIA), RedactionError);
+  // A long unbroken run is taken out of what the evaluator sees. It no longer stops the request:
+  // one long word would otherwise block the evaluation, and so the approval, of a whole campaign.
+  const request = buildJevRequest(brief, slot, [leaky], DEFAULT_CRITERIA);
+  assert.ok(!JSON.stringify(request).includes("ZZZZ"), "the blob does not reach the evaluator");
+  assert.ok(JSON.stringify(request).includes("[long-token]"));
 });

@@ -86,7 +86,8 @@
     "sponsorshipPlanned": true,
     "minEvidenceItems": 2,
     "maxEvidenceAgeDays": 60,
-    "maxFeePerPost": 2000
+    "maxFeePerPost": 2000,
+    "feeCurrency": "GBP"
   },
   "assessments": [
     { "creatorId": "creator-alder", "dimension": "icp_relevance", "score": 0.9, "rationale": "Invented judgement: writes for operations leaders about reporting.", "evidenceIds": ["ev-alder-1", "ev-alder-2"], "assessor": "synthetic fixture" },

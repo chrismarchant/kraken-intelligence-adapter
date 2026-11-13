@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { HumanActor, Id, IsoDateTime } from "./common.ts";
+import { HumanActor, Id, IsoDateTime, ShortText } from "./common.ts";
+import { Hashtags, MAX_POSTS_IN_A_PLAN, PostBody } from "./content.ts";
 
 export const PROVISIONAL_COMMAND_SCHEMA = "kic.provisional-publish-command/v0";
 
@@ -25,14 +26,15 @@ export const ProvisionalPublishCommand = z.strictObject({
   kind: z.literal("organic-post"),
   /** Relative position only. KIC never proposes a date or time. */
   sequence: z.strictObject({
-    slot: z.number().int().min(1),
-    week: z.number().int().min(1),
-    orderInWeek: z.number().int().min(1),
+    slot: z.number().int().min(1).max(MAX_POSTS_IN_A_PLAN),
+    week: z.number().int().min(1).max(MAX_POSTS_IN_A_PLAN),
+    orderInWeek: z.number().int().min(1).max(MAX_POSTS_IN_A_PLAN),
   }),
   content: z.strictObject({
     draftId: Id,
-    body: z.string().min(1),
-    hashtags: z.array(z.string()),
+    // The same bounds as the draft the command is built from: length, count, no control characters.
+    body: PostBody,
+    hashtags: Hashtags,
     bodySha256: z.string().regex(/^[0-9a-f]{64}$/),
   }),
   approval: z.strictObject({
@@ -46,7 +48,7 @@ export const ProvisionalPublishCommand = z.strictObject({
     target: z.literal("kraken"),
     /** Kraken's accepted contract version. Null until one is accepted and integration is authorised. */
     contract: z.null(),
-    note: z.string(),
+    note: ShortText,
   }),
 });
 export type ProvisionalPublishCommand = z.infer<typeof ProvisionalPublishCommand>;

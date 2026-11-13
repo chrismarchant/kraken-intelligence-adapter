@@ -25,12 +25,15 @@ export const TokenUsage = z.strictObject({
 export type TokenUsage = z.infer<typeof TokenUsage>;
 
 /** How a piece of model-produced content came to exist. */
+/** A short label written by code: a provider, model, skill or version name. */
+const Label = z.string().max(200).regex(NO_CONTROL_CHARACTERS, plain);
+
 export const GenerationMeta = z.strictObject({
-  provider: z.string(),
-  model: z.string(),
-  skill: z.string(),
-  skillVersion: z.string(),
-  promptVersion: z.string(),
+  provider: Label,
+  model: Label,
+  skill: Label,
+  skillVersion: Label,
+  promptVersion: Label,
   /** live = a real model call in this run; fixture = replayed recorded output. */
   source: z.enum(["live", "fixture"]),
   generatedAt: IsoDateTime,

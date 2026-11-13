@@ -41,8 +41,18 @@ export function flattenContentBlocks(blocks: unknown[]): { text: string; reasoni
 function fixContainer(c: Json, field: "message" | "delta", opts: NormalizeOptions): boolean {
   const holder = c[field];
   if (!isObject(holder)) return false;
+  let changed = false;
+  // Reasoning that upstream sends already flattened is hidden like any other, unless it is asked for.
+  if (!opts.exposeReasoning) {
+    for (const key of ["reasoning_content", "reasoning"]) {
+      if (key in holder) {
+        delete holder[key];
+        changed = true;
+      }
+    }
+  }
   const content = holder["content"];
-  if (content === undefined || content === null || typeof content === "string") return false;
+  if (content === undefined || content === null || typeof content === "string") return changed;
   if (Array.isArray(content)) {
     const { text, reasoning } = flattenContentBlocks(content);
     if (field === "delta" && text === "") delete holder["content"];
@@ -58,7 +68,9 @@ function fixContainer(c: Json, field: "message" | "delta", opts: NormalizeOption
 
 /**
  * Normalise a parsed chat.completion body in place-safe fashion (returns a new top-level object
- * when changes are needed; the input is not mutated). Never throws.
+ * when changes are needed; the input is not mutated). Anything that is not a completion is
+ * returned as it is. A completion that cannot be processed makes this throw: the caller must
+ * not pass it on, since it could not be normalised.
  */
 export function normalizeChatCompletion<T = unknown>(body: T, opts: NormalizeOptions = {}): T {
   try {
@@ -73,12 +85,15 @@ export function normalizeChatCompletion<T = unknown>(body: T, opts: NormalizeOpt
       if (isObject(c)) fixContainer(c, "message", opts);
     }
     return copy as T;
-  } catch {
-    return body;
+  } catch (error) {
+    throw new Error("The completion could not be normalised", { cause: error });
   }
 }
 
-/** Normalise one parsed chunk (chat.completion.chunk). Returns [value, changed]. Never throws. */
+/**
+ * Normalise one parsed chunk (chat.completion.chunk). Returns [value, changed]. A chunk that
+ * cannot be processed makes this throw; normalizeSseEvent then drops the event.
+ */
 export function normalizeChunk(chunk: unknown, opts: NormalizeOptions = {}): [unknown, boolean] {
   try {
     if (!isObject(chunk) || !Array.isArray(chunk["choices"])) return [chunk, false];
@@ -91,12 +106,20 @@ export function normalizeChunk(chunk: unknown, opts: NormalizeOptions = {}): [un
       }
     }
     return changed ? [copy, true] : [chunk, false];
-  } catch {
-    return [chunk, false];
+  } catch (error) {
+    throw new Error("The chunk could not be normalised", { cause: error });
   }
 }
 
-/** Normalise one complete SSE event (text without trailing blank line). Returns the event text. */
+/** What is sent on in place of an event whose data could not be read. A comment: clients ignore it. */
+export const DROPPED_EVENT = ": dropped an upstream event that was not valid JSON";
+
+/**
+ * Normalise one complete SSE event (text without trailing blank line). Returns the event text.
+ *
+ * An event whose data is not valid JSON is not passed on: it cannot be normalised, so passing
+ * it on would let through whatever it holds, reasoning included. It is replaced by a comment.
+ */
 export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): string {
   const lines = event.split(/\r\n|\n|\r/);
   const dataLines: number[] = [];
@@ -115,23 +138,33 @@ export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): s
   try {
     parsed = JSON.parse(payload);
   } catch {
-    return event;
+    return DROPPED_EVENT;
   }
   try {
     opts.onParsed?.(parsed);
   } catch {
     // observer errors must never break the stream
   }
-  const [out, changed] = normalizeChunk(parsed, opts);
+  let out: unknown;
+  let changed: boolean;
+  try {
+    [out, changed] = normalizeChunk(parsed, opts);
+  } catch {
+    return DROPPED_EVENT;
+  }
   if (!changed) return event;
   const first = dataLines[0] as number;
+  const isData = new Set(dataLines);
   const rebuilt: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (i === first) rebuilt.push("data: " + JSON.stringify(out));
-    else if (!dataLines.includes(i)) rebuilt.push(lines[i] as string);
+    else if (!isData.has(i)) rebuilt.push(lines[i] as string);
   }
   return rebuilt.join("\n");
 }
+
+/** The most one event may hold before its end is seen. Far above anything a chat stream sends. */
+export const MAX_SSE_EVENT_CHARS = 4 * 1024 * 1024;
 
 /**
  * Streaming SSE normaliser. Handles arbitrary chunk boundaries, including a split inside a
@@ -140,27 +173,54 @@ export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): s
 export function createSseNormalizer(opts: NormalizeOptions = {}): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder("utf-8");
   const encoder = new TextEncoder();
-  let buffer = "";
-  const sep = /\r\n\r\n|\n\n|\r\r/;
+  // The event being received is kept in pieces, as it arrived, apart from its last few
+  // characters. Only those and the newly arrived text are searched for the end of the event,
+  // so a long event arriving in many pieces is not gone over again for each piece.
+  let held: string[] = [];
+  let heldChars = 0;
+  let tail = "";
+  // A blank line ends an event. The two line ends need not be written the same way.
+  const sep = /(\r\n|\n|\r)(\r\n|\n|\r)/g;
+  const emit = (controller: TransformStreamDefaultController<Uint8Array>, event: string, separator: RegExpExecArray) => {
+    const out = normalizeSseEvent(event, opts);
+    controller.enqueue(encoder.encode(out === event ? event + separator[0] : out + (separator[1] === separator[2] ? separator[0] : "\n\n")));
+  };
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
-      buffer += decoder.decode(chunk, { stream: true });
+      const work = tail + decoder.decode(chunk, { stream: true });
+      let start = 0;
+      sep.lastIndex = 0;
       for (;;) {
-        const m = sep.exec(buffer);
+        const m = sep.exec(work);
         if (!m) break;
-        const event = buffer.slice(0, m.index);
         const end = m.index + m[0].length;
-        const raw = buffer.slice(0, end);
-        buffer = buffer.slice(end);
-        const out = normalizeSseEvent(event, opts);
-        controller.enqueue(encoder.encode(out === event ? raw : out + (m[0] === "\r\n\r\n" ? "\r\n\r\n" : m[0] === "\r\r" ? "\r\r" : "\n\n")));
+        // A lone carriage return at the very end may be the first half of a line end still to come.
+        if (end === work.length && m[0].endsWith("\r")) break;
+        emit(controller, held.join("") + work.slice(start, m.index), m);
+        held = [];
+        heldChars = 0;
+        start = end;
+        sep.lastIndex = end;
+      }
+      const rest = work.slice(start);
+      tail = rest.slice(-3);
+      if (rest.length > 3) {
+        held.push(rest.slice(0, -3));
+        heldChars += rest.length - 3;
+      }
+      if (heldChars > MAX_SSE_EVENT_CHARS) {
+        held = [];
+        heldChars = 0;
+        tail = "";
+        controller.error(new Error("An upstream event exceeded the size the shim will hold"));
       }
     },
     flush(controller) {
-      buffer += decoder.decode();
+      const buffer = held.join("") + tail + decoder.decode();
       if (buffer.length > 0) {
-        const out = normalizeSseEvent(buffer, opts);
-        controller.enqueue(encoder.encode(out));
+        // What is left has no blank line after it: a stream that broke off mid-event. A whole
+        // event is normalised as usual; a broken one is dropped by normalizeSseEvent.
+        controller.enqueue(encoder.encode(normalizeSseEvent(buffer, opts)));
       }
     },
   });

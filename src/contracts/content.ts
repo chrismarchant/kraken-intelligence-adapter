@@ -25,10 +25,14 @@ export const PostIntent = z.enum([
   "invitation",
 ]);
 
+/** Far above any limit an instance sets; a bound so that no record can carry an absurd count. */
+export const MAX_POSTS_IN_A_PLAN = 500;
+const Position = z.number().int().min(1).max(MAX_POSTS_IN_A_PLAN);
+
 export const ProgrammeSlot = z.strictObject({
-  slot: z.number().int().min(1),
-  week: z.number().int().min(1),
-  orderInWeek: z.number().int().min(1),
+  slot: Position,
+  week: Position,
+  orderInWeek: Position,
   theme: ShortText,
   intent: PostIntent,
   /** Why this post sits here in the sequence. */
@@ -48,6 +52,7 @@ export const ProgrammePlan = z.strictObject({
   slots: z
     .array(ProgrammeSlot)
     .min(1)
+    .max(MAX_POSTS_IN_A_PLAN)
     .refine((slots) => slots.every((s, index) => s.slot === index + 1), "posts must be numbered 1 to n in order, each number once"),
   generation: GenerationMeta,
 });
@@ -65,17 +70,20 @@ export type DraftClaim = z.infer<typeof DraftClaim>;
 export const DraftStatus = z.enum(["candidate", "selected", "approved", "rejected", "superseded"]);
 export type DraftStatus = z.infer<typeof DraftStatus>;
 
+export const PostBody = z.string().trim().min(1).max(8000).regex(NO_CONTROL_CHARACTERS, "must not contain control characters");
+export const Hashtags = z.array(z.string().regex(/^#[A-Za-z0-9_]{1,60}$/)).max(8);
+
 export const PostDraft = z.strictObject({
   id: Id,
-  slot: z.number().int().min(1),
+  slot: Position,
   narrativeId: Id,
   variant: ShortText,
   /** The approach this variant takes, in the model's words. */
   approach: ShortText,
   hook: ShortText,
-  body: z.string().trim().min(1).max(8000).regex(NO_CONTROL_CHARACTERS, "must not contain control characters"),
+  body: PostBody,
   callToAction: ShortText,
-  hashtags: z.array(z.string().regex(/^#[A-Za-z0-9_]{1,60}$/)).max(8),
+  hashtags: Hashtags,
   claims: z.array(DraftClaim).max(12),
   status: DraftStatus,
   /** Set when this draft is a revision of another. */

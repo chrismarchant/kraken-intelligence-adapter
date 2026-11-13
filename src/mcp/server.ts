@@ -1,7 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { relative } from "node:path";
 import type { CampaignRecord } from "../contracts/index.ts";
+import { Id } from "../contracts/common.ts";
+import { MAX_POSTS_IN_A_PLAN } from "../contracts/content.ts";
 import { ModelCallError, ModelOutputError } from "../gateway/gateway.ts";
 import { FixtureMissingError } from "../gateway/fixture.ts";
 import { JevDisabledError } from "../evaluation/jev.ts";
@@ -88,8 +91,13 @@ export function campaignSummary(record: CampaignRecord): Record<string, unknown>
   };
 }
 
-const campaignId = z.string().describe("Campaign id returned by kic_create_campaign.");
-const slots = z.array(z.number().int().min(1)).optional().describe("Slot numbers. Omit for every applicable slot.");
+// The id has the shape every stored id has, so a malformed one is refused as an argument and never reaches the store.
+const campaignId = Id.describe("Campaign id returned by kic_create_campaign.");
+const slots = z
+  .array(z.number().int().min(1).max(MAX_POSTS_IN_A_PLAN))
+  .max(MAX_POSTS_IN_A_PLAN)
+  .optional()
+  .describe("Slot numbers, each at most once. Omit for every applicable slot.");
 
 /**
  * The KIC MCP server: the typed tools an agent runtime uses to prepare a campaign.
@@ -246,7 +254,11 @@ export function createKicServer(deps: KicServerDeps): McpServer {
     ({ campaignId: id, allowPartial }) =>
       guard(async () => {
         const pkg = assembleProgramme(await service.getCampaign(id), { allowPartial: allowPartial ?? false, clock, limits: service.limits, verifier: service.verifier });
-        const exported = await exportProgramme(pkg, deps.exportRoot);
+        const written = await exportProgramme(pkg, deps.exportRoot);
+        // Where the files are is given relative to the export directory: the caller has no use
+        // for the server's own paths, and no tool takes a path.
+        const within = (path: string) => relative(deps.exportRoot, path);
+        const exported = { ...written, directory: within(written.directory), packagePath: within(written.packagePath), summaryPath: within(written.summaryPath), commandsPath: within(written.commandsPath) };
         return ok({
           programmeId: pkg.programmeId,
           approvalState: pkg.approvalState,

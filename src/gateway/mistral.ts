@@ -75,21 +75,63 @@ interface StreamChunk {
   usage?: ChatCompletion["usage"];
 }
 
+/** The most one streamed line may hold. Far above any event a chat stream sends. */
+const MAX_LINE_CHARS = 1024 * 1024;
+/** The most text an answer may hold: several times what the largest max_tokens can produce. */
+const MAX_ANSWER_CHARS = 2 * 1024 * 1024;
+/** The most a whole response may hold, reasoning and framing included. */
+const MAX_RESPONSE_CHARS = 32 * 1024 * 1024;
+
+/** A count the provider reported, if it is one: a whole number, not negative. Fractions are rounded up. */
+function reportedCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.ceil(value) : null;
+}
+
+/** Wait, or stop waiting at once if the call is cancelled. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
 /**
  * Read a chat completion that is either one JSON document or a server-sent event stream,
  * and return it in the non-streamed shape. Reasoning blocks are discarded.
  */
 export async function readCompletion(response: Response): Promise<ChatCompletion> {
   const type = response.headers.get("content-type") ?? "";
-  if (!type.includes("text/event-stream")) return (await response.json()) as ChatCompletion;
   if (!response.body) throw new Error("empty stream");
+  if (!type.includes("text/event-stream")) {
+    // One JSON document. Read with a limit: the provider's answer is bounded by max_tokens, and
+    // anything far larger is not an answer.
+    let whole = "";
+    const decoder = new TextDecoder();
+    for await (const part of response.body as unknown as AsyncIterable<Uint8Array>) {
+      whole += decoder.decode(part, { stream: true });
+      if (whole.length > MAX_RESPONSE_CHARS) throw new Error("response too large");
+    }
+    return JSON.parse(whole + decoder.decode()) as ChatCompletion;
+  }
 
-  let text = "";
+  // The answer is collected in pieces and joined once at the end.
+  const answer: string[] = [];
+  let answerChars = 0;
+  let received = 0;
+  // The line being received, in pieces as it arrived. Only newly arrived text is searched for
+  // a line end, so a long line arriving in many pieces is not gone over again for each piece.
+  let held: string[] = [];
+  let heldChars = 0;
   let model: string | undefined;
   let finish: string | undefined;
   let usage: ChatCompletion["usage"];
   let done = false;
-  let buffer = "";
   const decoder = new TextDecoder();
 
   const take = (line: string) => {
@@ -104,21 +146,36 @@ export async function readCompletion(response: Response): Promise<ChatCompletion
     usage = chunk.usage ?? usage;
     const choice = chunk.choices?.[0];
     if (choice?.finish_reason) finish = choice.finish_reason;
-    text += messageText(choice?.delta?.content);
+    const piece = messageText(choice?.delta?.content);
+    if (piece) {
+      answer.push(piece);
+      answerChars += piece.length;
+      if (answerChars > MAX_ANSWER_CHARS) throw new Error("answer too large");
+    }
   };
 
   for await (const part of response.body as unknown as AsyncIterable<Uint8Array>) {
-    buffer += decoder.decode(part, { stream: true });
+    received += part.byteLength;
+    if (received > MAX_RESPONSE_CHARS) throw new Error("stream too large");
+    const arrived = decoder.decode(part, { stream: true });
+    let start = 0;
     let newline: number;
-    while ((newline = buffer.indexOf("\n")) >= 0) {
-      take(buffer.slice(0, newline).replace(/\r$/, ""));
-      buffer = buffer.slice(newline + 1);
+    while ((newline = arrived.indexOf("\n", start)) >= 0) {
+      take((held.join("") + arrived.slice(start, newline)).replace(/\r$/, ""));
+      held = [];
+      heldChars = 0;
+      start = newline + 1;
+    }
+    if (start < arrived.length) {
+      held.push(arrived.slice(start));
+      heldChars += arrived.length - start;
+      if (heldChars > MAX_LINE_CHARS) throw new Error("stream line too large");
     }
   }
-  buffer += decoder.decode();
-  if (buffer.trim()) take(buffer.trim());
+  const last = (held.join("") + decoder.decode()).trim();
+  if (last) take(last);
   if (!done && finish === undefined) throw new Error("stream ended without a finish reason");
-  return { model, choices: [{ finish_reason: finish, message: { content: text } }], usage };
+  return { model, choices: [{ finish_reason: finish, message: { content: answer.join("") } }], usage };
 }
 
 export class MistralGateway implements ModelGateway {
@@ -162,11 +219,13 @@ export class MistralGateway implements ModelGateway {
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       if (maxTokens > allowance.left) break;
       const completion = await this.call(request, correction, maxTokens, cost, allowance);
-      cost.usage.promptTokens += completion.usage?.prompt_tokens ?? 0;
+      // What the provider reports is checked before it is counted: a figure that is not a
+      // non-negative number would not fit the record, and the answer paid for would be lost.
+      cost.usage.promptTokens += reportedCount(completion.usage?.prompt_tokens) ?? 0;
       // An answer that does not say what it cost is charged at its whole allowance, never at nothing.
-      const reported = completion.usage?.completion_tokens;
-      cost.usage.completionTokens += typeof reported === "number" && Number.isFinite(reported) && reported >= 0 ? reported : maxTokens;
-      cost.usage.reasoningTokens += completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+      const charged = reportedCount(completion.usage?.completion_tokens) ?? maxTokens;
+      cost.usage.completionTokens += charged;
+      cost.usage.reasoningTokens += Math.min(reportedCount(completion.usage?.completion_tokens_details?.reasoning_tokens) ?? 0, charged);
 
       const choice = completion.choices?.[0];
       const text = messageText(choice?.message?.content);
@@ -244,7 +303,14 @@ export class MistralGateway implements ModelGateway {
         throw new ModelCallError(`Model call for "${request.purpose}" used up its token allowance on failed requests.`, failure.status, cost);
       }
       allowance.left -= maxTokens;
-      if (attempt > 0) await new Promise((r) => setTimeout(r, this.backoffMs * 3 ** (attempt - 1)));
+      if (attempt > 0) {
+        await pause(this.backoffMs * 3 ** (attempt - 1), request.signal);
+        // Cancelled while waiting: nothing was sent, so the allowance set aside is given back.
+        if (request.signal?.aborted) {
+          allowance.left += maxTokens;
+          throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
+        }
+      }
       const timeout = AbortSignal.timeout(this.timeoutMs);
       const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
       let response: Response;

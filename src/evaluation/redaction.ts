@@ -13,6 +13,12 @@ const PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: "[email]", pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
   { label: "[phone]", pattern: /(?<![\w.])\+?\d[\d\s().-]{8,}\d(?![\w.])/g },
   { label: "[url]", pattern: /\bhttps?:\/\/[^\s<>"')]+/gi },
+  // Any long unbroken run of key-like characters. Most are harmless (a long hashtag, a
+  // hyphenated phrase, a path), and some are keys this file has no pattern for. All are taken
+  // out of what the evaluator sees. Taking them out, where this used to refuse the whole
+  // request, keeps an honest campaign from being blocked by one long word; the evaluator's
+  // view affects scores only, and the mandatory constraints are computed on the real text.
+  { label: "[long-token]", pattern: /\b[A-Za-z0-9+/_-]{40,}\b/g },
 ];
 
 const SECRET_SHAPED: RegExp[] = [

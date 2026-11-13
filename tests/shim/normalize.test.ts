@@ -100,7 +100,7 @@ test("stream tool call: tool_calls delta and usage chunk preserved", async () =>
   }
 });
 
-test("stream: comments, unknown events, non-JSON data and [DONE] pass through unchanged; CRLF ok", async () => {
+test("stream: comments, unknown events and [DONE] pass through unchanged; data that is not JSON is dropped; CRLF ok", async () => {
   const input =
     ": keep-alive\n\n" +
     "event: ping\ndata: {\"x\":1}\n\n" +
@@ -108,7 +108,10 @@ test("stream: comments, unknown events, non-JSON data and [DONE] pass through un
     "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"},{\"type\":\"nope\"}]}}]}\r\n\r\n" +
     "data: [DONE]\n\n";
   const out = await runNormalizer(Buffer.from(input), 5);
-  assert.ok(out.startsWith(": keep-alive\n\nevent: ping\ndata: {\"x\":1}\n\ndata: not json\n\n"));
+  // Since the scope review: an event whose data cannot be read is replaced by a comment. Passed on
+  // as it was, it would carry through whatever it held, reasoning included.
+  assert.ok(out.startsWith(": keep-alive\n\nevent: ping\ndata: {\"x\":1}\n\n: dropped an upstream event that was not valid JSON\n\n"));
+  assert.ok(!out.includes("not json"));
   assert.ok(out.includes('"content":"hi"'));
   assert.ok(out.endsWith("data: [DONE]\n\n"));
 });

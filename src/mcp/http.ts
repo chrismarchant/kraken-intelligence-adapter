@@ -15,6 +15,13 @@ export interface HttpOptions {
   allowedHosts: string[];
   /** Origins a browser-based client may call from. Empty means no browser may call at all. */
   allowedOrigins: string[];
+  /** Connections held open at once; further ones are refused by the server. Default 64. */
+  maxConnections?: number;
+  /** Tool requests being worked on at once; further ones are answered 503. Default 16. */
+  maxInFlight?: number;
+  /** How long a client may take to send its headers, and its whole request. Defaults 10 s and 30 s. */
+  headersTimeoutMs?: number;
+  requestTimeoutMs?: number;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -85,7 +92,9 @@ async function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
  * workspace adds "by URL".
  */
 export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Server {
-  return createServer(async (req, res) => {
+  const maxInFlight = options.maxInFlight ?? 16;
+  let inFlight = 0;
+  const httpServer = createServer(async (req, res) => {
     const path = (req.url ?? "").split("?")[0];
     // A page on another site must not be able to reach this server by pointing a name at it
     // or by calling it from a browser: the Host must be one we answer to, and an Origin must
@@ -97,6 +106,15 @@ export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Ser
     if (path !== "/mcp") return send(res, 404, { error: "not found" });
     if (!authorised(req, options.token)) return send(res, 401, { error: "unauthorised" });
     if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
+    // Work in progress is bounded. A caller over the limit is told to come back, not queued.
+    if (inFlight >= maxInFlight) {
+      res.setHeader("retry-after", "1");
+      return send(res, 503, { error: "busy" });
+    }
+    inFlight += 1;
+    res.once("close", () => {
+      inFlight -= 1;
+    });
 
     let body: unknown;
     try {
@@ -117,6 +135,14 @@ export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Ser
       if (!res.headersSent) send(res, 500, { error: "internal error" });
     }
   });
+  // What a client can hold open before it has shown a token is bounded: how many connections,
+  // and how long each may take to send its headers and then the rest of its request. A request
+  // that has arrived may take as long as its tool call needs.
+  httpServer.maxConnections = options.maxConnections ?? 64;
+  httpServer.headersTimeout = options.headersTimeoutMs ?? 10_000;
+  httpServer.requestTimeout = options.requestTimeoutMs ?? 30_000;
+  httpServer.keepAliveTimeout = 5_000;
+  return httpServer;
 }
 
 if (import.meta.main) {
