@@ -175,7 +175,7 @@ const NUMERAL = /^[(\["'\u2018\u201C]*\d+(?:[.,:/\u2013-]\d+)*[%+]?[.,;:?)\]"'\u
 const isSingle = (word: string): boolean => [...bare(word)].length <= 1;
 
 /** A letter, or a symbol that is read as one, is in the word. Digits do not count: they are what is being decided. */
-const spellsALetter = (word: string): boolean => [...word].some((c) => /\p{L}/u.test(c) || (!/\d/.test(c) && c in SYMBOL_READING));
+const spellsALetter = (word: string): boolean => [...word].some((c) => /\p{L}/u.test(c) || (!/\d/.test(c) && (c === "|" || c in SYMBOL_READING)));
 
 /**
  * Which words of a text are plain numbers, not to be read as letters. A digit set apart among
@@ -226,23 +226,35 @@ export function readingsOf(text: string): string[] {
   const forms = new Set<string>();
   // Where what is inside a word is taken as a break, a word joined by a hyphen, a dash or a
   // stroke is read as its parts, each a word of its own: "can't-lose" is "can't" and "lose".
-  const parts = words.flatMap((word) => word.split(/[-\u2013\u2014/]+/).filter((part) => part !== ""));
-  const numbers = { words: plainNumbers(words), parts: plainNumbers(parts) };
+  const partsOf = (taken: readonly string[]) => taken.flatMap((word) => word.split(/[-\u2013\u2014/]+/).filter((part) => part !== ""));
+  const judged = (taken: string[]) => ({ taken, plain: plainNumbers(taken) });
+  const whole = judged(words);
+  const parts = judged(partsOf(words));
+  // The same parts, cut after the marks at the edges of the whole word were left off. A mark at
+  // the joint then stays with its part and is read as a letter: "$fr\u20AC\u20AC-trial" is
+  // "fr\u20AC\u20AC" and "trial", where the part cut first, "$fr\u20AC\u20AC", would keep the "$" or lose both.
+  const partsWithin = { punctuation: judged(partsOf(words.map(withoutPunctuation))), all: judged(partsOf(words.map(bare))) };
+  const asItStands: Reading["edges"] = "kept";
   for (const reading of READINGS) {
-    const [taken, plain] = reading.between === " " ? [parts, numbers.parts] : [words, numbers.words];
-    const read = taken.map((word, i) => readWord(word, reading, plain[i] as boolean)).filter((word) => word !== "").join(" ");
-    // Single letters set apart, by spaces or by dots: "A I", "R. O. I.", "s c a m". A run of
-    // them is joined, with a mark between the letters in place of the spaces, so that a term
-    // can be found anywhere along the run: in "a s c a m" the word begins at the second letter.
-    const joined = read.replace(/(?<![^ ])(?:[\p{L}\p{N}] )+[\p{L}\p{N}](?![^ ])/gu, (run) => run.replace(/ /g, RUN));
-    for (const form of new Set([read, joined])) {
-      forms.add(form.toLowerCase());
-      // In the type a post is set in, a capital I and a lower-case L are drawn alike.
-      forms.add(form.replace(L_BESIDE_A_CAPITAL, "I").toLowerCase());
-      forms.add(capitalIAfterSmallLetters(form).toLowerCase());
-    }
+    const ways = reading.between === "" ? [{ ...whole, reading }] : [{ ...parts, reading }];
+    if (reading.between === " " && reading.edges !== "kept") ways.push({ ...partsWithin[reading.edges], reading: { ...reading, edges: asItStands } });
+    for (const way of ways) addForms(forms, way.taken.map((word, i) => readWord(word, way.reading, way.plain[i] as boolean)).filter((word) => word !== "").join(" "));
   }
   return [...forms];
+}
+
+/** A text read one way, added to the forms a term is looked for in, with its variants. */
+function addForms(forms: Set<string>, read: string): void {
+  // Single letters set apart, by spaces or by dots: "A I", "R. O. I.", "s c a m". A run of
+  // them is joined, with a mark between the letters in place of the spaces, so that a term
+  // can be found anywhere along the run: in "a s c a m" the word begins at the second letter.
+  const joined = read.replace(/(?<![^ ])(?:[\p{L}\p{N}] )+[\p{L}\p{N}](?![^ ])/gu, (run) => run.replace(/ /g, RUN));
+  for (const form of new Set([read, joined])) {
+    forms.add(form.toLowerCase());
+    // In the type a post is set in, a capital I and a lower-case L are drawn alike.
+    forms.add(form.replace(L_BESIDE_A_CAPITAL, "I").toLowerCase());
+    forms.add(capitalIAfterSmallLetters(form).toLowerCase());
+  }
 }
 
 /**

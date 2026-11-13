@@ -634,3 +634,26 @@ test("r22-3, r22-4: a short term is not looked for at the edges of every word of
     assert.ok(rulesWith([term], "", { hashtags: [tag] }).includes("must-avoid-term"), tag);
   }
 });
+
+// ---------------------------------------- the regression review of e30451c..184f687
+// (docs/review/2026-11-13-regression-review-184f687.md)
+
+test("r23-1: a part of a hyphenated or slashed word with a stand-in symbol at each of its edges is read", () => {
+  for (const [text, term] of [
+    ["Get it $fr\u20AC\u20AC-trial today, no card needed.", "free"], ["Start your +fr\u20AC\u20AC/trial today.", "free"], ["Our $4|-powered checks flag mismatches.", "AI"],
+    ["The +8\u20AC$+-in-class reconciliation.", "best"], ["A @fr\u20AC\u20AC/x offer.", "free"], ["Now 1\u2014f/\u00AE/e/e\u00A1 here.", "free"], ["A $1.o.s.\u20AC-trial here.", "lose"],
+  ] as const) {
+    assert.ok(termFinder(text)(term), `${text}: ${term}`);
+    assert.ok(rulesWith([term], text).includes("must-avoid-term"), text);
+  }
+  // What the cut into parts was made for still holds, and a number joined to a word is still a number.
+  assert.ok(termFinder("A can't-lose offer.")("can't lose"));
+  assert.ok(termFinder("Get it fr\u20AC\u20AC!-trial today.")("free"));
+  assert.deepEqual(["ab", "so", "lol"].filter((term) => termFinder("A 48-hour sprint for 50-60 people in room B/101.")(term)), []);
+});
+
+test("r23-2: a digit set apart among upright strokes is read as a letter", () => {
+  for (const [text, term] of [["Our 4 | tool flags mismatches.", "AI"], ["Our 4. |. tool", "AI"], ["Reports | 0 | done by hand.", "lol"], ["Do 1 0 | now", "lol"], ["Do | 7 now", "it"], ["We 5 3 | | them", "sell"]] as const) {
+    assert.ok(termFinder(text)(term), `${text}: ${term}`);
+  }
+});
