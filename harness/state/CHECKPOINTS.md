@@ -2,6 +2,36 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (KIC-01 gate closure: review requirement met; acceptance package presented)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees (no base branch exists; no pull request possible; OD-4)
+CURRENT_GATE: none accepted. KIC-01: acceptance package presented; STOPPED AT THE OWNER ACCEPTANCE BOUNDARY.
+COMPLETED:
+  Owner instruction of 2026-11-13 stored verbatim: docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md.
+  Review of 12a7626: changes-requested (1 medium, shim). Remediated in 55a66f2.
+  Review of 55a66f2 (independent-review-agent-9): approved with follow-ups. Follow-ups fixed in 2537386.
+  Delta review of 2537386 (independent-review-agent-10): approved; five fixes closed; no regression.
+  Evidence at 2537386: CI run 23 (43428556880) success; clean worktree npm run check exit 0 (202 product,
+     83 harness tests); secret scan clean; check-reviews --gate KIC-01 ok. Later commits change records only.
+  Live shim check (tests/shim/live.ts, pass-through mode) on identical code: passed.
+  Ledger: GATE_STATE.md "Review requirement for KIC-01: met at 2537386", with accepted findings A1-A11.
+  REV-1 done; its gate stop replaced by OD-11 (kept OPEN by the owner: external approval-path security
+     assessment before real-client use).
+  Acceptance package: docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md (options A accept in part, B hold, C ask for more).
+OPEN: the owner's decision on KIC-01. OD-11 (external assessment). OD-2..OD-10 as before, OD-15..OD-17,
+  OD-19, OD-20. C1 (local stop: OpenBot never run), C3 (licence, owner).
+NEXT_ACTION: WAIT FOR THE OWNER. Do not treat silence as acceptance. Nothing is queued that does not need an
+  owner decision except keeping CI green. Do NOT merge, deploy, run OpenBot, handle a signing key, contact
+  CopilotKit, change tenant-package/, or touch Kraken or JEV. Any change under src/ or tests/ creates a new
+  commit that needs its own commit-bound review before it can stand in for 2537386.
+  To resume: read docs/harness/RESTART.md; run `npm ci && npm run check`; `node harness/scripts/aeh.mjs status`.
+REFERENCES: docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md, harness/state/GATE_STATE.md,
+  docs/review/2026-11-13-review-55a66f2.md, docs/review/2026-11-13-delta-review-2537386.md,
+  docs/decisions/OWNER_DECISIONS.md (OD-11)
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (owner direction after the mediation; seven review rounds; confinement matrix)
 
 ```

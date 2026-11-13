@@ -152,17 +152,15 @@
         "KIC-B2",
         "KIC-01-C2"
       ],
-      "status": "blocked",
+      "status": "done",
       "evidence": [
-        "harness/state/reviews.json (eight entries)",
-        "docs/review/ (seven agent reviews, one Mistral review)",
-        "remediation commits through 12a7626"
-      ],
-      "stop": {
-        "level": "gate",
-        "reason": "Five review rounds returned changes-requested (983487d, aad2196, 075b358, 187f029, 765ae20). The fixes in 8e4696c and dfa7458 are tested but not independently reviewed. A further round, preferably by a reviewer outside these sessions, is owner decision OD-11.",
-        "since": "2026-11-13"
-      }
+        "harness/state/reviews.json (eleven entries; approving: rev-2026-11-13-agent-55a66f2, rev-2026-11-13-agent-delta-2537386)",
+        "docs/review/2026-11-13-review-55a66f2.md",
+        "docs/review/2026-11-13-delta-review-2537386.md",
+        "aeh check-reviews --commit 2537386bf807ebc62f8e89839d1b9dbda2e6769e --gate KIC-01: ok",
+        "CI run 23 (43428556880) success on 2537386; clean-checkout npm run check: 202 product, 83 harness tests",
+        "Gate acceptance is the owner's. External approval-path assessment before real-client use: OD-11, open"
+      ]
     },
     {
       "id": "KIC-D1",

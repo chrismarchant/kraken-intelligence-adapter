@@ -1034,6 +1034,62 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-55a66f2.md",
       "at": "2026-11-13T12:50:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-delta-2537386",
+      "gate": "KIC-01",
+      "commit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-10",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff 55a66f2 2537386: src/**, tests/** (delta review; the parent commit has a full review, rev-2026-11-13-agent-55a66f2)",
+        "src/shim/server.ts",
+        "src/util/runtime.ts (displaySafe, fitToWidth)",
+        "src/cli/operator.ts (printing of stored text)",
+        "src/workflow/spend.ts (reserve, settle)",
+        "tests/shim/spend.test.ts",
+        "claims (a)-(d) for the changes in this diff"
+      ],
+      "skipped": [
+        {
+          "path": "everything outside the diff 55a66f2..2537386",
+          "reason": "delta review by design; covered by the full review of 55a66f2"
+        },
+        {
+          "path": "the shim's idle cut-off in real time; a half-closed client connection",
+          "reason": "not probed by the reviewer"
+        }
+      ],
+      "verdict": "approve",
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "info",
+          "summary": "A caller that leaves after the reservation check and before the provider's status is still charged the whole reservation (pre-existing, conservative)",
+          "status": "accepted"
+        },
+        {
+          "id": "N2",
+          "severity": "info",
+          "summary": "A client that only half-closes its connection was not probed",
+          "status": "accepted"
+        },
+        {
+          "id": "N3",
+          "severity": "info",
+          "summary": "The operator tool's wrapping can split an escape across lines (readability only)",
+          "status": "accepted"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-delta-review-2537386.md",
+      "at": "2026-11-13T12:55:14Z"
     }
   ]
 }
