@@ -244,9 +244,17 @@ function normaliseHashtags(tags: readonly string[]): string[] {
 
 export function clip(text: string, max: number): string {
   const trimmed = text.trim();
-  // Three full stops, not the single ellipsis character: clipped text must still be in canonical
-  // form, or the draft it belongs to is refused as carrying compatibility characters.
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 3).trimEnd()}...`;
+  if (trimmed.length <= max) return trimmed;
+  // Cut by whole characters, never through one, and end in three full stops, not the single
+  // ellipsis character. The result must still be in canonical form, or the draft it belongs to
+  // is refused as carrying compatibility characters: a cut can leave the joining character of
+  // an emoji at the end, so the cut moves back until what is left is canonical and fits.
+  const characters = [...trimmed];
+  for (let keep = Math.min(characters.length, max - 3); keep > 0; keep--) {
+    const cut = `${characters.slice(0, keep).join("").trimEnd()}...`;
+    if (cut.length <= max && canonicalText(cut) === cut) return cut;
+  }
+  return "...";
 }
 
 // Model text is canonicalised before it is clipped or stored, so that no rule downstream
@@ -885,6 +893,14 @@ export class CampaignService {
             { transport: this.evaluator, limits: this.limits, clock: this.clock, ids: this.ids },
           ),
         );
+      }
+      // Evaluating again what has not changed changes nothing: not the record, and not its audit
+      // trail. Evaluation makes no model call and draws on no budget, so a call that only
+      // repeats an earlier one must not be able to make the record grow.
+      const substance = (e: Evaluation) => JSON.stringify({ ...e, id: null, evaluatedAt: null });
+      const stored = new Set(before.evaluations.map(substance));
+      if (evaluations.every((e) => stored.has(substance(e)))) {
+        return evaluations.map((e) => before.evaluations.find((old) => substance(old) === substance(e)) as Evaluation);
       }
       try {
         return await this.mutate(campaignId, (record) => {

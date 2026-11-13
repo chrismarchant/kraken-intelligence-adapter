@@ -25,7 +25,8 @@ function ineligibility(candidate: CreatorCandidate, policy: ScoringPolicy, fresh
   }
   if (candidate.availability === "unavailable") reasons.push({ rule: "unavailable", detail: "The creator is not available." });
   for (const concern of candidate.blockingConcerns) {
-    reasons.push({ rule: "blocking-concern", detail: `${concern.kind}: ${concern.detail} (evidence ${concern.evidenceId})` });
+    // The description is shortened if need be, so that the reason always fits what a reason may hold.
+    reasons.push({ rule: "blocking-concern", detail: `${concern.kind}: ${concern.detail.slice(0, 280)} (evidence ${concern.evidenceId})` });
   }
   if (!candidate.languages.includes(policy.requiredLanguage)) {
     reasons.push({ rule: "language", detail: `Does not publish in "${policy.requiredLanguage}".` });

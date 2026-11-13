@@ -38,19 +38,26 @@ export function flattenContentBlocks(blocks: unknown[]): { text: string; reasoni
   return { text, reasoning };
 }
 
+/** Names under which reasoning is sent already flattened, at any of the levels it has been seen or could be. */
+const REASONING_KEYS = ["reasoning_content", "reasoning", "thinking"];
+
+/** Remove flattened reasoning from one object, unless reasoning is asked for. True if anything was removed. */
+function hideReasoning(holder: Json, opts: NormalizeOptions): boolean {
+  if (opts.exposeReasoning) return false;
+  let changed = false;
+  for (const key of REASONING_KEYS) {
+    if (key in holder) {
+      delete holder[key];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 function fixContainer(c: Json, field: "message" | "delta", opts: NormalizeOptions): boolean {
   const holder = c[field];
   if (!isObject(holder)) return false;
-  let changed = false;
-  // Reasoning that upstream sends already flattened is hidden like any other, unless it is asked for.
-  if (!opts.exposeReasoning) {
-    for (const key of ["reasoning_content", "reasoning"]) {
-      if (key in holder) {
-        delete holder[key];
-        changed = true;
-      }
-    }
-  }
+  const changed = hideReasoning(holder, opts);
   const content = holder["content"];
   if (content === undefined || content === null || typeof content === "string") return changed;
   if (Array.isArray(content)) {
@@ -79,10 +86,14 @@ export function normalizeChatCompletion<T = unknown>(body: T, opts: NormalizeOpt
     } catch {
       // observer errors must never break normalisation
     }
-    if (!isObject(body) || !Array.isArray(body["choices"])) return body;
+    if (!isObject(body)) return body;
     const copy = structuredClone(body) as Json;
-    for (const c of copy["choices"] as unknown[]) {
-      if (isObject(c)) fixContainer(c, "message", opts);
+    hideReasoning(copy, opts);
+    for (const c of Array.isArray(copy["choices"]) ? (copy["choices"] as unknown[]) : []) {
+      if (isObject(c)) {
+        hideReasoning(c, opts);
+        fixContainer(c, "message", opts);
+      }
     }
     return copy as T;
   } catch (error) {
@@ -96,11 +107,12 @@ export function normalizeChatCompletion<T = unknown>(body: T, opts: NormalizeOpt
  */
 export function normalizeChunk(chunk: unknown, opts: NormalizeOptions = {}): [unknown, boolean] {
   try {
-    if (!isObject(chunk) || !Array.isArray(chunk["choices"])) return [chunk, false];
+    if (!isObject(chunk)) return [chunk, false];
     const copy = structuredClone(chunk) as Json;
-    let changed = false;
-    for (const c of copy["choices"] as unknown[]) {
+    let changed = hideReasoning(copy, opts);
+    for (const c of Array.isArray(copy["choices"]) ? (copy["choices"] as unknown[]) : []) {
       if (isObject(c)) {
+        if (hideReasoning(c, opts)) changed = true;
         if (fixContainer(c, "delta", opts)) changed = true;
         if (fixContainer(c, "message", opts)) changed = true;
       }
@@ -111,14 +123,17 @@ export function normalizeChunk(chunk: unknown, opts: NormalizeOptions = {}): [un
   }
 }
 
-/** What is sent on in place of an event whose data could not be read. A comment: clients ignore it. */
+/**
+ * What normalizeSseEvent returns in place of an event whose data could not be read. In a
+ * stream it is never sent: the stream is ended with an error (see createSseNormalizer).
+ */
 export const DROPPED_EVENT = ": dropped an upstream event that was not valid JSON";
 
 /**
  * Normalise one complete SSE event (text without trailing blank line). Returns the event text.
  *
  * An event whose data is not valid JSON is not passed on: it cannot be normalised, so passing
- * it on would let through whatever it holds, reasoning included. It is replaced by a comment.
+ * it on would let through whatever it holds, reasoning included. DROPPED_EVENT is returned.
  */
 export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): string {
   const lines = event.split(/\r\n|\n|\r/);
@@ -146,13 +161,14 @@ export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): s
     // observer errors must never break the stream
   }
   let out: unknown;
-  let changed: boolean;
   try {
-    [out, changed] = normalizeChunk(parsed, opts);
+    [out] = normalizeChunk(parsed, opts);
   } catch {
     return DROPPED_EVENT;
   }
-  if (!changed) return event;
+  // The data is always written out again from what was read, changed or not. What the client
+  // parses is then exactly what was checked here: a repeated key, of which parsing keeps the
+  // last, cannot carry something past in the copy that was discarded.
   const first = dataLines[0] as number;
   const isData = new Set(dataLines);
   const rebuilt: string[] = [];
@@ -179,11 +195,22 @@ export function createSseNormalizer(opts: NormalizeOptions = {}): TransformStrea
   let held: string[] = [];
   let heldChars = 0;
   let tail = "";
-  // A blank line ends an event. The two line ends need not be written the same way.
-  const sep = /(\r\n|\n|\r)(\r\n|\n|\r)/g;
-  const emit = (controller: TransformStreamDefaultController<Uint8Array>, event: string, separator: RegExpExecArray) => {
+  // A blank line ends an event: two line ends in a row, which need not be written the same
+  // way. A carriage return followed by a line feed is one line end, never two.
+  const sep = /(\r\n|\r(?!\n)|\n)(\r\n|\r(?!\n)|\n)/g;
+  let failed = false;
+  // An event that cannot be read ends the stream with an error. Leaving it out and carrying on
+  // would hand the client a stream with a piece missing, which it could assemble into
+  // something upstream never sent: a tool call with different arguments, for one.
+  const emit = (controller: TransformStreamDefaultController<Uint8Array>, event: string, separator: string) => {
+    if (failed) return;
     const out = normalizeSseEvent(event, opts);
-    controller.enqueue(encoder.encode(out === event ? event + separator[0] : out + (separator[1] === separator[2] ? separator[0] : "\n\n")));
+    if (out === DROPPED_EVENT) {
+      failed = true;
+      controller.error(new Error("An upstream event could not be read"));
+      return;
+    }
+    controller.enqueue(encoder.encode(out + separator));
   };
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -196,7 +223,7 @@ export function createSseNormalizer(opts: NormalizeOptions = {}): TransformStrea
         const end = m.index + m[0].length;
         // A lone carriage return at the very end may be the first half of a line end still to come.
         if (end === work.length && m[0].endsWith("\r")) break;
-        emit(controller, held.join("") + work.slice(start, m.index), m);
+        emit(controller, held.join("") + work.slice(start, m.index), m[0]);
         held = [];
         heldChars = 0;
         start = end;
@@ -208,20 +235,19 @@ export function createSseNormalizer(opts: NormalizeOptions = {}): TransformStrea
         held.push(rest.slice(0, -3));
         heldChars += rest.length - 3;
       }
-      if (heldChars > MAX_SSE_EVENT_CHARS) {
+      if (heldChars > MAX_SSE_EVENT_CHARS && !failed) {
         held = [];
         heldChars = 0;
         tail = "";
+        failed = true;
         controller.error(new Error("An upstream event exceeded the size the shim will hold"));
       }
     },
     flush(controller) {
       const buffer = held.join("") + tail + decoder.decode();
-      if (buffer.length > 0) {
-        // What is left has no blank line after it: a stream that broke off mid-event. A whole
-        // event is normalised as usual; a broken one is dropped by normalizeSseEvent.
-        controller.enqueue(encoder.encode(normalizeSseEvent(buffer, opts)));
-      }
+      // What is left has no blank line after it: a stream that broke off mid-event. A whole
+      // event is normalised as usual; a broken one ends the stream with an error.
+      if (buffer.length > 0) emit(controller, buffer, "");
     },
   });
 }

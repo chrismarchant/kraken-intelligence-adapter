@@ -82,10 +82,19 @@ const MAX_ANSWER_CHARS = 2 * 1024 * 1024;
 /** The most a whole response may hold, reasoning and framing included. */
 const MAX_RESPONSE_CHARS = 32 * 1024 * 1024;
 
-/** A count the provider reported, if it is one: a whole number, not negative. Fractions are rounded up. */
-function reportedCount(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.ceil(value) : null;
+/**
+ * A count the provider reported, if it is one: a number, not negative. Fractions are rounded
+ * up. A figure above `most` is counted as `most`: no request can have used so much, and one
+ * absurd figure must not be able to use up an account.
+ */
+function reportedCount(value: unknown, most: number): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.min(Math.ceil(value), most) : null;
 }
+
+/** Many times what any prompt this code builds can hold. */
+const MOST_PROMPT_TOKENS = 2_000_000;
+/** How many times a request's own allowance a reported completion may be counted as. */
+const MOST_COMPLETION_FACTOR = 10;
 
 /** Wait, or stop waiting at once if the call is cancelled. */
 function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
@@ -221,11 +230,11 @@ export class MistralGateway implements ModelGateway {
       const completion = await this.call(request, correction, maxTokens, cost, allowance);
       // What the provider reports is checked before it is counted: a figure that is not a
       // non-negative number would not fit the record, and the answer paid for would be lost.
-      cost.usage.promptTokens += reportedCount(completion.usage?.prompt_tokens) ?? 0;
+      cost.usage.promptTokens += reportedCount(completion.usage?.prompt_tokens, MOST_PROMPT_TOKENS) ?? 0;
       // An answer that does not say what it cost is charged at its whole allowance, never at nothing.
-      const charged = reportedCount(completion.usage?.completion_tokens) ?? maxTokens;
+      const charged = reportedCount(completion.usage?.completion_tokens, MOST_COMPLETION_FACTOR * maxTokens) ?? maxTokens;
       cost.usage.completionTokens += charged;
-      cost.usage.reasoningTokens += Math.min(reportedCount(completion.usage?.completion_tokens_details?.reasoning_tokens) ?? 0, charged);
+      cost.usage.reasoningTokens += reportedCount(completion.usage?.completion_tokens_details?.reasoning_tokens, charged) ?? 0;
 
       const choice = completion.choices?.[0];
       const text = messageText(choice?.message?.content);

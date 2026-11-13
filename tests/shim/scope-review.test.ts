@@ -30,12 +30,14 @@ async function run(pieces: Array<string | Uint8Array>, opts = {}): Promise<strin
   return Buffer.concat(parts).toString("utf8");
 }
 
-test("F10: an event that cannot be read is dropped, not passed on with its reasoning", async () => {
+test("F10, N10: an event that cannot be read ends the stream; it is neither passed on nor left out", async () => {
   const whole = `data: ${chunk([thinking, { type: "text", text: "ok" }])}`;
   // Cut off before its end, with no blank line after it: a stream that broke off.
-  const cut = await run([whole.slice(0, whole.length - 9)]);
-  assert.ok(!cut.includes(THOUGHT), "the reasoning does not get through");
-  assert.equal(cut, DROPPED_EVENT);
+  await assert.rejects(run([whole.slice(0, whole.length - 9)]), /could not be read/);
+  // The same in the middle of a stream. What came before it has been sent; nothing after it is.
+  const first = `data: ${chunk("one")}\n\n`;
+  const last = `data: ${chunk("three")}\n\n`;
+  await assert.rejects(run([first, `${whole.slice(0, 40)}\n\n`, last]), /could not be read/);
   // The same event, whole, is normalised as usual.
   const fine = await run([`${whole}\n\n`]);
   assert.ok(!fine.includes(THOUGHT));
@@ -95,4 +97,68 @@ test("F11: a long event arriving in many pieces is handled in time proportional 
   // Past the limit the stream is ended with an error; the buffer does not grow without bound.
   const big = "y".repeat(64 * 1024);
   await assert.rejects(run(Array.from({ length: Math.ceil(MAX_SSE_EVENT_CHARS / big.length) + 2 }, () => big)), /size/);
+});
+
+// ------------------------------------------------------------------------------------------
+// The review of the remediation (docs/review/2026-11-13-review-a2-1d8bafe.md).
+
+test("N3: a carriage return and line feed is one line end; an event written over several such lines stays whole", async () => {
+  // A tool call whose data is written over two lines, each ended with CR LF.
+  const toolCall = { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "record_hook", arguments: '{"hook":"x"}' } }] } }] };
+  const text = JSON.stringify(toolCall);
+  const cut = text.indexOf(",") + 1;
+  const event = `data: ${text.slice(0, cut)}\r\ndata: ${text.slice(cut)}\r\n\r\n`;
+  for (const size of [1, 2, 3, 7, event.length]) {
+    const pieces: string[] = [];
+    for (let i = 0; i < event.length; i += size) pieces.push(event.slice(i, i + size));
+    const out = await run(pieces);
+    const data = out.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim());
+    assert.equal(data.length, 1, `one data line, in pieces of ${size}`);
+    assert.deepEqual(JSON.parse(data[0]!), toolCall, `the tool call arrives as it was sent, in pieces of ${size}`);
+  }
+  // A line that follows the data stays in the same event.
+  const withId = await run([`data: ${chunk([thinking, { type: "text", text: "ok" }])}\r\nid: 7\r\n\r\ndata: [DONE]\r\n\r\n`]);
+  const events = withId.split(/\r\n\r\n|\n\n/).filter(Boolean);
+  assert.equal(events.length, 2);
+  assert.ok(events[0]!.includes('"content":"ok"') && /(^|\n)id: 7$/.test(events[0]!), "the id line is in the event with its data");
+  assert.ok(!withId.includes(THOUGHT));
+});
+
+test("N8: reasoning is removed at every level it could be sent at", () => {
+  const cases: Array<Record<string, unknown>> = [
+    { choices: [{ index: 0, reasoning_content: THOUGHT, delta: { content: "a" } }] },
+    { reasoning: THOUGHT, choices: [{ index: 0, delta: { content: "a" } }] },
+    { reasoning_content: THOUGHT },
+    { choices: [{ index: 0, delta: { content: "a", thinking: THOUGHT } }] },
+    { choices: [{ index: 0, message: { content: "a", reasoning: THOUGHT } }] },
+  ];
+  for (const value of cases) {
+    const out = normalizeSseEvent(`data: ${JSON.stringify(value)}`);
+    assert.ok(!out.includes(THOUGHT), JSON.stringify(value));
+    assert.ok(normalizeSseEvent(`data: ${JSON.stringify(value)}`, { exposeReasoning: true }).includes(THOUGHT));
+  }
+});
+
+test("N8: the same holds for an answer that is not streamed", async () => {
+  const body = JSON.stringify({ reasoning: THOUGHT, choices: [{ index: 0, reasoning_content: THOUGHT, message: { content: "ok", thinking: THOUGHT } }] });
+  const mock = await startMock((_req, res) => sendJson(res, body));
+  const shim = await startShim(mock.url);
+  try {
+    const response = await fetch(`${shim.url}/v1/chat/completions`, { method: "POST", headers: { authorization: "Bearer callers-own", "content-type": "application/json" }, body: chatBody() });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.ok(!text.includes(THOUGHT));
+    assert.equal(JSON.parse(text).choices[0].message.content, "ok");
+  } finally {
+    await shim.close();
+    await mock.close();
+  }
+});
+
+test("N9: what is sent on is written out from what was read, so a repeated key carries nothing past", () => {
+  // Parsing keeps the last of two keys with the same name. The first holds the reasoning.
+  const event = `data: {"choices":[{"index":0,"delta":{"reasoning_content":"${THOUGHT}"}}],"choices":[{"index":0,"delta":{"content":"a"}}]}`;
+  const out = normalizeSseEvent(event);
+  assert.ok(!out.includes(THOUGHT));
+  assert.deepEqual(JSON.parse(out.slice(5)), { choices: [{ index: 0, delta: { content: "a" } }] });
 });

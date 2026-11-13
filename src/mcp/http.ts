@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { KicServerDeps } from "./server.ts";
 import { createKicServer } from "./server.ts";
@@ -15,11 +16,16 @@ export interface HttpOptions {
   allowedHosts: string[];
   /** Origins a browser-based client may call from. Empty means no browser may call at all. */
   allowedOrigins: string[];
-  /** Connections held open at once; further ones are refused by the server. Default 64. */
+  /**
+   * Connections held open at once. Default 256. At the limit, room is made for a newcomer by
+   * closing the connection that has waited longest without a request in progress, one that
+   * has never shown a valid token before any that has. A connection with a request in
+   * progress is never closed to make room.
+   */
   maxConnections?: number;
   /** Tool requests being worked on at once; further ones are answered 503. Default 16. */
   maxInFlight?: number;
-  /** How long a client may take to send its headers, and its whole request. Defaults 10 s and 30 s. */
+  /** How long a client may take to send its headers, and its whole request. Defaults 5 s and 30 s. */
   headersTimeoutMs?: number;
   requestTimeoutMs?: number;
 }
@@ -93,8 +99,20 @@ async function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
  */
 export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Server {
   const maxInFlight = options.maxInFlight ?? 16;
+  const maxConnections = options.maxConnections ?? 256;
   let inFlight = 0;
-  const httpServer = createServer(async (req, res) => {
+  // What is known of each open connection: whether a request is in progress on it, whether it
+  // has ever shown a valid token, and when it last became idle.
+  const connections = new Map<Socket, { busy: number; trusted: boolean; idleSince: number }>();
+  const httpServer = createServer({ connectionsCheckingInterval: 1000 }, async (req, res) => {
+    const connection = connections.get(req.socket);
+    if (connection) {
+      connection.busy += 1;
+      res.once("close", () => {
+        connection.busy -= 1;
+        connection.idleSince = Date.now();
+      });
+    }
     const path = (req.url ?? "").split("?")[0];
     // A page on another site must not be able to reach this server by pointing a name at it
     // or by calling it from a browser: the Host must be one we answer to, and an Origin must
@@ -105,6 +123,7 @@ export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Ser
     if (path === "/healthz" && req.method === "GET") return send(res, 200, { ok: true });
     if (path !== "/mcp") return send(res, 404, { error: "not found" });
     if (!authorised(req, options.token)) return send(res, 401, { error: "unauthorised" });
+    if (connection) connection.trusted = true;
     if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
     // Work in progress is bounded. A caller over the limit is told to come back, not queued.
     if (inFlight >= maxInFlight) {
@@ -136,10 +155,34 @@ export function createHttpServer(deps: KicServerDeps, options: HttpOptions): Ser
     }
   });
   // What a client can hold open before it has shown a token is bounded: how many connections,
-  // and how long each may take to send its headers and then the rest of its request. A request
-  // that has arrived may take as long as its tool call needs.
-  httpServer.maxConnections = options.maxConnections ?? 64;
-  httpServer.headersTimeout = options.headersTimeoutMs ?? 10_000;
+  // and how long each may take to send its headers and then the rest of its request (checked
+  // every second). A request that has arrived may take as long as its tool call needs.
+  //
+  // The limit on connections does not turn newcomers away, which would let whoever fills it
+  // shut out everyone else. It closes the connection that has been idle longest, taking first
+  // from those that have never shown a valid token. A caller with a token sends its request as
+  // soon as it connects, and a connection with a request in progress is not closed.
+  httpServer.on("connection", (socket: Socket) => {
+    if (connections.size >= maxConnections) {
+      let oldest: Socket | null = null;
+      let oldestRank = Infinity;
+      for (const [candidate, state] of connections) {
+        if (state.busy > 0) continue;
+        // Untrusted connections sort before trusted ones; within each, the longest idle first.
+        const rank = (state.trusted ? 1e15 : 0) + state.idleSince;
+        if (rank < oldestRank) [oldest, oldestRank] = [candidate, rank];
+      }
+      if (oldest === null) {
+        socket.destroy();
+        return;
+      }
+      connections.delete(oldest);
+      oldest.destroy();
+    }
+    connections.set(socket, { busy: 0, trusted: false, idleSince: Date.now() });
+    socket.once("close", () => connections.delete(socket));
+  });
+  httpServer.headersTimeout = options.headersTimeoutMs ?? 5_000;
   httpServer.requestTimeout = options.requestTimeoutMs ?? 30_000;
   httpServer.keepAliveTimeout = 5_000;
   return httpServer;

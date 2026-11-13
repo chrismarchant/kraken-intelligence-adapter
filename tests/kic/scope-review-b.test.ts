@@ -187,50 +187,79 @@ test("F4: a lock whose owner has exited but not been collected by its parent is 
 const servers: Array<{ close: () => void; closeAllConnections?: () => void }> = [];
 after(() => servers.forEach((s) => (s.closeAllConnections?.(), s.close())));
 
-test("F5: the HTTP transport bounds connections, work in progress, and the time a client may take to send", async () => {
+test("F5, N3: connections that show no token cannot shut out a caller that has one", async () => {
   const harness = makeService();
   const token = "t".repeat(32);
   const deps = { service: harness.agentService, exportRoot: scratch("http-export"), clock: harness.clock };
   const base = loadHttpOptions({ KIC_MCP_TOKEN: token, KIC_MCP_PORT: "0" });
 
   const defaults = createHttpServer(deps, base);
-  assert.equal(defaults.maxConnections, 64);
-  assert.equal(defaults.headersTimeout, 10_000);
+  assert.equal(defaults.headersTimeout, 5_000);
   assert.equal(defaults.requestTimeout, 30_000);
 
-  const http = createHttpServer(deps, { ...base, maxConnections: 2, maxInFlight: 0 });
-  servers.push(http);
-  await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
-  const port = (http.address() as AddressInfo).port;
+  const start = async (over: object) => {
+    const http = createHttpServer(deps, { ...base, ...over });
+    servers.push(http);
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    return (http.address() as AddressInfo).port;
+  };
+  const initialize = (port: number, withToken = true) =>
+    fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", connection: "close", ...(withToken ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }),
+    });
+  const open = (port: number): Promise<import("node:net").Socket> =>
+    new Promise((resolve, reject) => {
+      const socket = connectSocket(port, "127.0.0.1", () => resolve(socket));
+      socket.on("error", () => undefined);
+      socket.once("error", reject);
+    });
 
-  // With no work allowed in progress, a request with a valid token is told to come back.
-  const busy = await fetch(`http://127.0.0.1:${port}/mcp`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${token}`, connection: "close" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } }),
-  });
+  // With no work allowed in progress, a request with a valid token is told to come back, and
+  // the same request without a token is refused before it can count as work.
+  const idle = await start({ maxInFlight: 0 });
+  const busy = await initialize(idle);
   assert.equal(busy.status, 503);
   await busy.arrayBuffer();
-  // The same request without a token is refused before it can count as work.
-  const anonymous = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST", headers: { "content-type": "application/json", connection: "close" }, body: "{}" });
+  const anonymous = await initialize(idle, false);
   assert.equal(anonymous.status, 401);
   await anonymous.arrayBuffer();
 
-  // Two clients hold connections open without sending a request. A third is turned away at once.
-  const open = (): Promise<import("node:net").Socket> => new Promise((resolve, reject) => {
-    const socket = connectSocket(port, "127.0.0.1", () => resolve(socket));
-    socket.on("error", reject);
-  });
-  const held = [await open(), await open()];
-  for (const socket of held) socket.write("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1");
-  await new Promise((r) => setTimeout(r, 50));
-  const third = await open();
-  const closed = await Promise.race([
-    new Promise<boolean>((resolve) => third.once("close", () => resolve(true))),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
-  ]);
-  assert.equal(closed, true, "a connection over the limit is closed by the server");
-  for (const socket of held) socket.destroy();
+  // The reviewer's attack, at the default limit: more silent connections than the server holds,
+  // some sending nothing, some half a request. A caller with a token is served all the same.
+  const port = await start({});
+  const silent: Array<import("node:net").Socket> = [];
+  for (let i = 0; i < 300; i++) {
+    const socket = await open(port);
+    if (i % 2 === 0) socket.write("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1");
+    silent.push(socket);
+  }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const served = await initialize(port);
+    assert.equal(served.status, 200, `attempt ${attempt}`);
+    await served.arrayBuffer();
+  }
+  // And while the attacker keeps reconnecting.
+  let attacking = true;
+  const attacker = (async () => {
+    while (attacking) {
+      const socket = await open(port).catch(() => null);
+      if (socket) silent.push(socket);
+      await new Promise((r) => setTimeout(r, 2));
+    }
+  })();
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const served = await initialize(port);
+    assert.equal(served.status, 200, `under attack, attempt ${attempt}`);
+    await served.arrayBuffer();
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  attacking = false;
+  await attacker;
+  // The server holds no more than its limit: the oldest silent connections were closed to make room.
+  assert.ok(silent.filter((socket) => !socket.destroyed).length <= 256);
+  for (const socket of silent) socket.destroy();
 });
 
 // ------------------------------------------------------------------------------ F6, F7, F8
@@ -324,4 +353,95 @@ test("F9: a record replaced by a link is not followed, and messages name files, 
   const error = await new FixtureGateway(fixtures).generateJson(request).then(() => null, (e: unknown) => e);
   assert.ok(error instanceof FixtureMissingError);
   assert.ok(!error.message.includes(fixtures), "the message does not give the directory");
+});
+
+// ------------------------------------------------------------------------------------------
+// The review of the remediation (docs/review/2026-11-13-review-b2-1d8bafe.md).
+
+test("N1: a lock path that cannot be read makes a caller wait and give up, not spin", async () => {
+  const dir = scratch("unreadable");
+  const lock = join(dir, "state.lock");
+  (await import("node:fs")).mkdirSync(lock); // a directory where the lock file should be
+  const started = Date.now();
+  const cpu = process.cpuUsage();
+  assert.equal(await acquireOwnedLock(lock, { timeoutMs: 300 }), null);
+  const waited = Date.now() - started;
+  const used = process.cpuUsage(cpu);
+  assert.ok(waited >= 250 && waited < 2000, `gave up after ${waited} ms`);
+  assert.ok((used.user + used.system) / 1000 < waited / 2, "it waited; it did not spin");
+
+  // A dangling link, and a file that carries the right to remove a lock, behave the same.
+  const dangling = join(dir, "dangling.lock");
+  symlinkSync(join(dir, "nowhere"), dangling);
+  assert.equal(await acquireOwnedLock(dangling, { timeoutMs: 200 }), null);
+
+  const other = join(dir, "other.lock");
+  const content = deadOwner("dddddddddddddddddddddddd");
+  writeFileSync(other, content);
+  (await import("node:fs")).mkdirSync(`${other}.break.${createHash("sha256").update(content).digest("hex").slice(0, 24)}.1`);
+  assert.equal(await acquireOwnedLock(other, { timeoutMs: 200 }), null);
+});
+
+test("N2: clearing up after a removed lock leaves alone a file another process is still writing", async () => {
+  const dir = scratch("tidy");
+  const lock = join(dir, "state.lock");
+  const content = deadOwner("eeeeeeeeeeeeeeeeeeeeeeee");
+  const generation = createHash("sha256").update(content).digest("hex").slice(0, 24);
+  writeFileSync(lock, content);
+  // What another claimant has on disk between writing its claim and linking it into place.
+  const inProgress = `${lock}.break.${generation}.1.0123456789abcdef.new`;
+  writeFileSync(inProgress, "another claimant's file\n");
+  assert.equal(await clearDeadLock(lock, 30_000), true);
+  assert.equal(existsSync(lock), false, "the dead lock was removed");
+  assert.equal(existsSync(inProgress), true, "the other claimant's file was not");
+  assert.deepEqual(readdirSync(dir), [inProgress.slice(dir.length + 1)]);
+});
+
+test("N4: the export tool names its files within the export directory, however that directory is reached", async () => {
+  const baseDir = scratch("export-link");
+  const fs = await import("node:fs");
+  fs.mkdirSync(join(baseDir, "srv-real", "exports"), { recursive: true });
+  symlinkSync(join(baseDir, "srv-real"), join(baseDir, "srv"));
+  const harness = makeService();
+  const server = createKicServer({ service: harness.agentService, exportRoot: join(baseDir, "srv", "exports"), requestedBy: "test-agent", clock: harness.clock });
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test-client", version: "0.0.0" });
+  await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+  const id = await harness.evaluated();
+  const record = await harness.service.getCampaign(id);
+  await harness.decide(id, { kind: "draft", id: record.drafts[0]!.id }, "approve");
+  const result = (await client.callTool({ name: "kic_assemble_programme", arguments: { campaignId: id, allowPartial: true } })) as { isError?: boolean; structuredContent?: any };
+  assert.equal(result.isError, undefined);
+  const exported = result.structuredContent.export as Record<string, string>;
+  for (const key of ["directory", "packagePath", "summaryPath", "commandsPath"]) {
+    const value = exported[key]!;
+    assert.ok(!value.startsWith("/") && !value.includes("..") && !value.includes("srv"), `${key}: ${value}`);
+  }
+  assert.match(exported["directory"]!, /^prog-[^/]+\/[^/]+-preview$/);
+  assert.ok(exported["packagePath"]!.startsWith(`${exported["directory"]}/`));
+  assert.ok(existsSync(join(baseDir, "srv-real", "exports", exported["packagePath"]!)), "the path is right within the export directory");
+});
+
+test("N5: an absurd usage figure is counted as the most a request could have used", async () => {
+  const reply = (usage: unknown) =>
+    new Response(JSON.stringify({ model: "mistral-large-4", choices: [{ finish_reason: "stop", message: { content: '{"theme":"t","score":1}' } }], usage }), { status: 200, headers: { "content-type": "application/json" } });
+  const run = async (usage: unknown) => (await new MistralGateway({ fetch: (async () => reply(usage)) as typeof fetch, backoffMs: 1, apiKey: "placeholder" }).generateJson(request)).usage;
+  // The request's allowance is 1,000 tokens.
+  assert.deepEqual(await run({ prompt_tokens: 1e17, completion_tokens: 1e17, completion_tokens_details: { reasoning_tokens: 1e17 } }), { promptTokens: 2_000_000, completionTokens: 10_000, reasoningTokens: 10_000 });
+  assert.deepEqual(await run({ prompt_tokens: 12, completion_tokens: 9007199254740000 }), { promptTokens: 12, completionTokens: 10_000, reasoningTokens: 0 });
+  // An ordinary figure above the allowance is still counted in full.
+  assert.deepEqual(await run({ prompt_tokens: 12, completion_tokens: 1500 }), { promptTokens: 12, completionTokens: 1500, reasoningTokens: 0 });
+});
+
+test("N6: evaluating again what has not changed changes nothing in the record", async () => {
+  const { service, evaluated } = makeService();
+  const id = await evaluated();
+  const before = await service.getCampaign(id);
+  for (let round = 0; round < 50; round++) await service.evaluateDrafts(id);
+  const again = await service.evaluateDrafts(id, { slots: [1] });
+  const after = await service.getCampaign(id);
+  assert.equal(after.revision, before.revision, "nothing was written");
+  assert.equal(after.audit.length, before.audit.length, "no audit entry was added");
+  assert.deepEqual(after.evaluations, before.evaluations);
+  assert.deepEqual(again, before.evaluations.filter((e) => e.slot === 1), "the caller is given the evaluation that is stored");
 });

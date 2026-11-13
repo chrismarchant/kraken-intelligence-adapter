@@ -69,7 +69,8 @@ export async function evaluateSlot(input: EvaluateSlotInput, deps: EvaluatorDeps
       weightedTotal: round3(weightedTotal),
       confidence: round3(confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : 0),
       signals: analysis.signals,
-      eligibility: { eligible: analysis.failures.length === 0, failures: analysis.failures },
+      // Eligibility rests on every failure; the list kept is bounded, as the contract requires.
+      eligibility: { eligible: analysis.failures.length === 0, failures: analysis.failures.slice(0, 200) },
     };
   });
 

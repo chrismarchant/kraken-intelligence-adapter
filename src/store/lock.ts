@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { link, open, readFile, readdir, stat, unlink } from "node:fs/promises";
+import { readFileSync, readdirSync } from "node:fs";
+import { link, lstat, open, readFile, readdir, stat, unlink } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 
 /**
@@ -40,10 +40,35 @@ export function ownerAlive(pid: number, instance: string | undefined, started: s
   }
   const fields = procStat(pid);
   if (fields === null) return true;
-  if (fields[0] === "Z" || fields[0] === "X") return false;
+  if (exited(pid, fields[0])) return false;
   // The id is in use. It is the same process only if it started when the owner line says it did.
   const now = fields[19] ?? null;
   return now === null || started === undefined || started === "-" || now === started;
+}
+
+/**
+ * True when every thread of the process has exited. The state in /proc/<pid>/stat is that of
+ * the first thread; while a process is exiting it can read as a zombie before another thread
+ * has finished a write it had begun. So each thread is looked at where that can be done.
+ */
+function exited(pid: number, leaderState: string | undefined): boolean {
+  const gone = (state: string | undefined) => state === "Z" || state === "X";
+  if (!gone(leaderState)) return false;
+  let threads: string[];
+  try {
+    threads = readdirSync(`/proc/${pid}/task`);
+  } catch {
+    return true;
+  }
+  for (const thread of threads) {
+    try {
+      const text = readFileSync(`/proc/${pid}/task/${thread}/stat`, "utf8");
+      if (!gone(text.slice(text.lastIndexOf(")") + 2).split(" ")[0])) return false;
+    } catch {
+      // The thread went away while it was being looked at.
+    }
+  }
+  return true;
 }
 
 function ownerLine(token: string): string {
@@ -67,12 +92,46 @@ async function createWhole(path: string, content: string): Promise<boolean> {
     await link(temporary, path);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") return false;
+    // The temporary file is gone: somebody tidied it away. Nothing was created; try again.
+    if (code === "ENOENT") return false;
+    // A file system with no hard links. The file is created in place; a reader may then see it
+    // before its content, and treats a file with no readable owner as held until it is old.
+    if (code === "EPERM" || code === "ENOSYS" || code === "EOPNOTSUPP" || code === "ENOTSUP") return createInPlace(path, content);
     throw error;
   } finally {
     await unlink(temporary).catch(() => undefined);
   }
 }
+
+async function createInPlace(path: string, content: string): Promise<boolean> {
+  let handle;
+  try {
+    handle = await open(path, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+  try {
+    await handle.writeFile(content);
+  } finally {
+    await handle.close();
+  }
+  return true;
+}
+
+/** The text of a file; null if it is not there; UNREADABLE if it is there and cannot be read. */
+async function readOrWhy(path: string): Promise<string | null | typeof UNREADABLE> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return UNREADABLE;
+    // Not there, or a link that leads nowhere. The second is still something at the path.
+    return (await lstat(path).then(() => true, () => false)) ? UNREADABLE : null;
+  }
+}
+const UNREADABLE: unique symbol = Symbol("unreadable");
 
 export interface OwnedLock {
   /** True while the lock file still carries this holder's token. */
@@ -140,6 +199,9 @@ async function generationOf(lockPath: string, content: string, owned: boolean): 
  */
 export const lockTestHooks: { afterJudgedDead: null | (() => Promise<void>) } = { afterJudgedDead: null };
 
+/** How old a file left behind by a process that died while taking a lock must be before it is tidied away. */
+const LEFTOVER_AFTER_MS = 60_000;
+
 /** Longest chain of dead removers followed for one lock before giving up for this attempt. */
 const MAX_SUCCESSORS = 32;
 
@@ -160,8 +222,12 @@ const MAX_SUCCESSORS = 32;
  * different lock, or none, and removes nothing.
  */
 export async function clearDeadLock(lockPath: string, ownerlessAfterMs: number): Promise<boolean> {
-  const content = await readFile(lockPath, "utf8").catch(() => null);
+  const content = await readOrWhy(lockPath);
   if (content === null) return true; // released in the meantime
+  // Something is at the lock's path that is not a file this user can read: a directory, a
+  // dangling link, another user's file. It is not ours to remove. The caller waits, and gives
+  // up at its deadline, where it used to try again at once for ever.
+  if (content === UNREADABLE) return false;
   const [pidText, instance, started] = content.trim().split(" ");
   const pid = Number(pidText);
   const owned = Number.isInteger(pid) && pid > 0;
@@ -185,8 +251,9 @@ export async function clearDeadLock(lockPath: string, ownerlessAfterMs: number):
       mine = right(n);
       break;
     }
-    const holder = await readFile(right(n), "utf8").catch(() => null);
+    const holder = await readOrWhy(right(n));
     if (holder === null) return true; // the lock was removed and its files cleared; start again
+    if (holder === UNREADABLE) return false;
     const [holderPid, holderInstance, holderStarted] = holder.trim().split(" ");
     // A live holder is about to finish. Wait for it.
     if (ownerAlive(Number(holderPid), holderInstance, holderStarted)) return false;
@@ -198,9 +265,24 @@ export async function clearDeadLock(lockPath: string, ownerlessAfterMs: number):
   if (now !== null && now === content && (await generationOf(lockPath, now, owned)) === generation) {
     await unlink(lockPath).catch(() => undefined);
   }
-  // The lock this right was for is gone for good. Clear the files that named it.
+  // The lock this right was for is gone for good. Clear the files that named it: the rights
+  // themselves, which end in a number. Not the files other claimants are still writing, which
+  // begin with the same name: removing one of those would make that claimant's attempt fail.
   const prefix = `${basename(lockPath)}.break.${generation}.`;
   const names = await readdir(dirname(lockPath)).catch(() => [] as string[]);
-  await Promise.all(names.filter((name) => name.startsWith(prefix)).map((name) => unlink(`${dirname(lockPath)}/${name}`).catch(() => undefined)));
+  const rights = names.filter((name) => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)));
+  await Promise.all(rights.map((name) => unlink(`${dirname(lockPath)}/${name}`).catch(() => undefined)));
+  // A process that died while taking this lock, or while claiming a right to it, left the file
+  // it was writing. Those that are old are tidied away here, after a crash, which is when they
+  // appear. A live process slow enough to lose its file this way finds it gone and tries again.
+  const stale = Date.now() - LEFTOVER_AFTER_MS;
+  const leftover = names.filter((name) => name.startsWith(`${basename(lockPath)}.`) && name.endsWith(".new"));
+  await Promise.all(
+    leftover.map(async (name) => {
+      const path = `${dirname(lockPath)}/${name}`;
+      const modified = await stat(path).then((st) => st.mtimeMs, () => Infinity);
+      if (modified < stale) await unlink(path).catch(() => undefined);
+    }),
+  );
   return true;
 }

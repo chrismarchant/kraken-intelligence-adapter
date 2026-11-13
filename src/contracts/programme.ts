@@ -102,11 +102,12 @@ export const ProgrammePackage = z.strictObject({
     .nullable(),
   provenance: z.strictObject({
     generator: z.literal("kraken-intelligence-companion"),
-    generatorVersion: z.string(),
-    models: z.array(z.string()),
-    evaluators: z.array(z.string()),
+    // Written by code and shown to the editor at review: bounded, and free of control characters, like everything else shown.
+    generatorVersion: ShortText,
+    models: z.array(ShortText).max(50),
+    evaluators: z.array(ShortText).max(50),
     budget: BudgetUsage,
-    notes: z.array(z.string()),
+    notes: z.array(ShortText).max(50),
   }),
 });
 export type ProgrammePackage = z.infer<typeof ProgrammePackage>;

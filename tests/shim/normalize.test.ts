@@ -59,6 +59,8 @@ async function runNormalizer(bytes: Uint8Array, slice: number, opts = {}): Promi
       parts.push(r.value);
     }
   })();
+  // If the stream ends in an error, the awaits below report it; this failure is not left unhandled.
+  done.catch(() => undefined);
   for (let i = 0; i < bytes.length; i += slice) await w.write(bytes.subarray(i, i + slice));
   await w.close();
   await done;
@@ -100,20 +102,19 @@ test("stream tool call: tool_calls delta and usage chunk preserved", async () =>
   }
 });
 
-test("stream: comments, unknown events and [DONE] pass through unchanged; data that is not JSON is dropped; CRLF ok", async () => {
-  const input =
-    ": keep-alive\n\n" +
-    "event: ping\ndata: {\"x\":1}\n\n" +
-    "data: not json\n\n" +
+test("stream: comments, unknown events and [DONE] pass through; data that is not JSON ends the stream; CRLF ok", async () => {
+  const before = ": keep-alive\n\n" + "event: ping\ndata: {\"x\":1}\n\n";
+  const after =
     "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"},{\"type\":\"nope\"}]}}]}\r\n\r\n" +
     "data: [DONE]\n\n";
-  const out = await runNormalizer(Buffer.from(input), 5);
-  // Since the scope review: an event whose data cannot be read is replaced by a comment. Passed on
-  // as it was, it would carry through whatever it held, reasoning included.
-  assert.ok(out.startsWith(": keep-alive\n\nevent: ping\ndata: {\"x\":1}\n\n: dropped an upstream event that was not valid JSON\n\n"));
-  assert.ok(!out.includes("not json"));
+  const out = await runNormalizer(Buffer.from(before + after), 5);
+  assert.ok(out.startsWith(": keep-alive\n\nevent: ping\ndata: {\"x\":1}\n\n"));
   assert.ok(out.includes('"content":"hi"'));
   assert.ok(out.endsWith("data: [DONE]\n\n"));
+  // Since the second scope review: an event whose data cannot be read ends the stream with an
+  // error. Left out, it would leave the client a stream with a piece missing; passed on, it
+  // would carry through whatever it held, reasoning included.
+  await assert.rejects(runNormalizer(Buffer.from(before + "data: not json\n\n" + after), 5), /could not be read/);
 });
 
 test("stream: reasoning exposed when asked; unterminated final event flushed", async () => {

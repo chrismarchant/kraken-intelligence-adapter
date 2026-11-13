@@ -220,3 +220,118 @@ test("F13: evidence dated in the future does not count and rules the candidate o
   unnamed.policy.feeCurrency = null;
   assert.throws(() => rankCreators({ ...unnamed, now }));
 });
+
+// ------------------------------------------------------------------------------------------
+// The review of the remediation (docs/review/2026-11-13-review-a2-1d8bafe.md).
+
+test("N1: a letter outside the ordinary Latin alphabet is refused, whichever block it comes from", () => {
+  // The reviewer's eight: letters from the extended Latin blocks that pass for plain ones.
+  const cases: Array<[string, string]> = [
+    ["AI", "Our A\uA7AE tool helps."],
+    ["scam", "Not a \uA731cam at all."],
+    ["fraud", "No \uA730raud here."],
+    ["equity", "Build e\uA7AFuity fast."],
+    ["AI", "Our A\uA7FE tool helps."],
+    ["jab", "A quick \u0237ab at it."],
+    ["ROI", "Better R\uA74AI for the team."],
+    ["AI", "Our A\u01C0 tool helps."],
+  ];
+  for (const [term, text] of cases) assert.ok(rulesWith([term], text).includes("suspicious-characters"), text);
+  // Other scripts, as before, and letters used as numerals.
+  for (const text of ["Our \u13AA\u13C6 tool helps.", "Our \uA4EE\uA4F2 tool helps.", "\u56DB\u5341% of operations teams reconcile by hand.", "Thanks to \u0418\u0432\u0430\u043D."]) {
+    assert.ok(rulesWith([], text).includes("suspicious-characters"), text);
+  }
+  // The letters European languages use are ordinary.
+  for (const text of ["Caf\u00E9 cr\u00E8me in Z\u00FCrich.", "Stra\u00DFe, \u00C5rhus, \u0141\u00F3d\u017A, Besan\u00E7on, Ti\u1EBFng Vi\u1EC7t."]) {
+    assert.deepEqual(rulesWith([], text), [], text);
+  }
+});
+
+test("N1: the extra letters of European alphabets are read as the plain letters they stand for", () => {
+  assert.deepEqual(rulesWith(["Strasse"], "Meet on the Stra\u00DFe."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["Stra\u00DFe"], "Meet on the Strasse."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["oeuvre"], "A whole \u0153uvre."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["lock"], "A \u0142ock on the door."), ["must-avoid-term"]);
+});
+
+test("N2: what the rest of a draft contains does not change the rule for any part of it", () => {
+  // The reviewer's tipping: twelve claims of Greek text, which are not published.
+  const greek = "\u03B1\u03B2\u03B3\u03B4\u03B5 ".repeat(60).trim();
+  const claims = Array.from({ length: 12 }, () => ({ text: greek, needsEvidence: false, evidenceRef: null }));
+  for (const [term, text] of [["alert", "Set an \u13AA\u13DE\u13AC\u13A1\u13A2 today."], ["AI", "Our \uA4EE\uA4F2 tool helps."]] as const) {
+    assert.ok(rulesWith([term], text, { claims }).includes("suspicious-characters"), text);
+  }
+  assert.ok(rulesWith([], "\u56DB\u5341% of operations teams reconcile by hand.", { claims }).includes("suspicious-characters"));
+});
+
+test("F7 remainder: a blank that is not an ordinary space, and a private-use character, are refused", () => {
+  assert.deepEqual(rulesWith(["guarantee"], "We guar\u1680antee results."), ["suspicious-characters"]);
+  assert.deepEqual(rulesWith(["guarantee"], "We guar\uE000antee results."), ["suspicious-characters"]);
+});
+
+test("N4: a term of three letters catches its inflections; one of two letters does not catch other words", () => {
+  assert.deepEqual(rulesWith(["fix"], "It fixes everything."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["fix"], "It is fixed."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["tax"], "Nobody is taxed."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["buy"], "Buying is easy."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["AI"], "It was AIed in a day."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["AI"], "Teams need first aid kits."), []);
+  assert.deepEqual(rulesWith(["AI"], "He said it plainly."), []);
+});
+
+test("N5: the apostrophe of a contraction or a possessive does not join two words into a ruled-out one", () => {
+  const honest: Array<[string, string]> = [["well", "We'll send the report."], ["ill", "I'll check."], ["hell", "He'll call."], ["shell", "She'll call."], ["cant", "We can't wait."], ["its", "It's ready."], ["were", "We're ready."]];
+  for (const [term, text] of honest) assert.deepEqual(rulesWith([term], text), [], text);
+  // With the typographic apostrophe too.
+  assert.deepEqual(rulesWith(["well"], "We\u2019ll send the report."), []);
+  // An apostrophe put inside a word to break it up is still removed, and a possessive still matches.
+  assert.deepEqual(rulesWith(["guarantee"], "We guar'antee results."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["scam"], "The scam's cost is high."), ["must-avoid-term"]);
+});
+
+test("a ruled-out word written with keyboard symbols in place of letters is found", () => {
+  assert.deepEqual(rulesWith(["guarantee"], "We gu@rantee results."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["results"], "Great re$ults ahead."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["AI"], "Our A| tool helps."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["all"], "For a|l teams."), ["must-avoid-term"]);
+  // A digit in place of a letter is a figure, and is refused as one.
+  assert.deepEqual(rulesWith(["AI"], "Our A1 tool helps."), ["unlisted-statistic"]);
+  // Ordinary punctuation is not read as letters.
+  assert.deepEqual(rulesWith(["hi"], "Oh! Is that so?"), []);
+});
+
+test("N6: text is clipped between characters, never through one, and stays canonical", () => {
+  const coder = "\u{1F469}\u200D\u{1F4BB}"; // a woman technologist: two emoji joined by a zero-width joiner
+  for (let pad = 380; pad <= 400; pad++) {
+    const clipped = clip(canonicalText(`${"a".repeat(pad)}${coder}${coder} and then a good deal more text to push it over the limit.`), 400);
+    assert.ok(clipped.length <= 400, `pad ${pad}`);
+    assert.equal(canonicalText(clipped), clipped, `pad ${pad}`);
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(clipped), `no half character, pad ${pad}`);
+    assert.ok(!clipped.includes("\u200D..."), `no joiner left at the end, pad ${pad}`);
+    assert.deepEqual(rulesWith([], "", { claims: [{ text: clipped, needsEvidence: false, evidenceRef: null }] }), [], `pad ${pad}`);
+  }
+});
+
+test("F12 remainder: a released package's provenance and the lists in an evaluation are bounded", async () => {
+  const { ProgrammePackage } = await import("../../src/contracts/programme.ts");
+  const { Evaluation } = await import("../../src/contracts/evaluation.ts");
+  const provenance = (ProgrammePackage.shape.provenance as any);
+  const good = { generator: "kraken-intelligence-companion", generatorVersion: "0.1.0", models: ["m"], evaluators: ["e"], budget: (await import("./support.ts")).makeService().limits && { modelCalls: 0, completionTokens: 0, promptTokens: 0, reasoningTokens: 0 }, notes: ["n"] };
+  // The budget's own shape is not the point here; only the provenance fields are checked.
+  const check = (over: object) => provenance.pick({ generatorVersion: true, models: true, evaluators: true, notes: true }).safeParse({ generatorVersion: good.generatorVersion, models: good.models, evaluators: good.evaluators, notes: good.notes, ...over }).success;
+  assert.equal(check({}), true);
+  assert.equal(check({ generatorVersion: "v".repeat(5000) }), false);
+  assert.equal(check({ notes: ["\u001b[2J"] }), false);
+  assert.equal(check({ models: Array.from({ length: 1000 }, () => "m") }), false);
+  assert.equal(Evaluation.shape.candidates.safeParse(Array.from({ length: 1000 }, () => ({}))).success, false);
+});
+
+test("N12: a blocking concern with a long description rules the creator out; it does not stop the ranking", () => {
+  const fixture = JSON.parse(readFileSync("fixtures/creators/synthetic-creators.json", "utf8")) as { set: any; assessments: unknown; policy: any };
+  const candidate = fixture.set.candidates[0];
+  candidate.blockingConcerns = [{ kind: "legal", detail: "x".repeat(395), evidenceId: candidate.evidence[0].id }];
+  const ranking = rankCreators({ ...fixture, now: new Date("2026-11-13T00:00:00.000Z") });
+  const result = ranking.results.find((r) => r.creatorId === candidate.id)!;
+  assert.equal(result.eligible, false);
+  assert.ok(result.ineligibility.some((reason) => reason.rule === "blocking-concern"));
+});

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { CampaignRecord } from "../contracts/index.ts";
 import { Id } from "../contracts/common.ts";
 import { MAX_POSTS_IN_A_PLAN } from "../contracts/content.ts";
@@ -256,9 +256,12 @@ export function createKicServer(deps: KicServerDeps): McpServer {
         const pkg = assembleProgramme(await service.getCampaign(id), { allowPartial: allowPartial ?? false, clock, limits: service.limits, verifier: service.verifier });
         const written = await exportProgramme(pkg, deps.exportRoot);
         // Where the files are is given relative to the export directory: the caller has no use
-        // for the server's own paths, and no tool takes a path.
-        const within = (path: string) => relative(deps.exportRoot, path);
-        const exported = { ...written, directory: within(written.directory), packagePath: within(written.packagePath), summaryPath: within(written.summaryPath), commandsPath: within(written.commandsPath) };
+        // for the server's own paths, and no tool takes a path. The export's own directory is
+        // the last two names of its path (the programme, then the export), whatever the
+        // directory above them is called or is reached through.
+        const exportDirectory = join(basename(dirname(written.directory)), basename(written.directory));
+        const within = (path: string) => join(exportDirectory, relative(written.directory, path));
+        const exported = { ...written, directory: exportDirectory, packagePath: within(written.packagePath), summaryPath: within(written.summaryPath), commandsPath: within(written.commandsPath) };
         return ok({
           programmeId: pkg.programmeId,
           approvalState: pkg.approvalState,

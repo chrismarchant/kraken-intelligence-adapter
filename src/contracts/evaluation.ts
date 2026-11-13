@@ -56,18 +56,18 @@ export type EligibilityFailure = z.infer<typeof EligibilityFailure>;
 
 export const CandidateEvaluation = z.strictObject({
   draftId: Id,
-  scores: z.array(CriterionScore).min(1),
+  scores: z.array(CriterionScore).min(1).max(20),
   /** Weighted mean of the criterion scores. Not comparable across evaluators. */
   weightedTotal: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
-  signals: z.array(Signal),
+  signals: z.array(Signal).max(40),
   /**
    * Mandatory constraints, checked by code. An ineligible draft cannot be approved,
    * whatever its total.
    */
   eligibility: z.strictObject({
     eligible: z.boolean(),
-    failures: z.array(EligibilityFailure),
+    failures: z.array(EligibilityFailure).max(200),
   }),
 });
 export type CandidateEvaluation = z.infer<typeof CandidateEvaluation>;
@@ -89,13 +89,13 @@ export const Evaluation = z.strictObject({
   id: Id,
   slot: z.number().int().min(1),
   evaluator: EvaluatorInfo,
-  criteria: z.array(Criterion).min(1),
-  candidates: z.array(CandidateEvaluation).min(1),
+  criteria: z.array(Criterion).min(1).max(20),
+  candidates: z.array(CandidateEvaluation).min(1).max(50),
   /** Eligible drafts first, by weighted total; ineligible drafts last. */
-  ranking: z.array(Id).min(1),
+  ranking: z.array(Id).min(1).max(50),
   /** The evaluator's single preferred draft, or null when it judged that none fits. */
   preferred: Id.nullable(),
-  limitations: z.array(ShortText).min(1),
+  limitations: z.array(ShortText).min(1).max(20),
   evaluatedAt: IsoDateTime,
 });
 export type Evaluation = z.infer<typeof Evaluation>;

@@ -39,7 +39,7 @@ export const CreatorCandidate = z.strictObject({
   displayName: ShortText,
   headline: ShortText,
   topics: z.array(ShortText).min(1).max(12),
-  languages: z.array(z.string().regex(/^[a-z]{2}$/)).min(1),
+  languages: z.array(z.string().regex(/^[a-z]{2}$/)).min(1).max(20),
   availability: z.enum(["available", "unavailable", "unknown"]),
   /** Indicative fee for one commissioned post, or null when not known. */
   indicativeFeePerPost: z.number().nonnegative().nullable(),
@@ -47,8 +47,8 @@ export const CreatorCandidate = z.strictObject({
   /** Whether the creator has agreed that their post may be sponsored as an advertisement. */
   sponsorshipConsent: z.enum(["granted", "refused", "unknown"]),
   /** Concerns that rule a creator out. Each must cite the evidence it rests on. */
-  blockingConcerns: z.array(z.strictObject({ kind: z.enum(["brand-safety", "competitor-conflict", "legal"]), detail: ShortText, evidenceId: Id })),
-  evidence: z.array(EvidenceItem),
+  blockingConcerns: z.array(z.strictObject({ kind: z.enum(["brand-safety", "competitor-conflict", "legal"]), detail: ShortText, evidenceId: Id })).max(20),
+  evidence: z.array(EvidenceItem).max(200),
   synthetic: z.boolean(),
 });
 export type CreatorCandidate = z.infer<typeof CreatorCandidate>;
@@ -56,7 +56,7 @@ export type CreatorCandidate = z.infer<typeof CreatorCandidate>;
 export const CreatorSet = z.strictObject({
   schema: z.literal(CREATOR_SET_SCHEMA),
   synthetic: z.boolean(),
-  candidates: z.array(CreatorCandidate).min(1),
+  candidates: z.array(CreatorCandidate).min(1).max(500),
 });
 export type CreatorSet = z.infer<typeof CreatorSet>;
 
@@ -76,7 +76,7 @@ export const DimensionAssessment = z.strictObject({
   /** 0..1. A judgement by an assessor, not a measurement. */
   score: z.number().min(0).max(1),
   rationale: ShortText,
-  evidenceIds: z.array(Id).min(1),
+  evidenceIds: z.array(Id).min(1).max(50),
   /** Who or what made the judgement. */
   assessor: ShortText,
 });
@@ -115,7 +115,7 @@ export const CreatorResult = z.strictObject({
   creatorId: Id,
   displayName: ShortText,
   eligible: z.boolean(),
-  ineligibility: z.array(IneligibilityReason),
+  ineligibility: z.array(IneligibilityReason).max(50),
   dimensions: z.array(
     z.strictObject({ dimension: Dimension, score: z.number().min(0).max(1), weight: z.number().min(0).max(1), rationale: ShortText, evidenceIds: z.array(Id) }),
   ),
@@ -133,7 +133,7 @@ export const CreatorRanking = z.strictObject({
   rankedAt: IsoDateTime,
   policy: ScoringPolicy,
   /** Eligible creators first, by weighted total; ineligible creators after them. */
-  results: z.array(CreatorResult),
-  caveats: z.array(ShortText).min(1),
+  results: z.array(CreatorResult).max(500),
+  caveats: z.array(ShortText).min(1).max(20),
 });
 export type CreatorRanking = z.infer<typeof CreatorRanking>;

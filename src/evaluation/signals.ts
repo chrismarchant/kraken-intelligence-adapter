@@ -79,13 +79,17 @@ const SPELLED_QUANTITY = new RegExp(
 );
 
 /**
- * A word that mixes Latin letters with letters of any other script is treated as
- * disguised: Cyrillic, Greek, Armenian, Cherokee and others all have look-alikes.
+ * The letters a post may use: the Latin alphabet as European languages write it (the basic
+ * letters, the accented ones, and the few extra letters such as \u00E6, \u00F8, \u00DF and \u0142).
+ * Every other letter is refused, in any part of a draft: other scripts, and the Latin letters
+ * from phonetic, small-capital and historic blocks. Each of those has letters that pass for
+ * ordinary ones, and no list of look-alikes is ever complete; a list of what is allowed is.
+ * The cost is stated in the threat model: a post cannot quote a word in another script.
  */
-const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
-const LATIN = /\p{Script=Latin}/u;
-/** Latin-script letters from phonetic and small-capital blocks, which pass for ordinary letters. */
-const ODD_LATIN = /[\u0250-\u02AF\u1D00-\u1D7F]/u;
+const ORDINARY_LETTER = /[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF\u0100-\u017F\u1E00-\u1E99\u1EA0-\u1EF9]/u;
+const isOrdinaryLetter = (letter: string) => ORDINARY_LETTER.test(letter);
+/** A blank other than a space, a tab or a line end. Some survive compatibility folding and can split a word unseen. */
+const ODD_BLANK = /[^\S \n\t]/u;
 
 export interface DraftAnalysis {
   /** 0..1 per criterion, derived only from the observations in `signals`. */
@@ -119,10 +123,10 @@ function containsPhrase(haystack: string, phrase: string): boolean {
   if (!parts) return false;
   const last = parts[parts.length - 1] as string;
   const final = last.slice(-1);
-  // Inflections are matched for words of four letters or more. A short term ("AI") matches
-  // itself and its plural only: with endings it would catch other words ("aid").
+  // Common inflections of the last word match. A term of one or two letters ("AI") is not
+  // given the endings "d" and "es": with them it would catch other words ("aid").
   const doubled = /[bcdfgklmnprstvz]/.test(final) ? `${final}?` : "";
-  const suffix = [...last].length >= 4 ? `(?:s|es|d|${doubled}ed|${doubled}ing)?` : "s?";
+  const suffix = [...last].length >= 3 ? `(?:s|es|d|${doubled}ed|${doubled}ing)?` : "(?:s|ed|ing)?";
   const pattern = parts.join("[\\s\\-_./\u2010-\u2015]*");
   return new RegExp(`(?<![\\p{L}\\p{N}])${pattern}${suffix}(?![\\p{L}\\p{N}])`, "iu").test(haystack);
 }
@@ -181,6 +185,10 @@ const CONFUSABLE: Record<string, string> = {
   "\u043A": "k", "\u043C": "m", "\u043D": "h", "\u043E": "o", "\u0440": "p", "\u0441": "c", "\u0442": "t", "\u0443": "y", "\u0445": "x",
   "\u0455": "s", "\u0456": "i", "\u0458": "j", "\u0501": "d", "\u04BB": "h", "\u051B": "q", "\u051D": "w", "\u0433": "r", "\u043F": "n",
   "\u044C": "b",
+  // Letters of European alphabets that are allowed in a post and resemble, or stand for, plain ones.
+  "\u00E6": "ae", "\u00C6": "AE", "\u00F0": "d", "\u00D0": "D", "\u00D8": "O", "\u00FE": "th", "\u00DE": "Th", "\u00DF": "ss",
+  "\u0110": "D", "\u0126": "H", "\u0138": "k", "\u0141": "L", "\u014B": "n", "\u014A": "N", "\u0153": "oe", "\u0152": "OE",
+  "\u0167": "t", "\u0166": "T",
 };
 const CONFUSABLE_LETTER = new RegExp(`[${Object.keys(CONFUSABLE).join("")}]`, "gu");
 
@@ -202,14 +210,40 @@ function fold(text: string): string {
  * (hyphens, emphasis marks, emoji); and with letters that were spaced out joined up.
  */
 function matchForms(text: string): string[] {
-  const folded = fold(text);
-  const undotted = folded.replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ""));
-  // Anything slipped between two letters that is not itself a letter, a digit or a space:
-  // hyphens and dashes of every kind, emphasis marks, punctuation, symbols, emoji, and any
-  // character that takes no space.
-  const unbroken = undotted.replace(/(?<=[\p{L}\p{N}])[^\p{L}\p{N}\s]+(?=[\p{L}\p{N}])/gu, "");
-  const joined = unbroken.replace(/\b(?:[A-Za-z][ .]){3,}[A-Za-z]\b/g, (m) => m.replace(/[ .]/g, ""));
-  return [...new Set([text, folded, undotted, unbroken, joined])];
+  const forms = new Set<string>();
+  for (const source of [text, ...symbolsAsLetters(text)]) {
+    const folded = fold(source);
+    const undotted = folded.replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ""));
+    // Anything slipped between two letters that is not itself a letter, a digit or a space:
+    // hyphens and dashes of every kind, emphasis marks, punctuation, symbols, emoji, and any
+    // character that takes no space. The apostrophe of an ordinary contraction or possessive is
+    // left where it is: "we'll" is not "well".
+    const kept = undotted.replace(/(?<=\p{L})['\u2019\u02BC](?=(?:ll|s|t|re|ve|d|m)(?![\p{L}\p{N}]))/giu, KEPT_APOSTROPHE);
+    const unbroken = kept.replace(/(?<=[\p{L}\p{N}])[^\p{L}\p{N}\s\uE000]+(?=[\p{L}\p{N}])/gu, "").replaceAll(KEPT_APOSTROPHE, "'");
+    const joined = unbroken.replace(/\b(?:[A-Za-z][ .]){3,}[A-Za-z]\b/g, (m) => m.replace(/[ .]/g, ""));
+    for (const form of [source, folded, undotted, unbroken, joined]) forms.add(form);
+  }
+  return [...forms];
+}
+
+/** Stands in for an apostrophe that is to be kept. A private-use character: stored text cannot contain one unflagged. */
+const KEPT_APOSTROPHE = "\uE000";
+
+/** Symbols on any keyboard that are used in place of the letters they resemble. */
+const SYMBOL_LETTER: Record<string, string> = { "@": "a", $: "s", "!": "i", "|": "i", "\u20AC": "e", "\u00A3": "l" };
+
+/**
+ * The text with symbols read as the letters they stand in for, where they sit inside a word
+ * ("gu@rantee") or, for an upright stroke, at its end ("A|"). The stroke is read once as "i"
+ * and once as "l". Digits used as letters need no such reading: a digit is a figure, and a
+ * figure without a cited reference is refused already.
+ */
+function symbolsAsLetters(text: string): string[] {
+  const read = (stroke: string) =>
+    text
+      .replace(/(?<=\p{L})[@$!|\u20AC\u00A3](?=\p{L})/gu, (c) => (c === "|" ? stroke : (SYMBOL_LETTER[c] ?? c)))
+      .replace(/(?<=\p{L})\|(?![\p{L}\p{N}])/gu, stroke);
+  return [read("i"), read("l")].filter((form) => form !== text);
 }
 
 function hasNumber(text: string, number: string): boolean {
@@ -383,24 +417,22 @@ export function analyseDraft(
     }
   }
   // Text that tries to slip past the rules above: invisible or compatibility characters,
-  // control characters, and words written with look-alike letters. A word that mixes Latin
-  // letters with another script is refused anywhere. In a post written mostly in Latin letters,
-  // so is any word in another script: every script has letters that pass for Latin ones, and
-  // only the Greek and Cyrillic ones are folded above.
-  // Every part the editor is shown or the record keeps is checked, not only what is published.
+  // control characters, odd blanks, and words written with any letter outside the ordinary
+  // Latin alphabet. Every part the editor is shown or the record keeps is checked, not only
+  // what is published, and each part is held to the same rule whatever the rest contains.
   const raw = [draft.body, draft.hashtags.join(" "), draft.hook, draft.callToAction, ...draft.claims.map((c) => c.text)].join("\n");
-  const letters = raw.match(/\p{L}/gu) ?? [];
-  const mostlyLatin = letters.filter((c) => LATIN.test(c)).length * 2 >= letters.length;
-  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter(
-    (word) => (NON_LATIN_LETTER.test(word) && (mostlyLatin || LATIN.test(word))) || ODD_LATIN.test(word),
-  );
+  const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => (word.match(/\p{L}/gu) ?? []).some((letter) => !isOrdinaryLetter(letter)));
   if (canonicalText(raw) !== raw) {
     failures.push({ rule: "suspicious-characters", detail: "Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)" });
   } else if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(raw)) {
     failures.push({ rule: "suspicious-characters", detail: "Contains control characters" });
+  } else if (ODD_BLANK.test(raw)) {
+    failures.push({ rule: "suspicious-characters", detail: "Contains a blank that is not an ordinary space" });
+  } else if (/[\p{Co}\p{Cn}]/u.test(raw)) {
+    failures.push({ rule: "suspicious-characters", detail: "Contains private-use or unassigned characters" });
   }
   if (disguised.length > 0) {
-    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) written with letters from another script or alphabet, which can pass for ordinary ones` });
+    failures.push({ rule: "suspicious-characters", detail: `Contains ${disguised.length} word(s) with letters outside the ordinary Latin alphabet; such letters can pass for ordinary ones` });
   }
 
   return {
