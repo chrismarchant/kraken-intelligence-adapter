@@ -11,7 +11,7 @@ Every result below came from a command run in the session. Where something was n
 | **C1** Full OpenBot boots on a licensed Intelligence project and completes a conversation with a tool call and a recalled memory | **Not demonstrated. Blocked.** | No Intelligence project key exists in the environment (obtaining one needs a personal account sign-in). OpenBot's schema needs pgvector, which is unavailable: no Docker daemon, package not in the repositories, source build refused by the session's permission layer. Recorded once as a local stop on task `KIC-01-C1`; not retried. |
 | **C2** Mistral Large 4 works through a shim, streaming, with tools | **Demonstrated outside OpenBot. Not demonstrated inside it.** | See "Model shim" and "Agent runs". |
 | **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing sent. The questions, drafted for the owner, are in `docs/decisions/LICENCE-QUESTIONS-COPILOTKIT.md` (an earlier set is in `KIC-01-ASSESSMENT.md` §8). |
-| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked in ten agent review rounds and one Mistral review. Eight agent rounds and the Mistral review requested changes; every high finding and all but one medium (mitigated) were closed and given a regression test. The ninth (`55a66f2`) approved, and a delta review of the follow-up commit `2537386` confirmed the approval. Not shown: a person using the operator tool; an assessment by anyone outside this programme's sessions (OD-11).** | See "Approval enforcement" and "Independent review". |
+| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked in ten agent review rounds and one Mistral review. Eight agent rounds and the Mistral review requested changes; every high finding and all but one medium (mitigated) were closed and given a regression test. The ninth (`55a66f2`) approved, and a delta review of the follow-up commit `2537386` confirmed the approval. Not shown: a person using the operator tool; an assessment by anyone outside this programme's sessions (OD-11).** | See "Approval enforcement" and "Independent review". **Since then** (2026-11-13, later): reviews of the parts those two had not covered requested changes at `2537386`; after six rounds of remediation the approval path was approved again as a delta at `1f159a2` and found to stand at `e30451c`, `7f1978a` and `184f687`; nothing on it changed in `c83b0cb`. State by area: `harness/state/GATE_STATE.md`. |
 
 ## What was built
 
@@ -29,9 +29,11 @@ Every result below came from a command run in the session. Where something was n
 | Tenant package for an OpenBot-derived instance | `tenant-package/` | Written; accepted by upstream's validator. **Not run inside OpenBot.** |
 | Harness: task ledger, gates, three stop levels, commit-bound reviews, secret scan, CI, hook, guardians | `harness/`, `.github/`, `.claude/agents/` | Implemented, tested; CI verified on GitHub. The global-stop hook is installed in `.claude/settings.json` and was verified in live nested sessions. |
 
-Size at `2537386`: about 7,500 lines of product source and 5,300 lines of product tests.
+Size at `2537386`: about 7,500 lines of product source and 5,300 lines of product tests. At `c83b0cb`, after six rounds of remediation: about 8,500 lines of product source and 7,000 lines of tests.
 
 ## Tests
+
+**At the commit presented, `c83b0cb`: `npm run check` exit 0, type check clean, 289 product tests and 83 harness tests pass, secret scan clean; GitHub Actions workflow `ci` run 58 (43475174844) succeeded on that commit. The offline demonstration (`node src/cli/demo.ts`) was run on the code of `7f1978a` and released four `NON-EXECUTABLE` commands; only the evaluator's term matching has changed since, and the scenario test, which replays the same campaign, passes at `c83b0cb`.** The paragraph that follows is the record for `2537386`.
 
 `npm run check` at commit `2537386`, in a clean detached worktree: type check clean; **202 product tests pass; 83 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool; the shim against a loopback stand-in for the provider).
 

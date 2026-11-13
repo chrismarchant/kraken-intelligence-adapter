@@ -8,14 +8,20 @@ Requested by the owner's direction of 2026-11-13. It sets out, layer by layer, w
 
 | Label | Meaning | Is enforcement claimed? |
 |---|---|---|
-| **T** | An automated negative test in this repository passes at commit `2537386`. The test is named. These are the authors' own tests | Yes, for what the test exercises |
+| **T** | An automated negative test in this repository passes at commit `c83b0cb` (and passed at `2537386`, for which this matrix was first written). The test is named. These are the authors' own tests | Yes, for what the test exercises |
 | **T+I** | As T, and an independent reviewer attacked the control; their exploit, where they had one, is now a regression test. The review is named. **A control marked T+I was broken by the review named and then fixed. Review 9 found nothing that broke a claim of this layer and raised low-rated weaknesses in rows 1.6 and 1.15, fixed in `2537386`; review 10 confirmed those fixes. Neither was by a person or an outside party (OD-11)** | Yes, with that caveat |
 | **S** | Read in OpenBot's source at release tag `v1.0.2` (`cca9f60`). Not run. Where the orchestrator re-read it, it says "re-read" | **No** |
 | **D** | A deployment requirement: the operating system, container or network of an instance must provide it. Code here cannot. Untested, because there is no instance | **No** |
 | **P** | Proposed: a setting or a piece of work that does not exist anywhere yet | **No** |
 | **N** | No control. A known gap | No |
 
-Reviews are numbered in the order they were run, each by an independent agent bound to an exact commit: 1 (`983487d`), 2 (`aad2196`), 3 (`075b358`), 4 (`187f029`), 5 (`765ae20`), 6 (`b8e0170`), 7 (the approval-path security review, `177a8c4`), 8 (`12a7626`), 9 (`55a66f2`), 10 (a delta review of `55a66f2..2537386`). Their records are in `docs/review/`. Reviews 1 to 8 requested changes; review 8 found no defect in rows 1.1 to 1.14 and one, since fixed, in row 1.15. Review 9 approved with follow-ups, fixed in `2537386`; review 10 approved that commit. This matrix describes `2537386`; later commits change records only.
+Reviews are numbered in the order they were run, each by an independent agent bound to an exact commit: 1 (`983487d`), 2 (`aad2196`), 3 (`075b358`), 4 (`187f029`), 5 (`765ae20`), 6 (`b8e0170`), 7 (the approval-path security review, `177a8c4`), 8 (`12a7626`), 9 (`55a66f2`), 10 (a delta review of `55a66f2..2537386`). Their records are in `docs/review/`. Reviews 1 to 8 requested changes; review 8 found no defect in rows 1.1 to 1.14 and one, since fixed, in row 1.15. Review 9 approved with follow-ups, fixed in `2537386`; review 10 approved that commit. This matrix was written for `2537386`.
+
+**Brought up to `c83b0cb` on 2026-11-13.** The code changed after `2537386`, through six rounds of remediation. Every test named below still exists and passes at `c83b0cb` (checked by script; 289 product tests in all). Fourteen further reviews, 11 to 24, are recorded in `harness/state/GATE_STATE.md` under "Scope-completing reviews" and "State by area at `c83b0cb`". What they change in this matrix:
+
+- **Row 1.9, mandatory constraints.** Reviews 11, 13, 15, 17 and 20 each found a further way to write a ruled-out word or an unbacked figure past the pattern rules. **The rules are not complete, and no review approved them.** The control that a draft failing a constraint cannot be approved holds for what the rules recognise; for the rest the control is the editor reading the text (owner decision OD-21). A draft may now contain only a named list of 694 characters, and that list held under review.
+- **Rows on the spend account, the MCP tools and their transport** (1.11 to 1.13, 2.4), and the store and gateway beneath them: reviews 12 and 14 requested changes (locking between real processes, connection limits, unbounded reads and arguments); reviews 16, 18 and 21 approved with follow-ups, and reviews 22 and 23 found those approvals to stand.
+- **The approval-path rows** (1.1 to 1.8, 1.10, 1.15): review 19 approved the delta from `2537386`; reviews 21, 22 and 23 found the approval to stand.
 
 Tests are under `tests/kic/` unless a path is given. "Negative test" means a test of something that must fail: an attempt that has to be refused.
 

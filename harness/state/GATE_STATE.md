@@ -5,7 +5,7 @@ No gate has been accepted by the Human Owner. Evidence is presented; acceptance 
 | Gate | Status | Evidence |
 |---|---|---|
 | KIC-00 Foundation and feasibility | **Report presented. Awaiting owner approval.** | `docs/gates/KIC-00-REPORT.md` |
-| KIC-01 Runtime proof | **Implementation authorised for the 2026-11-13 session only** (workstreams A–D). **Not accepted. Not ready to accept: the review requirement, recorded as met at `2537386` earlier on 2026-11-13, is NOT met.** A scope-completing review of parts the approving reviews had not covered requested changes at that commit; remediation is in progress. C1 blocked, C2 demonstrated outside OpenBot, C3 open, C4 demonstrated in tests and independently reviewed. | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
+| KIC-01 Runtime proof | **Implementation authorised for the 2026-11-13 session only** (workstreams A–D). **Presented for owner acceptance at `c83b0cb`. Not accepted.** By area: the approval path, and the store, gateway, spend and MCP code, are approved by independent review (with follow-ups). **The evaluator's rules against disguised text are not approved**: five reviews in a row requested changes, and the question is put to the owner as OD-21. C1 blocked, C2 demonstrated outside OpenBot only, C3 open, C4 demonstrated in tests and independently reviewed. A gate stop is on KIC-01 until the owner decides. | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
 | KIC-02 Model and skills integration | Not authorised as a gate. Parts were built under the session authorisation: gateway, skills, bounded execution. | `docs/gates/KIC-01-EVIDENCE.md` |
 | KIC-03 Comparative intelligence | Not authorised as a gate. Built under the session authorisation with the deterministic mock evaluator. | same |
 | KIC-04 Commercial campaign preparation | Not authorised as a gate. Demonstrated through API and command-line tests only. **No user interface.** | same |
@@ -120,9 +120,62 @@ Remediated in `efe9415` (part A) and `1f159a20109bb0759c54fdc262abd95aa2800294` 
 | Store, gateway and MCP, delta from `a1affd2` (`independent-review-agent-18`), `docs/review/2026-11-13-review-b4-1f159a2.md` | **approved, with follow-ups** (1 low to medium, 3 low, 1 info). Nine more volume trials of the lock, 1,549 kills: nothing lost or duplicated. The follow-up that mattered: the new limit on decision requests could lock a campaign out of decisions |
 | Evaluator and normaliser (`independent-review-agent-17`), `docs/review/2026-11-13-review-a4-1f159a2.md` | **changes-requested**: 4 high, 5 medium. A regression (a stand-in symbol followed by an exclamation mark); short ruled-out terms never looked for in hashtags, which every earlier review had missed; flags made of two letters; figures and words drawn as emoji. Contracts, creator ranking, the evaluator's output bounds and the stream normaliser held |
 
-Remediated in `e30451c517bae16982ad75599d3f62cc4534ff13`: every character a draft may contain is now named, 694 in all, and looking for a term is rebuilt to read each word every way a reader could; the follow-ups of the store review are fixed. 274 product and 83 harness tests pass; the secret scan is clean. **Two reviews of `e30451c` are commissioned: the evaluator and normaliser; and a delta review covering the store, the gateway, the decision-request change and its effect on the approval path. Until they are recorded here, no commit meets the review requirement.**
+Remediated in `e30451c517bae16982ad75599d3f62cc4534ff13`: every character a draft may contain is now named, 694 in all, and looking for a term is rebuilt to read each word every way a reader could; the follow-ups of the store review are fixed.
 
-This is the fifth round on the rules that look for disguised text. If the next review of them again finds a new way round, the orchestrator will not start a sixth round on its own: whether those rules are to be made complete, or stated to be what they are, pattern rules behind an editor who reads every word, is a question for the owner.
+**Reviews of `e30451c`:**
+
+| Review | Outcome |
+|---|---|
+| Evaluator and normaliser (`independent-review-agent-20`), `docs/review/2026-11-13-review-a5-e30451c.md` | **changes-requested**: 5 high, 5 medium, 3 low, 2 info. The list of characters held (696 code points accepted, none that should not be); no path to a live JEV; the stream normaliser held. The reading of words did not: three regressions or defects in the code written for the round before, and again new ways to write a ruled-out word past the rules. A gap in the figure rule older than this work: quantities in words ("Nine of ten clients renewed") |
+| Store, gateway and decision requests, delta from `1f159a2` (`independent-review-agent-21`), `docs/review/2026-11-13-review-b5-e30451c.md` | **approved, with follow-ups** (1 low to medium, 2 low, 2 info). The approvals of the approval path and of the store, gateway and MCP code given at `1f159a2` stand at `e30451c`. Four more volume trials of the lock, 1,113 kills: nothing lost or duplicated |
+
+**That was the fifth review in a row to request changes to the rules that look for disguised text. The orchestrator did not start a sixth round of closing new disguises.** It fixed what the review found wrong in the code written for the fourth round (`dfe9ead`), closed the follow-ups of the store review (`7f1978a`), and had the result checked for regressions against `e30451c`. Those checks took three passes:
+
+| Regression review | Outcome |
+|---|---|
+| `e30451c..7f1978a` (`independent-review-agent-22`), `docs/review/2026-11-13-regression-review-7f1978a.md` | **changes-requested.** The approvals of the approval path and of the store, gateway and MCP code still stand. The fix to the term matching had brought in regressions: a rule for plain numbers that hid words written with symbols and digits (high), slower evaluation (medium), honest hashtags refused. Fixed in `184f687` |
+| `e30451c..184f687` (`independent-review-agent-23`), `docs/review/2026-11-13-regression-review-184f687.md` | **changes-requested.** The same approvals still stand. Two regressions against `e30451c` remained in the term matching (medium; low to medium), one of them from `dfe9ead` and missed by the pass before. Fixed in `c83b0cbd0134eb224552b73e52a43b7111cde721`, which changes `src/evaluation/terms.ts` and its test file and nothing else |
+| The term matching at `c83b0cb` against `e30451c` (`independent-review-agent-24`) | Commissioned on 2026-11-13; **not yet reported.** Until it is recorded here, the last change to the term matching (`184f687..c83b0cb`, 42 lines of one file) is tested by its authors and by the earlier reviewers' probes run again, and not independently reviewed |
+
+**No further change to the code will be made by the orchestrator before the owner decides, whatever the last review says.** `c83b0cb` is the commit presented.
+
+### State by area at `c83b0cb`
+
+| Area | State | Basis |
+|---|---|---|
+| Approval path: claims (a) to (d) | **Approved** | Approved at `55a66f2` and `2537386` (agents 9, 10); delta-approved at `1f159a2` (agent 19); found to stand at `e30451c`, `7f1978a` and `184f687` (agents 21, 22, 23). Nothing outside the evaluator's term matching changed between `184f687` and `c83b0cb`. The operator tool, signing, the ledger and the decision contract are byte-identical to `2537386` |
+| Store, locking, gateway, spend, MCP tools, HTTP transport: claims (k) to (p) | **Approved, with follow-ups** | Changes requested at `2537386` and `1d8bafe` (agents 12, 14); approved with follow-ups at `a1affd2`, `1f159a2`, `e30451c` (agents 16, 18, 21); found to stand at `7f1978a` and `184f687` (agents 22, 23). Open follow-ups: B1 to B4 below |
+| Contracts and commands (h); creator ranking (i) | Held when last reviewed | Agent 17 at `1f159a2`, in a review that requested changes elsewhere. Unchanged since |
+| No path to a live JEV (g); the stream normaliser (j); the list of characters a draft may contain | Held when last reviewed | Agent 20 at `e30451c`, likewise. Unchanged since |
+| **The evaluator's rules against disguised words and figures: claims (e), (f)** | **Not approved** | Changes requested at `2537386`, `1d8bafe`, `a1affd2`, `1f159a2`, `e30451c` (agents 11, 13, 15, 17, 20). Open findings E1 to E9 below. Owner decision OD-21 |
+| Skills catalogue; demonstration; harness | Tested by their authors | Harness: rounds 1 and 2 only |
+
+### Open at `c83b0cb`: the evaluator (for OD-21)
+
+Not accepted by the orchestrator. Listed for the owner's decision.
+
+| # | Finding | Source | Rating |
+|---|---|---|---|
+| E1 | Quantities written in words, outside the listed shapes, are not treated as figures: "Nine of ten clients renewed", "Revenue grew fourfold". Older than this work | Review of `e30451c`, F11 | **high** |
+| E2 | A letter repeated for emphasis: "FREEEE", "scammm" | F4 | **high** |
+| E3 | A letter masked with a star or an underscore: "sc*m", "fr_e" | F5 | medium |
+| E4 | A word hyphenated across a line break | F6 | medium |
+| E5 | The digits 9, 6 and 2 are not read as letters | F10 | medium |
+| E6 | **A word written the way a number is written is not read as letters**: "8357" (best), "4.1" (AI), "101" (lol). A trade-off made in `dfe9ead` and narrowed in `184f687` and `c83b0cb`, so that "Room 101" is not refused; about 125 in 20,000 random disguises. `e30451c` read these. The figure rule still applies to each | Regression reviews of `7f1978a` and `184f687` | recorded as intended; widens E5 |
+| E7 | Three-letter terms ending in "e" miss some endings ("used"); a term looked for as written is missed when spaced ("C ++"); a contraction joined by an underscore | F8, F12; regression review of `7f1978a`, 5 | low |
+| E8 | In a hashtag a run of capitals can span two words: "#SaaSOfPR" is refused for "so". One in 15,000 random honest tags | Regression review of `184f687`, 3 | low; errs towards refusing |
+| E9 | The first-place medal and the calendar show a figure on most devices; the chequered flag is a flag. All three are in the list of pictures | Review of `e30451c`, noted | noted |
+
+### Open at `c83b0cb`: follow-ups of the approved areas
+
+Accepted by the orchestrator as not blocking those approvals, as the reviewers rated them. Listed so the owner can disagree.
+
+| # | Finding | Source | Rating |
+|---|---|---|---|
+| B1 | Across 25 different decisions, notices to the operator channel can reach about 1,200 a day | Regression review of `7f1978a`, 7 | low; as before this work |
+| B2 | A waiting request holds its place for up to 30 minutes: a poor revision instruction cannot be corrected until the editor declines it or it expires, and whoever holds it can ask again the moment it is declined | Regression review of `7f1978a`, 8 | low |
+| B3 | The audit trail keeps the requester, time and outage of a replaced request for one replacement only | Regression reviews of `7f1978a` (9) and `184f687` (5) | info |
+| B4 | Ordinary drafts evaluate a constant factor slower than at `e30451c` (more readings); the slowest shape found stays under a second, and scaling is linear | Regression review of `184f687`, 4 | info |
 
 The entries for reviews A and B in the append-only review ledger show their findings as "open", as they were when recorded.
 
@@ -212,7 +265,8 @@ The Mistral Code Review Bot is not operational (its block-content defect is unfi
 | X9 | Full OpenBot boot not proven | OD-7 |
 | X11 | Licence for a client-owned derived deployment not confirmed | OD-8 |
 | X13 | The editor's surface is a command-line tool; no real editor has used it | OD-9 |
-| X14 | Independent review of the KIC-01 work: met at `2537386` by agent reviewers. An assessment by someone outside this programme's sessions has not been made and is required before real-client use | OD-11 |
+| X14 | Independent review of the KIC-01 work: by agent reviewers only; state by area under "State by area at `c83b0cb`". An assessment by someone outside this programme's sessions has not been made and is required before real-client use | OD-11 |
+| X15 | The evaluator's rules against disguised text were not approved by any review | OD-21 |
 | X15 | OpenBot `v1.0.2` accepts a custom MCP server only over https at a hostname; the KIC server cannot be attached over a private interface | OD-20 |
 | X16 | The corrected mediation package, after the second review's corrections, is not itself re-reviewed | owner, if wanted |
 | X17 | The spend ceilings' figures (this repository's instance ceilings and the shim's) are provisional or unset | OD-6 |
