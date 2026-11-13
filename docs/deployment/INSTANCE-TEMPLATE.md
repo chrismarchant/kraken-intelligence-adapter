@@ -11,7 +11,7 @@ Each client gets its own copy of everything below. Nothing is shared between cli
 | Workspace | OpenBot at a pinned upstream release (pending OD-1), or the minimal fallback | Conversations. With OpenBot, threads and memory live in that client's Intelligence project. |
 | KIC MCP server | `node src/mcp/http.ts` | The campaign store and exports. The operator's **public** key. |
 | Model shim | `node src/shim/server.ts`, key-injection mode | The client's model provider key. The workspace is given only the shim's client token. |
-| Operator tool | `node src/cli/operator.ts`, run by the editor | The operator's **private** key. Reads the operator channel. |
+| Operator tool | `node src/cli/operator.ts`, run by the editor | The operator's **private** key, its ledger, and the released packages (`releases/` beside the key). Reads the operator channel. |
 | PostgreSQL with pgvector | Only if the workspace is OpenBot | OpenBot's own tables |
 
 ## Separation that the instance must provide
@@ -19,7 +19,7 @@ Each client gets its own copy of everything below. Nothing is shared between cli
 These are the deployment requirements in `docs/architecture/kic-companion.md`, stated as checks for the KIC-05 gate:
 
 1. The operator's private key and its ledger file are readable and writable only by the editor's account. The MCP server, the shim and the workspace cannot read it. **Test:** from each of those processes' accounts, reading the key file fails.
-2. The operator channel directory is writable by the MCP server and readable by the editor's account, and is not readable by the workspace or its tool sandbox.
+2. The operator channel directory is writable by the MCP server and readable by the editor's account, and is neither readable nor writable by the workspace or its tool sandbox. It also holds the server's spend account (`server-spend.state`): anything that can write it can reset the instance's spending. **Test:** from the workspace's account, creating a file in the directory fails.
 3. The campaign store is writable only by the MCP server and the operator tool.
 4. The MCP endpoint and the shim listen on a private interface, each behind its bearer token. **Test:** a request without the token is refused; a request with a foreign `Host` is refused.
 5. No outbound connection is possible from the instance except to the model provider and, with OpenBot, to that client's Intelligence project. **Test:** record egress during a campaign run and compare with that list.

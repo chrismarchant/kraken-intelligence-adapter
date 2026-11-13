@@ -33,9 +33,9 @@ Size: about 6,400 lines of product source and 3,600 lines of product tests.
 
 ## Tests
 
-`npm run check` at commit `187f029`: type check clean; **163 product tests pass; 82 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
+`npm run check` at commit `765ae20`: type check clean; **178 product tests pass; 83 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
 
-GitHub Actions workflow `ci` succeeded on four pushes: runs 43343870467 (`90e6330`), 43346469381 (`983487d`), 43350445685 (`aad2196`) and 43411349457 (`075b358`).
+GitHub Actions workflow `ci` succeeded on every push through `765ae20` (runs 1 to 10; run 10 is 43417308791).
 
 ## Commercial proof: the synthetic campaign
 
@@ -116,6 +116,12 @@ Measured token use is above. The provider's pricing page, read on 2026-11-13, li
 
 Not measured: cost at realistic campaign sizes, with real briefs, or with more revision passes.
 
+### Repeated in part at commit `6f26029` (code of `187f029`)
+
+Run 1 only (62 s): the agent listed the skills, created the campaign, interpreted the brief, generated three narratives and requested a selection. Its first request was refused by the tool (`invalid-rationale`: the reason it gave was too long); it shortened the reason, the second request was accepted, and it stopped and reported the request id, saying it had selected nothing. The server log held no token.
+
+The operator's side was **not** repeated live. The session's permission layer refused to let this session run the operator tool with a signing key, which is consistent with the rule that an agent session does not handle the operator key. The whole-digest confirmation, and the review-then-release flow added later, are therefore covered by automated tests that run the real tool as a child process (`tests/kic/processes.test.ts`, `tests/kic/fourth-review.test.ts`), and by no live run and no person.
+
 ## Approval enforcement (C4)
 
 What the code guarantees, each covered by tests in `tests/kic/approval.test.ts`, `signing.test.ts`, `concurrency.test.ts`, `processes.test.ts` and `mcp.test.ts`:
@@ -162,4 +168,6 @@ The Mistral Code Review Bot and Codex were not used: the bot's block-content def
 - Deployment of any kind.
 - Stores shared between machines: the lock relies on process ids and is for one machine only.
 - A person using the operator tool. It has been driven by tests and by this session, not by an editor.
-- Long campaigns: the largest run was 4 posts.
+- Long campaigns live: the largest live run was 4 posts. A 24-post programme was drafted in batches with the scripted model only.
+- The operator tool on a real terminal: its output was checked for control, invisible and direction characters by rule, not by a terminal emulator or a bidirectional-text renderer.
+- The review-then-release flow and the whole-digest confirmation in a live run or by a person.

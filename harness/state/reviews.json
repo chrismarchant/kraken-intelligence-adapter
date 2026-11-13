@@ -500,6 +500,112 @@
       ],
       "reportPath": "docs/review/2026-11-13-focused-re-review-075b358.md",
       "at": "2026-11-13T11:05:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-187f029",
+      "gate": "KIC-01",
+      "commit": "187f029c64a12ec8b5d32a512c5883e7a88e170e",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-4",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/workflow/**",
+        "src/cli/operator.ts",
+        "src/store/store.ts",
+        "src/mcp/runtime.ts",
+        "src/mcp/server.ts (tool layer)",
+        "src/contracts/decision.ts",
+        "src/contracts/programme.ts",
+        "src/contracts/command.ts",
+        "src/contracts/common.ts",
+        "src/evaluation/signals.ts",
+        "src/util/runtime.ts",
+        "src/gateway/gateway.ts",
+        "src/gateway/mistral.ts",
+        "src/limits.ts",
+        "docs/security/THREAT-MODEL.md"
+      ],
+      "skipped": [
+        {
+          "path": "src/workflow/comparison.ts, markdown rendering, src/shim/**, harness/**",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "lock races across real processes; ledger stale-lock races",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "src/mcp/http.ts",
+          "reason": "skimmed (auth and host checks)"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "high",
+          "summary": "Operator tool printed stored text raw: terminal escape sequences could hide text from the editor, who then signed it",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F2",
+          "severity": "high",
+          "summary": "Budget lived only in the agent-writable campaign record; a reset record or a new campaign bought more model calls",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F3",
+          "severity": "medium",
+          "summary": "Brief, claims, slot and plan were covered by no hash or signature; ineligible text could be made to pass and an approved post moved",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F4",
+          "severity": "medium",
+          "summary": "A stream that completed without reporting usage was charged zero tokens",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F5",
+          "severity": "medium",
+          "summary": "Any invisible character following an emoji, joiner or variation selector survived canonical form",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F6",
+          "severity": "low",
+          "summary": "Year and identifier exemptions in the figure rule let unbacked figures through",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F7",
+          "severity": "low",
+          "summary": "Releases were exported into the agent-writable data directory; no verify command",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        },
+        {
+          "id": "F8",
+          "severity": "info",
+          "summary": "Evaluations are unsigned (accepted, labelled); a campaign id of \"constructor\" resolved to an inherited property in the ledger (fixed)",
+          "status": "fixed",
+          "remediationCommit": "765ae20ebe6ddfbede6c2e5853b14c9c75421eee"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-fourth-review-187f029.md",
+      "at": "2026-11-13T11:20:00Z"
     }
   ]
 }

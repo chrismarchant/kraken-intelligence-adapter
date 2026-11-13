@@ -31,7 +31,8 @@ One instance per client. One data directory, one model key, one operator key. No
 | `src/creators/` | Typed creator evidence and a transparent weighted ranking with mandatory eligibility. Runs on fixtures only; contacts no one. |
 | `src/store/` | One JSON file per campaign. All writes go through `update`, serialised per campaign by an in-process mutex and a lock file that names its owner. A lock is taken over only when its owning process is gone. Writes go to a temporary file, are flushed and renamed. One machine only. |
 | `src/mcp/` | The MCP server and its stdio and HTTP entry points. |
-| `src/cli/operator.ts` | The editor's tool: `init`, `list`, `show`, `confirm`, `decline`, `release`, `new-ledger`. The only place a decision is recorded or a package released. It reads what a request is from the campaign record, and makes the editor give back the action, the subject and the whole request digest before it signs. |
+| `src/workflow/spend.ts` | The instance's own account of model spending, kept outside the campaign store: per-campaign charges, instance ceilings and the count of campaigns. Charged at a step's worst case before a model is called, corrected afterwards. |
+| `src/cli/operator.ts` | The editor's tool: `init`, `list`, `show`, `confirm`, `decline`, `review`, `release`, `verify`, `new-ledger`. The only place a decision is recorded or a package released. It reads what a request is from the campaign record, prints stored text with control and invisible characters made visible, and makes the editor give back the action, the subject and the whole request digest before it signs. `review` shows the brief's constraints, the plan and the approved posts and prints the release digest that `release` requires. `verify` checks a released package and the commands file beside it. |
 
 ## Limits (defaults in `src/limits.ts`)
 
@@ -43,6 +44,10 @@ One instance per client. One data directory, one model key, one operator key. No
 | Revision passes per draft | 2 |
 | Model calls in flight | 3 |
 | Model steps per campaign | 80 |
+| Campaigns per instance | 50 (provisional) |
+| Model steps per instance | 2,000 (provisional, pending OD-6) |
+| Completion tokens per instance | 10,000,000 (provisional, pending OD-6) |
+| Posts drafted by one drafting step | 6 |
 | Completion tokens per campaign | 400,000. A step reserves three times its nominal allowance while in flight, which is the most its calls can use. |
 | Lifetime of an unsettled step's reservation | 30 minutes, then charged in full |
 | Time per model call | 180 s, then cancelled |
@@ -59,7 +64,9 @@ Agent-facing server (`npm run mcp:http` or `mcp:stdio`):
 | Variable | Meaning |
 |---|---|
 | `KIC_DATA_DIR` | Campaign store and exports. Default `./data`. |
-| `KIC_OPERATOR_DIR` | **Required.** Where decision notices are written for the editor. Must be outside the data and working directories. |
+| `KIC_OPERATOR_DIR` | **Required.** Where decision notices are written for the editor, and by default where the server keeps its spend account (`server-spend.state`). Must be outside the data and working directories. |
+| `KIC_SPEND_FILE` | The spend account, if not in the operator directory. Must be outside the data and working directories. |
+| `KIC_MAX_CAMPAIGNS`, `KIC_MAX_INSTANCE_MODEL_CALLS`, `KIC_MAX_INSTANCE_COMPLETION_TOKENS` | Instance ceilings, if not the defaults. |
 | `KIC_DECISION_PUBLIC_KEY_FILE` | **Required** (or `KIC_ALLOW_UNSIGNED_DECISIONS=1` for development only). The operator's public key. |
 | `KIC_MODEL_MODE` | `live` (default) or `fixture`. |
 | `KIC_MODEL_BASE_URL`, `KIC_MODEL`, `MISTRAL_API_KEY` | Model endpoint (https, or http on loopback), model name, key. |
@@ -68,13 +75,13 @@ Agent-facing server (`npm run mcp:http` or `mcp:stdio`):
 | `KIC_MCP_HOST`, `KIC_MCP_PORT`, `KIC_MCP_TOKEN` | HTTP endpoint. A token of at least 24 characters is required unless `KIC_MCP_ALLOW_UNAUTHENTICATED=1` on loopback. |
 | `KIC_MCP_ALLOWED_HOSTS`, `KIC_MCP_ALLOWED_ORIGINS` | Extra Host names and browser Origins to accept. |
 
-Operator tool: the same data and operator directories, plus `KIC_OPERATOR_KEY_FILE` (the private key). The tool keeps its ledger in `<key file>.ledger.json`.
+Operator tool: the same data and operator directories, plus `KIC_OPERATOR_KEY_FILE` (the private key). The tool keeps its ledger in `<key file>.ledger.json` and writes releases to `releases/` beside the key, or to `KIC_RELEASE_DIR`.
 
 ## Deployment requirements that code cannot enforce
 
 1. The operator's private key **and its ledger file** must be readable and writable only by the editor's tool: a different operating-system user, container or machine from the agent runtime and from the MCP server. If the key is readable elsewhere, every control falls. If the ledger is deleted, the tool stops until a person restores it or starts a new one with `new-ledger --accept-current-state`, which trusts every decision log as it then stands.
-2. The operator channel directory should be unreadable and unwritable by the agent runtime. If it is not, the agent can see one-time codes and plant notices, but cannot record a decision (no key) and cannot change what the editor is shown (read from the record).
-3. The campaign store should not be writable by the agent runtime's own tools. A writer cannot forge, reorder or remove a decision without detection, and cannot make changed text count as approved, but can delete or corrupt records, and can make a preview from a log with its tail removed. A preview is not a release.
+2. The operator channel directory must be unwritable by the agent runtime and should be unreadable. It holds the server's spend account: an agent that can write it can reset the instance's spending. An agent that can read it can see one-time codes, and one that can write it can plant notices, but neither can record a decision (no key) or change what the editor is shown (read from the record).
+3. The campaign store should not be writable by the agent runtime's own tools. A writer cannot forge, reorder or remove a decision without detection, cannot make changed text, a changed brief or a changed plan count as approved, and cannot reset the instance's spend account, but can delete or corrupt records, void decisions by changing what they rest on, and make a preview from a log with its tail removed. A preview is not a release. A consumer should accept only a package that `verify` accepts.
 4. The store, the MCP server and the operator tool run on one machine.
 5. The MCP HTTP endpoint should be reachable only from the workspace that uses it.
 
