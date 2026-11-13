@@ -1428,6 +1428,94 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-a2-1d8bafe.md",
       "at": "2026-11-13T14:20:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-b2-1d8bafe",
+      "gate": "KIC-01",
+      "commit": "1d8bafe969d3ebfa3cee42a9889cdab848443081",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-14",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/store/**",
+        "src/workflow/spend.ts",
+        "src/workflow/ledger.ts (lock use)",
+        "src/gateway/**",
+        "src/mcp/**",
+        "evaluateDrafts and the budget path in src/workflow/service.ts",
+        "tests for those",
+        "closure of rev-2026-11-13-agent-scope-b-2537386 F1-F9",
+        "claims (k)-(p)"
+      ],
+      "skipped": [
+        {
+          "path": "signing and approval logic; src/shim/**; the real provider",
+          "reason": "out of scope or not covered by the reviewer"
+        },
+        {
+          "path": "concurrency, gateway, mcp and processes tests line by line",
+          "reason": "run but not read in full"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "low",
+          "summary": "An unreadable lock path or right file makes the acquire loop spin without checking its deadline",
+          "status": "open"
+        },
+        {
+          "id": "N2",
+          "severity": "medium",
+          "summary": "Clearing a removed lock's files deletes another claimant's temporary file; an honest update fails with an internal error",
+          "status": "open"
+        },
+        {
+          "id": "N3",
+          "severity": "medium",
+          "summary": "Regression: 64 unauthenticated connections make every authenticated HTTP request fail",
+          "status": "open"
+        },
+        {
+          "id": "N4",
+          "severity": "low",
+          "summary": "Export paths through a symlinked export directory name server directories",
+          "status": "open"
+        },
+        {
+          "id": "N5",
+          "severity": "low",
+          "summary": "A huge reported usage figure fails the record or disables the instance account",
+          "status": "open"
+        },
+        {
+          "id": "N6",
+          "severity": "low",
+          "summary": "Each evaluation call still appends an audit entry without budget or cap",
+          "status": "open"
+        },
+        {
+          "id": "N7",
+          "severity": "info",
+          "summary": "Zombie state is read for the first thread only",
+          "status": "open"
+        },
+        {
+          "id": "N8",
+          "severity": "info",
+          "summary": "32 dead removers block a lock; the lock now needs hard links",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-b2-1d8bafe.md",
+      "at": "2026-11-13T14:35:00Z"
     }
   ]
 }
