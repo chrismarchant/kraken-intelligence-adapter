@@ -14,7 +14,9 @@ COMPLETED:
      all findings fixed and tested (765ae20, 8e4696c, dfa7458). Final code commit 8e4696c/dfa7458 is NOT reviewed.
      Operator side of the live run NOT repeated: the permission layer refused an agent session the operator key.
   Mediation: directive recorded; five read-only source audits (OpenBot f8af37a, OpenDuet, OpenDots, OpenMuse,
-     Channels 0.12.0); D1-D7 written; independent review of the package recorded in docs/review/.
+     Channels 0.12.0); D1-D7 written; independent review of the package at ee303a2: approved with corrections,
+     all applied (tasks only from check-ins; check-ins read-only; grants and routines are manual per instance;
+     approvals are per-person; an OpenBot instance must be confined to be prepare-only). Corrected package not re-reviewed.
      Nothing upstream was built or run. Nothing was imported. tenant-package/ and src/ untouched by the mediation.
 OPEN: OD-1..OD-19. C1, C3. Review requirement for KIC-01 not met (gate stop on REV-1).
 NEXT_ACTION: wait for the owner. Do NOT implement anything from the mediation: it is a proposal.

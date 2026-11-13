@@ -18,6 +18,8 @@ Machine-readable gate map: `harness/config/gates.json`. Task ledger: `harness/st
 
 Investigation and documents only, as the directive authorised. **Presented for owner review; nothing accepted, nothing implemented.** Package: `docs/architecture/mediation/KIC-ARCH-MED-01/` (D1–D7). Recommendation: OpenBot unmodified at a pinned release as the workspace; the KIC MCP server as the one boundary; OpenDuet (fork), OpenDots (standalone) and OpenMuse excluded as runtimes; skins as display only; channels later and narrowly; business actions with Kraken. Upstream sources were read, not run. Open decisions OD-12 to OD-19. Four points where the directive and the records differ are recorded in the package README and are not resolved.
 
+Independent review of the package at `ee303a2`: **approved with corrections** (`docs/review/2026-11-13-mediation-review-ee303a2.md`). The recommendation stood; statements about OpenBot's tasks, check-ins, tenant-package grants and approval settings were wrong, and a risk was missing: with OpenBot in front, an instance is prepare-only only if configured to be. All corrections are applied; the corrected package is not re-reviewed. The working system remains this repository without OpenBot.
+
 ## Conditions on the foundation decision (OD-1)
 
 | Condition | State |

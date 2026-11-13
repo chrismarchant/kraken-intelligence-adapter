@@ -11,11 +11,11 @@ What exists is a standalone campaign-preparation service with a governed editori
 | Item | State |
 |---|---|
 | Branch | `claude/adoring-edison-4wlees`, 20 commits, pushed. No `main`, no pull request, repository public (OD-4). |
-| Code | About 7,200 lines of TypeScript in `src/`; about 4,500 in `tests/`; about 1,700 in the harness scripts. |
+| Code | About 7,200 lines of TypeScript in `src/`; about 4,500 in `tests/`; about 850 in the harness scripts and hook, and about 880 in the harness tests. |
 | Runtime dependencies | Two: `@modelcontextprotocol/sdk` 1.32.2 and `zod` 4.6.7. No CopilotKit package is a dependency. |
 | Tests | 181 product tests and 83 harness tests pass at `dfa7458`; CI green on every push checked (runs 1–10, through `765ae20`). All offline. |
 | Gates | None accepted. KIC-00 presented; KIC-01 evidence presented. |
-| Independent review | Five rounds on the approval path, each returned changes-requested; all findings fixed and tested; the last fixes (`8e4696c`) are unreviewed. **No commit has an approving review.** |
+| Independent review | Five rounds on the approval path, each returned changes-requested. Every high and medium finding was remediated with a regression test; a few informational items are recorded as not fixed (right-to-left letters, prompt tokens outside the budget, a stale-lock race on the spend account). The last fixes (`8e4696c`) are unreviewed. **No commit has an approving review.** |
 
 ## What is implemented (code present, tested)
 
@@ -58,7 +58,7 @@ The earlier assessment pinned OpenBot at upstream commit `804aa69`. Upstream has
 
 One interface exists, and it is deliberately inert:
 
-- `kic.provisional-publish-command/v0` (`src/contracts/command.ts`). Three literal guard fields (`status: "NON-EXECUTABLE"`, `authoritative: false`, `executable: false`); no endpoint, account, credential or clock-time field; relative sequence only. It is produced only inside a programme package, and a package counts only when the operator has released and signed it.
+- `kic.provisional-publish-command/v0` (`src/contracts/command.ts`). Three literal guard fields (`status: "NON-EXECUTABLE"`, `authoritative: false`, `executable: false`); no endpoint, account or credential field and no scheduling time (the only timestamp is when the editor approved); relative sequence only. It is produced only inside a programme package, and a package counts only when the operator has released and signed it.
 - The package (`kic.programme-package/v0`) carries the brief, the selected narrative, the plan, the approved posts, the signed decision log and provenance.
 
 Nothing in this repository calls Kraken, and a read-only search of Kraken's repository found no reference to this repository, to OpenBot or to CopilotKit. There is no accepted execution contract for this side to conform to yet. The provisional command exists to be replaced by Kraken's contract when one is accepted; KIC-06 (Kraken integration) is deferred by directive.
