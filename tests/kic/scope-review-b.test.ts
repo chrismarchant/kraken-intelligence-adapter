@@ -712,6 +712,8 @@ test("b5-1, b5-3: the audit trail names the request that stands and each outage,
   const requested = (await lines("decision-requested")).filter((e) => e.detail.includes(` reject draft ${draftId}`));
   assert.equal(requested.length, 1);
   assert.ok(requested[0]!.detail.startsWith(`${standing.requestId}:`) && requested[0]!.detail.includes(`It replaces ${voided.id}`), requested[0]!.detail);
+  // What would be lost with the replaced request is kept in that line: who asked, when, and that it never arrived.
+  assert.ok(requested[0]!.detail.includes(`requested by test at ${voided.requestedAt}`) && requested[0]!.detail.includes("the operator channel could not be reached"), requested[0]!.detail);
   assert.equal((await lines("decision-undelivered")).length, 0);
 
   // A second outage, later, is recorded as well.
@@ -745,4 +747,28 @@ test("b5-2: a request that fails after an answer that over-reported does not tak
   }
   // With truthful figures a failed request is still charged at its whole allowance.
   assert.equal(await run([answer("not json", "stop", { prompt_tokens: 1, completion_tokens: 200 }), gatewayError, answer('{"theme":"t","score":1}', "stop", { prompt_tokens: 1, completion_tokens: 300 })]), 1500);
+});
+
+test("r22-6: a delivery that fails after its request was replaced leaves no line for a request that is gone", async () => {
+  const { service, evaluated, clock, operator } = makeService();
+  const id = await evaluated();
+  const draftId = (await service.getCampaign(id)).drafts[0]!.id;
+  const ask = () => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action: "reject", proposedRationale: "Proposed by the test.", revisionInstruction: null, requestedBy: "test" });
+  // The first delivery hangs. Its request expires and is replaced by a second, which arrives. Then the first delivery fails.
+  const deliver = operator.deliver.bind(operator);
+  let fail: (error: Error) => void = () => undefined;
+  operator.deliver = () => new Promise<void>((_, reject) => (fail = reject));
+  const hanging = ask();
+  hanging.catch(() => undefined);
+  while ((await service.getCampaign(id)).decisionRequests.every((r) => r.action !== "reject")) await new Promise((resolve) => setImmediate(resolve));
+  const first = (await service.getCampaign(id)).decisionRequests.find((r) => r.action === "reject")!;
+  operator.deliver = deliver;
+  clock.advance(31 * 60_000);
+  const second = await ask();
+  fail(new Error("channel down"));
+  await assert.rejects(hanging, /could not be delivered/);
+  const record = await service.getCampaign(id);
+  assert.equal(record.decisionRequests.some((r) => r.id === first.id), false);
+  assert.equal(record.decisionRequests.find((r) => r.id === second.requestId)!.state, "pending", "the request that replaced it is untouched");
+  assert.deepEqual(record.audit.filter((e) => e.event === "decision-undelivered"), []);
 });

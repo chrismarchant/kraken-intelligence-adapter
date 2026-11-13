@@ -62,17 +62,31 @@ const SYMBOL_READING: Record<string, string> = {
 const REPEATED = /([@$!+|0134578\u00A2\u20AC\u00A3\u00A5\u00D7\u00B0\u2022\u00A1\u2020\u2021\u00A7\u00A9\u00AE])\1+/g;
 const READABLE = /[@$!+|0134578\u00A2\u20AC\u00A3\u00A5\u00D7\u00B0\u2022\u00A1\u2020\u2021\u00A7\u00A9\u00AE]/g;
 
+/**
+ * A word with the run of marks at each end left off. One pass from each end: a pattern
+ * anchored at the end of a word is tried again from every mark of a long run, which takes time
+ * that grows with the square of the run, and a draft may be thousands of marks long.
+ */
+function withoutEdges(word: string, opens: (character: string) => boolean, closes: (character: string) => boolean): string {
+  const characters = [...word];
+  let start = 0;
+  let end = characters.length;
+  while (start < end && opens(characters[start] as string)) start += 1;
+  while (end > start && closes(characters[end - 1] as string)) end -= 1;
+  return start === 0 && end === characters.length ? word : characters.slice(start, end).join("");
+}
 /** Whatever opens or closes a word without being a letter or a digit: stops, quotation marks, brackets, dashes, signs. */
-const LEADING_EDGE = /^[^\p{L}\p{N}]+/u;
-const TRAILING_EDGE = /[^\p{L}\p{N}]+$/u;
+const isMark = (character: string): boolean => !/[\p{L}\p{N}]/u.test(character);
+const bare = (word: string): string => withoutEdges(word, isMark, isMark);
 /**
  * The punctuation that opens and closes a word in ordinary writing. An exclamation mark is
  * among it, and is also a mark that can stand in for a letter: so a word is read once with
  * this punctuation left off and its other marks read as letters ("fr\u20AC\u20AC!" is "free"),
  * as well as with everything at its edges left off, and with nothing left off ("h!" is "hi").
  */
-const OPENING_PUNCTUATION = /^[(\[{"'\u2018\u201C\u201A\u201E\u00AB\u2039\u00A1\u00BF*_~`-]+/u;
-const CLOSING_PUNCTUATION = /[!?.,;:)\]}"'\u2019\u201D\u00BB\u203A*_~`-]+$/u;
+const OPENING_PUNCTUATION = new Set([..."([{\"'\u2018\u201C\u201A\u201E\u00AB\u2039\u00A1\u00BF*_~`-"]);
+const CLOSING_PUNCTUATION = new Set([..."!?.,;:)]}\"'\u2019\u201D\u00BB\u203A*_~`-"]);
+const withoutPunctuation = (word: string): string => withoutEdges(word, (c) => OPENING_PUNCTUATION.has(c), (c) => CLOSING_PUNCTUATION.has(c));
 
 /**
  * The contractions that are read as they stand. A closed list of whole words: with the
@@ -150,22 +164,47 @@ for (const edges of ["kept", "punctuation", "all"] as const) {
   }
 }
 
-/** A plain number, with the marks numbers are written with: "101", "1,053", "4.8/5", "50\u201360", "500+", "17%". */
-const NUMERAL = /^[^\p{L}\p{N}]*\d[\d.,:/%+\u2013-]*[^\p{L}\p{N}]*$/u;
+/**
+ * A plain number, with the marks numbers are written with: "101", "1,053", "4.8/5",
+ * "50\u201360", "500+", "17%", "(2026)". Nothing but digits, the separators between them, a
+ * closing "%" or "+", and the punctuation of a sentence around it. Any other mark beside the
+ * digits can stand in for a letter ("@1", "4|", "$@1\u20AC", "4!"), and such a word is read as one.
+ */
+const NUMERAL = /^[(\["'\u2018\u201C]*\d+(?:[.,:/\u2013-]\d+)*[%+]?[.,;:?)\]"'\u2019\u201D]*$/u;
+/** One letter, digit or stand-in set apart as a word of its own, whatever punctuation is around it. */
+const isSingle = (word: string): boolean => [...bare(word)].length <= 1;
 
-function readWord(word: string, reading: Reading): string {
-  const core =
-    reading.edges === "all"
-      ? word.replace(LEADING_EDGE, "").replace(TRAILING_EDGE, "")
-      : reading.edges === "punctuation"
-        ? word.replace(OPENING_PUNCTUATION, "").replace(CLOSING_PUNCTUATION, "")
-        : word;
-  const bare = (text: string) => text.replace(LEADING_EDGE, "").replace(TRAILING_EDGE, "");
+/** A letter, or a symbol that is read as one, is in the word. Digits do not count: they are what is being decided. */
+const spellsALetter = (word: string): boolean => [...word].some((c) => /\p{L}/u.test(c) || (!/\d/.test(c) && c in SYMBOL_READING));
+
+/**
+ * Which words of a text are plain numbers, not to be read as letters. A digit set apart among
+ * single letters is not one: "h 0 7" is read as three letters. Digits set apart among digits are.
+ */
+function plainNumbers(words: readonly string[]): boolean[] {
+  const numbers = words.map((word) => NUMERAL.test(word));
+  let start = 0;
+  while (start < words.length) {
+    if (!isSingle(words[start] as string)) {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < words.length && isSingle(words[end] as string)) end += 1;
+    // A run of single characters with a letter or a stand-in symbol among them is a word spelled out.
+    if (words.slice(start, end).some(spellsALetter)) for (let i = start; i < end; i++) numbers[i] = false;
+    start = end;
+  }
+  return numbers;
+}
+
+function readWord(word: string, reading: Reading, plainNumber: boolean): string {
+  const core = reading.edges === "all" ? bare(word) : reading.edges === "punctuation" ? withoutPunctuation(word) : word;
   const contraction = contractionOf(bare(core));
   if (contraction !== null) return contraction;
   let text = fold(core, reading.asSeen);
   // A plain number is a number. Its digits are not read as letters: "Room 101" is not "lol".
-  if (reading.stroke !== null && !NUMERAL.test(core)) {
+  if (reading.stroke !== null && !plainNumber) {
     const stroke = reading.stroke;
     if (reading.once) text = text.replace(REPEATED, "$1");
     // The stroke and the digit one are read as "i" or as "l". The pound sign, which is drawn
@@ -188,8 +227,10 @@ export function readingsOf(text: string): string[] {
   // Where what is inside a word is taken as a break, a word joined by a hyphen, a dash or a
   // stroke is read as its parts, each a word of its own: "can't-lose" is "can't" and "lose".
   const parts = words.flatMap((word) => word.split(/[-\u2013\u2014/]+/).filter((part) => part !== ""));
+  const numbers = { words: plainNumbers(words), parts: plainNumbers(parts) };
   for (const reading of READINGS) {
-    const read = (reading.between === " " ? parts : words).map((word) => readWord(word, reading)).filter((word) => word !== "").join(" ");
+    const [taken, plain] = reading.between === " " ? [parts, numbers.parts] : [words, numbers.words];
+    const read = taken.map((word, i) => readWord(word, reading, plain[i] as boolean)).filter((word) => word !== "").join(" ");
     // Single letters set apart, by spaces or by dots: "A I", "R. O. I.", "s c a m". A run of
     // them is joined, with a mark between the letters in place of the spaces, so that a term
     // can be found anywhere along the run: in "a s c a m" the word begins at the second letter.
@@ -250,7 +291,7 @@ const spelled = (word: string): string => [...word].map(escaped).join(`${RUN}?`)
 function wordsOfTerm(term: string): string[] {
   const words: string[] = [];
   for (const word of term.split(/\s+/)) {
-    const contraction = contractionOf(word.replace(LEADING_EDGE, "").replace(TRAILING_EDGE, ""));
+    const contraction = contractionOf(bare(word));
     if (contraction !== null) words.push(contraction.toLowerCase());
     else words.push(...lettersOf(fold(word), " ").toLowerCase().split(" ").filter((part) => part !== ""));
   }
@@ -290,23 +331,27 @@ export function termFinder(text: string): (term: string) => boolean {
 
 /**
  * The same for hashtags, where words are run together. A tag is read as its words and as one
- * word. A term of four letters or more is also looked for anywhere inside the tag; a shorter
- * one at the start and the end of the tag and of each of its parts, where a short word run
- * together with others is found ("#AIpowered", "#MyAITool", "#bestROIever").
+ * word. A term of four letters or more is also looked for anywhere inside the tag. A shorter
+ * one is looked for at the start and the end of the tag ("#AIpowered", "#toolsAI"), and as a
+ * run of capitals inside it ("#MyAITool", "#BestROIever"). It is not looked for at the start
+ * or end of every word of the tag: "#FreshAir" does not say "AI", nor "#FocusGroup" "us".
  */
 export function hashtagFinder(tags: readonly string[]): (term: string) => boolean {
   const read = tags.map((tag) => {
     const name = tag.replace(/^#/, "");
-    // The parts of a tag: at an underscore, where a small letter meets a capital, and where a
-    // letter meets a digit. A run of capitals is not cut: "AItool" may be "AI" and "tool".
-    const pieces = name
-      .replace(/_+/g, " ")
-      .replace(/(?<=\p{Ll})(?=\p{Lu})/gu, " ")
-      .replace(/(?<=\p{L})(?=\p{N})|(?<=\p{N})(?=\p{L})/gu, " ");
-    // The same, with a run of capitals cut before its last one when a small letter follows: "My AI Tool".
+    // The words of a tag: at an underscore and where a small letter meets a capital. A run of
+    // capitals is not cut: "AItool" may be "AI" and "tool".
+    const spaced = name.replace(/_+/g, " ").replace(/(?<=\p{Ll})(?=\p{Lu})/gu, " ");
+    // The same, also cut where a letter meets a digit ("AI2026"). Both are read: the cut
+    // would lose a term that is itself digits and a letter ("10x").
+    const pieces = spaced.replace(/(?<=\p{L})(?=\p{N})|(?<=\p{N})(?=\p{L})/gu, " ");
+    // And with a run of capitals cut before its last one when a small letter follows: "My AI Tool".
     const words = pieces.replace(/(?<=\p{Lu})(?=\p{Lu}\p{Ll})/gu, " ");
-    const squashed = (text: string) => [...new Set(readingsOf(text).map((form) => form.replace(/[ \u00B7]/g, "")))];
-    return { find: [termFinder(pieces), termFinder(words)], whole: squashed(name), parts: pieces.split(" ").filter((part) => part !== "").flatMap(squashed) };
+    const whole = [...new Set(readingsOf(name).map((form) => form.replace(/[ \u00B7]/g, "")))];
+    // Each run of capitals that a small letter follows, whole and without its last capital,
+    // which may begin the next word: "ROIever" is "ROI" and "ever", "AITool" is "AI" and "Tool".
+    const capitals = [...fold(name).matchAll(/\p{Lu}{2,}(?=\p{Ll})/gu)].flatMap(([run]) => [run.toLowerCase(), run.slice(0, -1).toLowerCase()]);
+    return { find: [...new Set([spaced, pieces, words])].map(termFinder), whole, capitals };
   });
   return (term: string): boolean => {
     if (isLiteral(term.trim())) return read.some((tag) => tag.find.some((find) => find(term)));
@@ -317,8 +362,7 @@ export function hashtagFinder(tags: readonly string[]): (term: string) => boolea
         tag.find.some((find) => find(term)) ||
         (squashed.length >= 4
           ? tag.whole.some((whole) => whole.includes(squashed))
-          : // A short word run together with others: at the start or the end of the tag or of one of its parts.
-            [...tag.whole, ...tag.parts].some((part) => part.startsWith(squashed) || part.endsWith(squashed))),
+          : tag.whole.some((whole) => whole.startsWith(squashed) || whole.endsWith(squashed)) || tag.capitals.includes(squashed)),
     );
   };
 }

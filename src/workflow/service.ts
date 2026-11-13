@@ -1126,13 +1126,16 @@ export class CampaignService {
       }
       const cameToNothing = (r: DecisionRequest) => r.state === "expired" || r.state === "voided" || (r.state === "pending" && !isWaiting(r));
       const replaced = record.decisionRequests.filter((r) => cameToNothing(r) && sameDecision(r));
+      let undelivered = false;
       if (replaced.length > 0) {
         record.decisionRequests = record.decisionRequests.filter((r) => !replaced.includes(r));
         // The lines that said those requests were made, and that they could not be delivered,
         // go with them: the line written below for the new request stands in their place, so
         // the trail names the request that stands and does not grow by asking again.
         const gone = replaced.map((r) => `${r.id}:`);
-        record.audit = record.audit.filter((e) => !((e.event === "decision-requested" || e.event === "decision-undelivered") && gone.some((prefix) => e.detail.startsWith(prefix))));
+        const about = (e: { event: string; detail: string }) => (e.event === "decision-requested" || e.event === "decision-undelivered") && gone.some((prefix) => e.detail.startsWith(prefix));
+        undelivered = record.audit.some((e) => e.event === "decision-undelivered" && about(e));
+        record.audit = record.audit.filter((e) => !about(e));
       }
       // What is left is bounded as well: a backstop, far above what a campaign can need.
       if (record.decisionRequests.length >= this.limits.maxDecisionRequests) {
@@ -1158,7 +1161,12 @@ export class CampaignService {
       };
       record.decisionRequests.push(created);
       // One line in the audit trail for the request that stands for this decision.
-      const instead = replaced.length === 0 ? "" : ` It replaces ${replaced.at(-1)?.id}${replaced.length > 1 ? ` and ${replaced.length - 1} more` : ""}, which came to nothing.`;
+      // What the line says of the request it replaces is what an investigator would otherwise
+      // lose with it: who asked, when, and whether it ever reached the editor.
+      const last = replaced.at(-1);
+      const instead = !last
+        ? ""
+        : ` It replaces ${last.id}${replaced.length > 1 ? ` and ${replaced.length - 1} more` : ""}, requested by ${last.requestedBy} at ${last.requestedAt}, which came to nothing (${undelivered ? "the operator channel could not be reached" : last.state === "voided" ? "voided" : "expired"}).`;
       this.audit(record, "decision-requested", `${created.id}: ${input.action} ${input.subject.kind} ${input.subject.id}, requested by ${created.requestedBy}.${instead}`);
       return created;
     });
@@ -1172,8 +1180,10 @@ export class CampaignService {
         if (stored && stored.state === "pending") stored.state = "voided";
         // One line for each request that could not be delivered. It is removed with the
         // request when the decision is asked for again, so an outage is recorded each time it
-        // happens and attempts made while the channel stays down do not pile up.
-        this.audit(record, "decision-undelivered", `${request.id}: the operator channel could not be reached; request voided.`);
+        // happens and attempts made while the channel stays down do not pile up. A delivery
+        // that fails only after its request has expired and been replaced leaves no line: the
+        // request it would name is gone, and nothing would ever remove the line.
+        if (stored) this.audit(record, "decision-undelivered", `${request.id}: the operator channel could not be reached; request voided.`);
       });
       throw new WorkflowError("operator-unreachable", "The decision request could not be delivered to the editor and was withdrawn.");
     }

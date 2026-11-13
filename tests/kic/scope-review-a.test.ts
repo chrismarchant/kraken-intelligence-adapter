@@ -11,7 +11,7 @@ import { rankCreators } from "../../src/creators/ranking.ts";
 import { DEFAULT_CRITERIA } from "../../src/evaluation/criteria.ts";
 import { buildJevRequest } from "../../src/evaluation/jev.ts";
 import { analyseDraft } from "../../src/evaluation/signals.ts";
-import { termFinder } from "../../src/evaluation/terms.ts";
+import { hashtagFinder, termFinder } from "../../src/evaluation/terms.ts";
 import { DEFAULT_LIMITS } from "../../src/limits.ts";
 import { canonicalText } from "../../src/util/runtime.ts";
 import { clip } from "../../src/workflow/service.ts";
@@ -579,7 +579,11 @@ test("a5-F7: a three-letter word takes \"-es\" only after a hissing sound", () =
 test("a5-F9: a draft made to be slow to read is read quickly", () => {
   const brief = syntheticBrief();
   brief.constraints.mustAvoid = Array.from({ length: 40 }, (_, i) => `term${i} ${"word ".repeat(70)}`.trim());
-  const shapes = ["I ".repeat(4000), `a${"I".repeat(7999)}`, "I".repeat(8000), "l I ".repeat(2000), "a!@$|1 ".repeat(1100), "a ".repeat(4000), "A.I. ".repeat(1600)];
+  const shapes = [
+    "I ".repeat(4000), `a${"I".repeat(7999)}`, "I".repeat(8000), "l I ".repeat(2000), "a!@$|1 ".repeat(1100), "a ".repeat(4000), "A.I. ".repeat(1600),
+    // Long runs of marks inside and at the edges of one word (the regression review of 7f1978a, finding 2).
+    `a${".".repeat(7998)}b`, `a${")".repeat(7998)}b`, `${"!".repeat(7999)}a`, `a${"!".repeat(7999)}`, `1${".".repeat(7999)}`, "-".repeat(8000), "a-".repeat(4000), "1 ".repeat(4000),
+  ];
   for (const body of shapes) {
     const candidate = { ...draft("slow", ""), body: body.trim().slice(0, 8000) };
     const started = Date.now();
@@ -597,4 +601,36 @@ test("a5-F13: a plain number is a number, not a word", () => {
   // A digit written into a word is still read as the letter it stands for.
   assert.ok(termFinder("A total 5cam.")("scam"));
   assert.ok(termFinder("Our A1 tool.")("AI"));
+});
+
+// ---------------------------------------- the regression review of e30451c..7f1978a
+// (docs/review/2026-11-13-regression-review-7f1978a.md)
+
+test("r22-1: a word of stand-in symbols and digits is a word, not a plain number", () => {
+  for (const [text, term] of [
+    ["Our @1 tool", "AI"], ["Our 4| tool", "AI"], ["Our (4|) tool", "AI"], ["Our 4! tool", "AI"], ["A $@1\u20AC now", "sale"], ["The 8\u20AC$+ one", "best"],
+    ["Be @7 home", "at"], ["Pay +4\u00D7 now", "tax"], ["We $\u20AC11 it", "sell"], ["So \u20AC.@.5.\u00A5- now", "easy"], ["A h 0 7 deal", "hot"], ["It is @55 now", "ass"],
+  ] as const) {
+    assert.ok(termFinder(text)(term), `${text}: ${term}`);
+  }
+  // End to end: a reference that contains the figure does not make such a draft eligible.
+  const brief = syntheticBrief();
+  brief.constraints.mustAvoid = ["AI"];
+  const candidate = { ...draft("at-one", ""), body: "Our @1 tool flags 1 in 4 mismatches." };
+  assert.ok(analyseDraft(brief, slot, candidate, DEFAULT_LIMITS).failures.some((failure) => failure.rule === "must-avoid-term"));
+  // A number with the marks of a number, and digits set apart among digits, are still numbers.
+  const terms = ["lol", "so", "it", "se", "at", "AI"];
+  for (const text of ["Room 101 is booked.", "Up 17% in (2026).", "Rated 4.8/5 by 1,053 users, 50\u201360 a day, 500+ now.", "We scored 5 - 3 today.", "\u201C101\u201D, he said: 50."]) {
+    const found = termFinder(text);
+    assert.deepEqual(terms.filter((term) => found(term)), [], text);
+  }
+});
+
+test("r22-3, r22-4: a short term is not looked for at the edges of every word of a hashtag, and a term of digits and a letter is found in one", () => {
+  const honest = ["#FreshAir", "#CleanAir", "#ThaiFood", "#Dubai2026", "#BonsaiArt", "#FocusGroup", "#BonusRound", "#StatusUpdate", "#CampusLife", "#CoffeeTime", "#TwinCities", "#SummerWinter", "#LeadGen", "#ReadMore", "#IconDesign", "#BaconLovers", "#SyntaxError", "#BegunAgain"];
+  const inHonestTags = hashtagFinder(honest);
+  assert.deepEqual(["AI", "us", "fee", "win", "ad", "con", "tax", "gun"].filter((term) => inHonestTags(term)), []);
+  for (const [term, tag] of [["10x", "#data_10x_team"], ["24h", "#Go_24h_now"], ["fee", "#go_F3eGrowth"], ["AI", "#MyAITool"], ["ROI", "#BestROIever"], ["AI", "#AIpowered"], ["AI", "#toolsAI"], ["AI", "#AI2026"]] as const) {
+    assert.ok(rulesWith([term], "", { hashtags: [tag] }).includes("must-avoid-term"), tag);
+  }
 });
