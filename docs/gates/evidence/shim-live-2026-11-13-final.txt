@@ -1,0 +1,24 @@
+# tests/shim/live.ts, run 2026-11-13T16:35:13Z from the branch checkout at ff4a77f724098a8eda84b6816630c26b9b7da8e3
+# src/ and tests/ identical to 7f1978a955c4ab849cc747da3ef5e7017114eccc: yes
+# command: NODE_USE_ENV_PROXY=1 node tests/shim/live.ts   (pass-through mode: the session proxy supplies the provider key; the shim holds none)
+(node:14844) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS a raw fetch non-stream: content is string: Hello there my dear friend
+PASS b raw fetch stream: all deltas strings, usage chunk=true, text: Hello there, how are you?
+PASS c raw fetch tool call: tool_calls preserved, no thinking blocks (non-stream and stream)
+PASS d generateText + tool via shim: steps=2 toolExecuted=1 text="DONE"
+PASS e streamText plain via shim: text="High-quality data is essential for reliable decision-making."
+PASS f streamText + tool exec + final answer via shim: steps=2 toolExecuted=1 text="DONE"
+FAIL control d WITHOUT shim (expected FAIL): failed as expected: Invalid JSON response
+
+runtime: node v22.23.4; shim request log lines: 9
+  shim: POST /v1/chat/completions 200 8931ms auth=none model=mistral-large-4 tokens=21/392/413
+  shim: POST /v1/chat/completions 200 16420ms auth=none model=mistral-large-4 tokens=21/758/779
+  shim: POST /v1/chat/completions 200 3923ms auth=none model=mistral-large-4 tokens=85/191/276
+  shim: POST /v1/chat/completions 200 4524ms auth=none model=mistral-large-4 tokens=85/237/322
+  shim: POST /v1/chat/completions 200 5960ms auth=none model=mistral-large-4 tokens=90/265/355
+  shim: POST /v1/chat/completions 200 9689ms auth=none model=mistral-large-4 tokens=150/46/196
+  shim: POST /v1/chat/completions 200 3262ms auth=none model=mistral-large-4 tokens=24/214/238
+  shim: POST /v1/chat/completions 200 7019ms auth=none model=mistral-large-4 tokens=90/227/317
+  shim: POST /v1/chat/completions 200 2283ms auth=none model=mistral-large-4 tokens=141/61/202
+# exit: 0
