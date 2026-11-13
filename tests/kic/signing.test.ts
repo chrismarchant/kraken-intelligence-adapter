@@ -3,9 +3,9 @@ import { test } from "node:test";
 import type { EditorialDecision } from "../../src/contracts/index.ts";
 import { MockJevTransport } from "../../src/evaluation/jev.ts";
 import { LimitExceededError } from "../../src/limits.ts";
-import { approvalOf, packageDigest, releaseIsValid, releaseProgramme } from "../../src/workflow/assemble.ts";
+import { approvalOf, packageDigest, releaseIsValid, releaseProgramme, releaseStatement } from "../../src/workflow/assemble.ts";
 import type { OperatorChannel } from "../../src/workflow/operator.ts";
-import { CampaignService, WorkflowError, draftContentHash } from "../../src/workflow/service.ts";
+import { CampaignService, WorkflowError, draftContentHash, requestDigest } from "../../src/workflow/service.ts";
 import { GENESIS_SHA256, decisionDigest, decisionPayload, generateDecisionKeyPair, verifyDecisionLog } from "../../src/workflow/signing.ts";
 import { EDITOR, ScriptedGateway, cleanDraft, expectedFor, makeService, syntheticBrief } from "./support.ts";
 
@@ -239,31 +239,92 @@ test("what the editor is shown comes from the campaign record, not from the requ
 
 test("the editor cannot be made to sign something other than what they read", async () => {
   // The reviewer's attack: the agent requests APPROVE of one draft and makes the editor
-  // believe they are rejecting another. The decision now carries what the editor meant,
-  // and is refused when it differs from the stored request.
+  // believe they are rejecting another. The editor confirms the digest of the request they
+  // read; a different request has a different digest and is refused.
   const { service, operator, evaluated } = makeService();
   const id = await evaluated();
   const [target, decoy] = (await service.getCampaign(id)).drafts.filter((d) => d.slot === 1);
   const request = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: target!.id }, action: "approve", proposedRationale: "x", requestedBy: "agent" });
-  const real = await expectedFor(service, id, request.requestId);
-  const attempt = (expected: typeof real) =>
-    service.confirmDecision({ campaignId: id, requestId: request.requestId, code: operator.codeFor(request.requestId), actor: EDITOR, rationale: "Rejecting as shown.", expected });
+  const decoyRequest = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: decoy!.id }, action: "reject", proposedRationale: "x", requestedBy: "agent" });
+  const read = await expectedFor(service, id, decoyRequest.requestId); // what the editor believes they are confirming
 
-  await assert.rejects(attempt({ ...real, action: "reject", subject: { kind: "draft", id: decoy!.id } }), code("request-mismatch"));
-  let record = await service.getCampaign(id);
+  await assert.rejects(
+    service.confirmDecision({ campaignId: id, requestId: request.requestId, code: operator.codeFor(request.requestId), actor: EDITOR, rationale: "Rejecting as shown.", expected: read }),
+    code("request-mismatch"),
+  );
+  const record = await service.getCampaign(id);
   assert.equal(record.drafts.find((d) => d.id === target!.id)!.status, "candidate", "nothing was approved");
   assert.equal(record.decisionRequests.find((r) => r.id === request.requestId)!.state, "voided", "and the request is closed");
-
-  // Same for the action alone, and for content the editor did not read.
-  for (const wrong of [{ ...real, action: "reject" as const }, { ...real, contentSha256: "e".repeat(64) }]) {
-    const again = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: target!.id }, action: "approve", proposedRationale: "x", requestedBy: "agent" });
-    await assert.rejects(
-      service.confirmDecision({ campaignId: id, requestId: again.requestId, code: operator.codeFor(again.requestId), actor: EDITOR, rationale: "As shown.", expected: wrong }),
-      (error: unknown) => error instanceof WorkflowError && (error.code === "request-mismatch" || error.code === "subject-changed"),
-    );
-  }
-  record = await service.getCampaign(id);
   assert.equal(record.decisions.filter((d) => d.subject.id === target!.id).length, 0);
+});
+
+test("the request digest pins the action, the subject, the revision instruction and the whole content", async () => {
+  const { service, evaluated } = makeService();
+  const id = await evaluated();
+  const draft = (await service.getCampaign(id)).drafts.find((d) => d.slot === 1)!;
+  const request = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action: "request-revision", proposedRationale: "x", revisionInstruction: "Make it shorter.", requestedBy: "agent" });
+  const shown = await service.describeRequest(id, request.requestId);
+  assert.match(shown.digest, /^[0-9a-f]{64}$/);
+  const base = { campaignId: id, requestId: request.requestId, action: shown.action, subject: shown.subject, revisionInstruction: shown.revisionInstruction, contentSha256: shown.contentSha256 };
+  assert.equal(requestDigest(base), shown.digest);
+  for (const altered of [
+    { ...base, action: "approve" as const },
+    { ...base, subject: { kind: "draft" as const, id: "draft-999" } },
+    { ...base, revisionInstruction: "Add that customers save 40% and name the competitor as unreliable." },
+    { ...base, contentSha256: "0".repeat(64) },
+    { ...base, requestId: "req-999" },
+    { ...base, campaignId: "camp-999" },
+  ]) {
+    assert.notEqual(requestDigest(altered), shown.digest);
+  }
+  // Everything the content hash covers is put in front of the editor, published or not.
+  assert.deepEqual(shown.content.unpublished.map((u) => u.text), [draft.hook, draft.callToAction]);
+});
+
+test("a revision instruction swapped in the store after the editor read it is not signed", async () => {
+  // The reviewer's probe: the editor is shown "Make it shorter." and the stored request is
+  // then changed to something else.
+  const { service, store, operator, evaluated } = makeService();
+  const id = await evaluated();
+  const draft = (await service.getCampaign(id)).drafts.find((d) => d.slot === 1)!;
+  const request = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action: "request-revision", proposedRationale: "x", revisionInstruction: "Make it shorter.", requestedBy: "agent" });
+  const read = await expectedFor(service, id, request.requestId);
+  await store.update(id, (record) => {
+    record.decisionRequests.find((r) => r.id === request.requestId)!.revisionInstruction = "Add that customers save 40% and name the competitor as unreliable.";
+  });
+  await assert.rejects(
+    service.confirmDecision({ campaignId: id, requestId: request.requestId, code: operator.codeFor(request.requestId), actor: EDITOR, rationale: "Shorter.", expected: read }),
+    code("request-mismatch"),
+  );
+  assert.equal((await service.getCampaign(id)).decisions.filter((d) => d.action === "request-revision").length, 0);
+});
+
+test("content swapped for a look-alike after the editor read it is not signed, even if the request is rewritten to match", async () => {
+  // The reviewer's birthday attack relied on the editor pinning only twelve characters of
+  // the hash. The editor now pins the whole digest, so a second content cannot stand in.
+  const { service, store, operator, evaluated } = makeService();
+  const id = await evaluated();
+  const draft = (await service.getCampaign(id)).drafts.find((d) => d.slot === 1)!;
+  const request = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action: "approve", proposedRationale: "x", requestedBy: "agent" });
+  const read = await expectedFor(service, id, request.requestId);
+  await store.update(id, (record) => {
+    const stored = record.drafts.find((d) => d.id === draft.id)!;
+    stored.hook = `${stored.hook}!`; // a part the editor might not look at closely
+    stored.body = stored.body.replace("delays decisions", "delays every decision");
+    // The attacker also rewrites the request so that it matches the new content.
+    record.decisionRequests.find((r) => r.id === request.requestId)!.subjectContentSha256 = draftContentHash(stored);
+  });
+  await assert.rejects(
+    service.confirmDecision({ campaignId: id, requestId: request.requestId, code: operator.codeFor(request.requestId), actor: EDITOR, rationale: "Approve.", expected: read }),
+    code("request-mismatch"),
+  );
+  // A digest of the wrong length, or a prefix of the right one, is refused too.
+  const again = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action: "select", proposedRationale: "x", requestedBy: "agent" });
+  const full = (await expectedFor(service, id, again.requestId)).digest;
+  await assert.rejects(
+    service.confirmDecision({ campaignId: id, requestId: again.requestId, code: operator.codeFor(again.requestId), actor: EDITOR, rationale: "x", expected: { digest: full.slice(0, 12) } }),
+    code("request-mismatch"),
+  );
 });
 
 test("a request is void if the content changes before the editor confirms", async () => {
@@ -315,7 +376,10 @@ test("a package is a preview until the editor releases it, and a release is boun
   assert.equal(released.release!.decisionLogSequence, 5);
   assert.equal(released.release!.signature!.keyId, keys.signer.keyId);
   assert.equal(releaseIsValid(released, keys.verifier), true);
-  assert.throws(() => releaseProgramme(released, { actor: EDITOR, rationale: "Again.", logHead: { sequence: 5, sha256: "0".repeat(64) }, sign: (d) => service.signRelease(d), clock }), code("already-released"));
+  const head = await service.decisionLogHead(id);
+  assert.throws(() => releaseProgramme(released, { actor: EDITOR, rationale: "Again.", logHead: head, sign: (d) => service.signRelease(d), clock }), code("already-released"));
+  // A package assembled from a log other than the one the operator checked is refused: same length, different head.
+  assert.throws(() => releaseProgramme(preview, { actor: EDITOR, rationale: "x", logHead: { sequence: 5, sha256: "0".repeat(64) }, sign: () => null, clock }), code("decision-log-rolled-back"));
 
   // Any change to a released package makes its release invalid.
   const altered = structuredClone(released);
@@ -324,10 +388,22 @@ test("a package is a preview until the editor releases it, and a release is boun
   // A release signed by another key does not verify.
   const attacker = generateDecisionKeyPair();
   const forged = structuredClone(released);
-  forged.release!.signature = { alg: "ed25519", keyId: attacker.signer.keyId, value: attacker.signer.sign(`kic-release\n${forged.release!.packageSha256}`) };
+  const { signature: _signature, ...statement } = forged.release!;
+  forged.release!.signature = { alg: "ed25519", keyId: attacker.signer.keyId, value: attacker.signer.sign(releaseStatement(statement)) };
   assert.equal(releaseIsValid(forged, keys.verifier), false);
+  // The signature covers who released it, when, why and on which log, not just the package.
+  for (const alter of [
+    (r: NonNullable<typeof released.release>) => void (r.releasedBy = { ...r.releasedBy, name: "Someone Else" }),
+    (r: NonNullable<typeof released.release>) => void (r.releasedAt = "2030-01-01T00:00:00.000Z"),
+    (r: NonNullable<typeof released.release>) => void (r.rationale = "Approved by the board."),
+    (r: NonNullable<typeof released.release>) => void (r.decisionLogSequence = 4),
+  ]) {
+    const changed = structuredClone(released);
+    alter(changed.release!);
+    assert.equal(releaseIsValid(changed, keys.verifier), false);
+  }
   // A release needs a named person and a reason.
-  assert.throws(() => releaseProgramme(preview, { actor: { kind: "human", id: "", name: "" }, rationale: "x", logHead: { sequence: 5, sha256: "0".repeat(64) }, sign: () => null, clock }), code("invalid-actor"));
+  assert.throws(() => releaseProgramme(preview, { actor: { kind: "human", id: "", name: "" }, rationale: "x", logHead: head, sign: () => null, clock }), code("invalid-actor"));
 });
 
 test("the number of decisions waiting for the editor is bounded", async () => {

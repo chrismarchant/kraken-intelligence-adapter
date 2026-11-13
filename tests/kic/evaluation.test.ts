@@ -131,6 +131,10 @@ test("further disguises found by the confirmation review are refused", () => {
   for (const text of ["Our A.I.-powered checks.", "Our A.I. powered checks.", "We guar-antee results.", "We g u a r a n t e e results.", "We guar*antee results.", "We guar\u{1F600}antee results.", "We guar_antee results."]) {
     assert.ok(rules(draft("split", text)).includes("must-avoid-term"), text);
   }
+  // An invisible character riding behind an emoji or a symbol inside a word (found by the third review).
+  for (const text of ["We guar\u{1F600}\u200Bantee it.", "We guar\u00A9\u200Bantee it.", "We guar\u{1F600}\u200D\u200Bantee it.", "We guar\u00A9antee it."]) {
+    assert.ok(rules(draft("riding", text)).includes("must-avoid-term"), JSON.stringify(text));
+  }
   // An emoji with its variation selector, on its own, is ordinary text.
   assert.deepEqual(rules(draft("emoji", "Checked \u2714\uFE0F and done \u{1F44D}.")), []);
 });
@@ -148,6 +152,13 @@ test("quantities in words are refused when they state a magnitude or a share", (
 test("everyday terms that contain digits do not make a post ineligible, but figures still do", () => {
   for (const text of ["We work with B2B teams.", "Plan it for Q3.", "The desk runs 24/7.", "Habits changed after COVID-19.", "The process follows ISO-9001.", "We started in 2019.", "Since 2021 the report has changed.", "By 2027 this will be routine."]) {
     assert.deepEqual(rules(draft("everyday", text)), [], text);
+  }
+  for (const text of ["From 2019 to 2024 the process changed.", "In 2026 we changed the report.", "It began in 2019, and it stuck."]) {
+    assert.deepEqual(rules(draft("dates", text)), [], text);
+  }
+  // A year-shaped number that counts something is a figure (found by the third review).
+  for (const text of ["It cut errors by 2000 hours.", "We will ship by 2030 units.", "We made after 2020 hires.", "In 2026 customers joined.", "Since 2019 pallets were lost."]) {
+    assert.deepEqual(rules(draft("year-shaped", text)), ["unlisted-statistic"], text);
   }
   // The exemption is narrow: a year used as a count, or a figure beside a term, is still a figure.
   assert.deepEqual(rules(draft("count", "We audited 2024 pallets.")), ["unlisted-statistic"]);

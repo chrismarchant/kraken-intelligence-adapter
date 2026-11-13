@@ -9,6 +9,7 @@ import { ProgrammePackage } from "../../src/contracts/index.ts";
 import { createRuntime, inside, loadRuntimeConfig } from "../../src/mcp/runtime.ts";
 import { releaseIsValid } from "../../src/workflow/assemble.ts";
 import { FileCampaignStore } from "../../src/store/store.ts";
+import { FileOperatorChannel } from "../../src/workflow/operator.ts";
 import { WorkflowError } from "../../src/workflow/service.ts";
 import { verifierFromPublicKeyPem, verifyDecisionLog } from "../../src/workflow/signing.ts";
 import { makeService, syntheticBrief, expectedFor } from "./support.ts";
@@ -74,6 +75,7 @@ test("the operator tool creates a key, shows the content, signs a confirmation a
   assert.equal(created.code, 0, created.out);
   assert.equal(statSync(keyFile).mode & 0o777, 0o600);
   assert.ok(existsSync(`${keyFile}.pub`));
+  assert.equal(readFileSync(`${keyFile}.ledger.json`, "utf8").trim(), "{}", "the ledger is created, empty, with the key");
   const firstKey = readFileSync(keyFile, "utf8");
   assert.notEqual((await operator(["init", "--key", keyFile], env)).code, 0, "an existing key is not overwritten");
   assert.equal(readFileSync(keyFile, "utf8"), firstKey);
@@ -101,9 +103,9 @@ test("the operator tool creates a key, shows the content, signs a confirmation a
   assert.match(shown.out, new RegExp(title));
   assert.match(shown.out, /Requester's reason \(not verified\)/);
   assert.ok(!shown.out.includes(notice.code), "the tool does not print the code");
-  const sha = /Content sha256: ([0-9a-f]{64})/.exec(shown.out)![1]!;
+  const digest = /Request digest: ([0-9a-f]{64})/.exec(shown.out)![1]!;
   const confirmArgs = (overrides: Record<string, string> = {}) => {
-    const args: Record<string, string> = { request: select.requestId, action: "select", subject: narratives[0]!.id, sha: sha.slice(0, 12), id: "editor-1", name: "Test Editor", reason: "Chosen.", ...overrides };
+    const args: Record<string, string> = { request: select.requestId, action: "select", subject: narratives[0]!.id, digest, id: "editor-1", name: "Test Editor", reason: "Chosen.", ...overrides };
     return ["confirm", ...Object.entries(args).flatMap(([k, v]) => [`--${k}`, v])];
   };
 
@@ -113,7 +115,10 @@ test("the operator tool creates a key, shows the content, signs a confirmation a
   assert.notEqual(wrongAction.code, 0);
   assert.match(wrongAction.out, /That is not what you asked to confirm/);
   assert.notEqual((await operator(confirmArgs({ subject: narratives[1]!.id }), withKey)).code, 0);
-  assert.match((await operator(confirmArgs({ sha: "0".repeat(12) }), withKey)).out, /not the content whose hash you gave/);
+  assert.match((await operator(confirmArgs({ digest: "0".repeat(64) }), withKey)).out, /not the one whose digest you gave/);
+  // A prefix of the digest is not accepted, however long: twelve characters can be collided.
+  assert.match((await operator(confirmArgs({ digest: digest.slice(0, 12) }), withKey)).out, /whole 64-character request digest/);
+  assert.match((await operator(confirmArgs({ digest: digest.slice(0, 63) }), withKey)).out, /whole 64-character request digest/);
   assert.notEqual((await operator(confirmArgs({ request: "req-nope" }), withKey)).code, 0);
   assert.notEqual((await operator(["list"], env)).code, 0, "without the key the tool refuses to run");
   assert.equal((await agent.getCampaign(campaign.id)).decisions.length, 0, "none of the refused attempts recorded anything");
@@ -143,6 +148,7 @@ test("the operator tool creates a key, shows the content, signs a confirmation a
   assert.equal(record.decisions[0]!.actor.name, "Test Editor");
   assert.equal(verifyDecisionLog(record, verifier).ok, true, "the decision log is intact and validly signed");
   assert.ok(existsSync(`${keyFile}.ledger.json`), "the operator's ledger is kept beside the key");
+  assert.equal(JSON.parse(readFileSync(`${keyFile}.ledger.json`, "utf8"))[campaign.id].sequence, 1, "and records how far this campaign's log has reached");
 
   // decline closes the request at once.
   const reject = await agent.requestDecision({ campaignId: campaign.id, subject: { kind: "narrative", id: narratives[1]!.id }, action: "reject", proposedRationale: "Weaker.", requestedBy: "agent" });
@@ -198,8 +204,8 @@ test("the operator tool releases a fully approved programme, signed, and only fr
   const decideWithTool = async (requestId: string) => {
     const shown = (await operator(["show", "--request", requestId], env)).out;
     const [, action, , subject] = /YOU ARE ASKED TO: (\S+) (\S+) (\S+)/.exec(shown)!;
-    const sha = /Content sha256: ([0-9a-f]{64})/.exec(shown)![1]!;
-    const done = await operator(["confirm", "--request", requestId, "--action", action!.toLowerCase(), "--subject", subject!, "--sha", sha.slice(0, 12), "--id", "editor-1", "--name", "Test Editor", "--reason", "Read and agreed."], env);
+    const digest = /Request digest: ([0-9a-f]{64})/.exec(shown)![1]!;
+    const done = await operator(["confirm", "--request", requestId, "--action", action!.toLowerCase(), "--subject", subject!, "--digest", digest, "--id", "editor-1", "--name", "Test Editor", "--reason", "Read and agreed."], env);
     assert.equal(done.code, 0, done.out);
   };
 
@@ -229,6 +235,91 @@ test("the operator tool releases a fully approved programme, signed, and only fr
   assert.ok(pkg.provisionalCommands.every((c) => c.status === "NON-EXECUTABLE" && c.approval.signatureVerified));
   const commandsFile = JSON.parse(readFileSync(join(packagePath, "..", "provisional-commands.NON-EXECUTABLE.json"), "utf8")) as { released: boolean; decisionsVerified: boolean; commands: unknown[] };
   assert.deepEqual([commandsFile.released, commandsFile.decisionsVerified, commandsFile.commands.length], [true, true, 4]);
+});
+
+test("a planted notice cannot make the operator tool delete anything outside the channel", async () => {
+  // The reviewer's attack: a notice whose requestId is a path, so that clearing the
+  // "stale" notice deletes the operator's ledger.
+  const fs = await import("node:fs");
+  const base = mkdtempSync(join(tmpdir(), "kic-traversal-"));
+  const keyFile = join(base, "editor-home", "operator-key.pem");
+  fs.mkdirSync(join(base, "editor-home"), { recursive: true });
+  fs.mkdirSync(join(base, "operator-channel"), { recursive: true });
+  const env = {
+    KIC_DATA_DIR: join(base, "instance", "data"),
+    KIC_OPERATOR_DIR: join(base, "operator-channel"),
+    KIC_DECISION_PUBLIC_KEY_FILE: `${keyFile}.pub`,
+    KIC_OPERATOR_KEY_FILE: keyFile,
+    KIC_MODEL_MODE: "fixture",
+  };
+  assert.equal((await operator(["init", "--key", keyFile], env)).code, 0);
+  const before = readdirSync(join(base, "editor-home")).sort();
+  for (const [file, requestId] of [
+    ["evil-1.json", "../editor-home/operator-key.pem.ledger"],
+    ["evil-2.json", "../editor-home/operator-key.pem"],
+    ["evil-3.json", "/etc/hostname"],
+    ["evil-4.json", "evil-4/../../editor-home/operator-key.pem.ledger"],
+  ] as const) {
+    fs.writeFileSync(join(env.KIC_OPERATOR_DIR, file), JSON.stringify({ requestId, campaignId: "camp-000", code: "x", expiresAt: "2026-01-01T00:00:00.000Z" }));
+  }
+  // A well-formed notice for a campaign that does not exist is treated as stale and removed. Nothing else is.
+  fs.writeFileSync(join(env.KIC_OPERATOR_DIR, "req-stale.json"), JSON.stringify({ requestId: "req-stale", campaignId: "camp-000", code: "x", expiresAt: "2026-01-01T00:00:00.000Z" }));
+  const listed = await operator(["list"], env);
+  assert.equal(listed.code, 0, listed.out);
+  assert.match(listed.out, /No decisions are waiting/);
+  assert.match(listed.out, /Ignored an unreadable file in the operator channel: evil-1\.json/);
+  assert.deepEqual(readdirSync(join(base, "editor-home")).sort(), before, "the key, its public half and the ledger are untouched");
+  assert.ok(!existsSync(join(env.KIC_OPERATOR_DIR, "req-stale.json")));
+  assert.ok(existsSync(join(env.KIC_OPERATOR_DIR, "evil-1.json")), "a malformed notice is ignored, not acted on");
+
+  // The channel refuses to clear anything that is not a plain request id.
+  const channel = new FileOperatorChannel(env.KIC_OPERATOR_DIR);
+  await channel.clear("../editor-home/operator-key.pem.ledger");
+  await channel.clear("../editor-home/operator-key.pem");
+  assert.deepEqual(readdirSync(join(base, "editor-home")).sort(), before);
+});
+
+test("a missing ledger stops the operator tool instead of silently trusting the store", async () => {
+  const fs = await import("node:fs");
+  const base = mkdtempSync(join(tmpdir(), "kic-ledger-"));
+  const keyFile = join(base, "editor-home", "operator-key.pem");
+  fs.mkdirSync(join(base, "editor-home"), { recursive: true });
+  const env = {
+    KIC_DATA_DIR: join(base, "instance", "data"),
+    KIC_OPERATOR_DIR: join(base, "operator-channel"),
+    KIC_DECISION_PUBLIC_KEY_FILE: `${keyFile}.pub`,
+    KIC_OPERATOR_KEY_FILE: keyFile,
+    KIC_MODEL_MODE: "fixture",
+    KIC_FIXTURE_DIR: resolve("fixtures/llm/synthetic-harbourline"),
+  };
+  assert.equal((await operator(["init", "--key", keyFile], env)).code, 0);
+  const { service: agent } = createRuntime(loadRuntimeConfig(env, REPO));
+  const campaign = await agent.createCampaign(syntheticBrief());
+  await agent.interpretBrief(campaign.id);
+  const narratives = await agent.generateNarratives(campaign.id, 3);
+  const request = await agent.requestDecision({ campaignId: campaign.id, subject: { kind: "narrative", id: narratives[0]!.id }, action: "select", proposedRationale: "Best.", requestedBy: "agent" });
+
+  // The ledger disappears: deleted, or the key was moved to a new machine without it.
+  fs.unlinkSync(`${keyFile}.ledger.json`);
+  for (const args of [["list"], ["show", "--request", request.requestId], ["release", "--campaign", campaign.id, "--id", "e", "--name", "E", "--reason", "r"]]) {
+    const out = await operator(args, env);
+    if (args[0] === "show") continue; // show reads the record only; it signs nothing
+    assert.notEqual(out.code, 0, args.join(" "));
+    assert.match(out.out, /ledger is missing/);
+  }
+  const shown = (await operator(["show", "--request", request.requestId], env)).out;
+  const digest = /Request digest: ([0-9a-f]{64})/.exec(shown)![1]!;
+  const confirm = ["confirm", "--request", request.requestId, "--action", "select", "--subject", narratives[0]!.id, "--digest", digest, "--id", "e", "--name", "Editor", "--reason", "ok"];
+  const refused = await operator(confirm, env);
+  assert.notEqual(refused.code, 0);
+  assert.match(refused.out, /ledger is missing/);
+  assert.equal((await agent.getCampaign(campaign.id)).decisions.length, 0, "nothing was signed without the ledger");
+
+  // Starting a new ledger is an explicit act.
+  assert.match((await operator(["new-ledger"], env)).out, /--accept-current-state/);
+  assert.equal((await operator(["new-ledger", "--accept-current-state"], env)).code, 0);
+  assert.notEqual((await operator(["new-ledger", "--accept-current-state"], env)).code, 0, "an existing ledger is never replaced");
+  assert.equal((await operator(confirm, env)).code, 0);
 });
 
 test("the instance refuses to start with an operator channel the agent runtime could read, or without a decision key", async () => {

@@ -107,11 +107,33 @@ export interface DecisionConfirmation {
   actor: HumanActor;
   rationale: string;
   /**
-   * What the editor was shown and means to decide. Taken from `describeRequest`, never from
-   * the requester. The decision is refused unless the stored request and the current
-   * content match all three.
+   * The digest of the request as the editor read it (`describeRequest().digest`): one value
+   * that covers the campaign, the request, the action, the subject, any revision instruction
+   * and the exact content. The decision is refused unless the stored request and the current
+   * content still produce the same digest.
    */
-  expected: { action: DecisionAction; subject: DecisionSubject; contentSha256: string };
+  expected: { digest: string };
+}
+
+/** Everything about a request that the editor's confirmation must pin, as one digest. */
+export function requestDigest(input: {
+  campaignId: string;
+  requestId: string;
+  action: DecisionAction;
+  subject: DecisionSubject;
+  revisionInstruction: string | null;
+  contentSha256: string;
+}): string {
+  return sha256(
+    canonicalJson({
+      campaignId: input.campaignId,
+      requestId: input.requestId,
+      action: input.action,
+      subject: input.subject,
+      revisionInstruction: input.revisionInstruction,
+      contentSha256: input.contentSha256,
+    }),
+  );
 }
 
 /** What the editor is shown before deciding. Everything in it is read from the campaign record. */
@@ -130,12 +152,20 @@ export interface RequestDescription {
     title: string;
     text: string;
     hashtags: string[];
+    /**
+     * Parts of a draft that are recorded and covered by its hash but are not published:
+     * the opening line as the model labelled it, and its call to action. Shown so that
+     * nothing the hash covers is hidden from the editor.
+     */
+    unpublished: Array<{ label: string; text: string }>;
     /** Mandatory constraints the content fails. A draft with any cannot be approved. */
     eligibilityFailures: string[];
     evaluation: string | null;
   };
   /** SHA-256 of the content as it is now. */
   contentSha256: string;
+  /** What the editor confirms: a digest of this request, its action, subject, instruction and content. */
+  digest: string;
   /** False when the content has changed since the request was made; such a request cannot be confirmed. */
   unchanged: boolean;
 }
@@ -822,7 +852,7 @@ export class CampaignService {
   private contentOf(record: CampaignRecord, subject: DecisionSubject): RequestDescription["content"] {
     if (subject.kind === "narrative") {
       const narrative = record.narratives.find((n) => n.id === subject.id) as Narrative;
-      return { title: narrative.title, text: `${narrative.angle}\n\nCore message: ${narrative.coreMessage}`, hashtags: [], eligibilityFailures: [], evaluation: null };
+      return { title: narrative.title, text: `${narrative.angle}\n\nCore message: ${narrative.coreMessage}`, hashtags: [], unpublished: [], eligibilityFailures: [], evaluation: null };
     }
     const draft = record.drafts.find((d) => d.id === subject.id) as PostDraft;
     const failures = analyseDraft(record.brief, this.slotOf(record, draft.slot), draft, this.limits).failures;
@@ -832,6 +862,10 @@ export class CampaignService {
       title: `Post ${draft.slot}, ${draft.variant}`,
       text: draft.body,
       hashtags: draft.hashtags,
+      unpublished: [
+        { label: "Opening line as labelled", text: draft.hook },
+        { label: "Call to action as labelled", text: draft.callToAction },
+      ],
       eligibilityFailures: failures.map((f) => `${f.rule}: ${f.detail}`),
       evaluation:
         evaluation && candidate
@@ -873,6 +907,7 @@ export class CampaignService {
       expiresAt: request.expiresAt,
       content: this.contentOf(record, request.subject),
       contentSha256: hash,
+      digest: requestDigest({ campaignId: record.id, requestId: request.id, action: request.action, subject: request.subject, revisionInstruction: request.revisionInstruction, contentSha256: hash }),
       unchanged: hash === request.subjectContentSha256,
     };
   }
@@ -1006,15 +1041,17 @@ export class CampaignService {
       const request = opened.request;
       let contentHash: string;
       try {
-        // What the editor meant to decide must be what the stored request says.
-        const e = input.expected;
-        if (e.action !== request.action || e.subject.kind !== request.subject.kind || e.subject.id !== request.subject.id) {
-          throw new WorkflowError("request-mismatch", `Decision request ${request.id} is to ${request.action} ${request.subject.kind} ${request.subject.id}, which is not what was confirmed.`);
-        }
         contentHash = this.checkDecision(record, request.subject, request.action);
-        // The editor was shown particular text. If it has changed since, the request is void.
-        if (contentHash !== request.subjectContentSha256 || contentHash !== e.contentSha256) {
-          throw new WorkflowError("subject-changed", `The ${request.subject.kind} is not the text the editor was shown for decision ${request.id}.`);
+        // The content must be what it was when the request was made.
+        if (contentHash !== request.subjectContentSha256) {
+          throw new WorkflowError("subject-changed", `The ${request.subject.kind} is not the text decision ${request.id} was requested for.`);
+        }
+        // And the request, as stored now, must be exactly the one the editor read: same action,
+        // subject, revision instruction and content. One digest covers all of them.
+        const current = requestDigest({ campaignId: record.id, requestId: request.id, action: request.action, subject: request.subject, revisionInstruction: request.revisionInstruction, contentSha256: contentHash });
+        const given = Buffer.from(input.expected.digest, "utf8");
+        if (given.length !== current.length || !timingSafeEqual(given, Buffer.from(current, "utf8"))) {
+          throw new WorkflowError("request-mismatch", `Decision request ${request.id} (${request.action} ${request.subject.kind} ${request.subject.id}) is not the request that was confirmed.`);
         }
       } catch (error) {
         if (!(error instanceof WorkflowError)) throw error;
@@ -1123,12 +1160,32 @@ export class CampaignService {
     return this.signer !== null;
   }
 
-  /** Sign a programme package digest with the operator's key. Null in unsigned mode. */
-  signRelease(packageSha256: string): { alg: "ed25519"; keyId: string; value: string } | null {
+  /** Sign a release statement with the operator's key. Null in unsigned mode. */
+  signRelease(statement: string): { alg: "ed25519"; keyId: string; value: string } | null {
     if (this.verifier !== null && this.signer === null) {
       throw new WorkflowError("cannot-release", "This process does not hold the operator's key. A programme is released with the operator tool.");
     }
-    return this.signer ? { alg: "ed25519", keyId: this.signer.keyId, value: this.signer.sign(`kic-release\n${packageSha256}`) } : null;
+    return this.signer ? { alg: "ed25519", keyId: this.signer.keyId, value: this.signer.sign(statement) } : null;
+  }
+
+  /**
+   * A campaign record together with the head of its decision log, both from one read, after
+   * the log has been checked. For anything that is about to be signed.
+   */
+  async checkedRecord(campaignId: string): Promise<{ record: CampaignRecord; head: LogHead }> {
+    const record = await this.store.get(campaignId);
+    return { record, head: await this.checkedHead(record) };
+  }
+
+  /**
+   * Bring the operator's ledger up to the store's log when the log is intact, contains
+   * everything the ledger knows, and is longer. This closes the gap left if the process
+   * stopped after a decision was stored and before the ledger was advanced.
+   */
+  async advanceLedger(campaignId: string): Promise<void> {
+    if (!this.ledger) return;
+    const head = await this.checkedHead(await this.store.get(campaignId));
+    await this.ledger.set(campaignId, head);
   }
 }
 

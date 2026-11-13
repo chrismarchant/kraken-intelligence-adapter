@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { link, mkdir, open, readFile, readdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { CampaignRecord, Id } from "../contracts/index.ts";
@@ -41,6 +42,36 @@ export interface CampaignStore {
   list(): Promise<string[]>;
 }
 
+export class RecordMismatchError extends Error {
+  constructor(id: string, found: string) {
+    super(`The stored record for campaign "${id}" says it is campaign "${found}". The store has been altered.`);
+    this.name = "RecordMismatchError";
+  }
+}
+
+/** A record must be the campaign it is filed as: a file copied over another campaign's is refused. */
+function sameCampaign(id: string, record: CampaignRecord): CampaignRecord {
+  if (record.id !== id) throw new RecordMismatchError(id, record.id);
+  return record;
+}
+
+/**
+ * Identifies this run of this process. A lock naming our own process id but another
+ * instance was left by an earlier process that had the same id, and is dead.
+ */
+const PROCESS_INSTANCE = randomBytes(8).toString("hex");
+
+/** When a process started, as the system records it; null where that cannot be read. */
+function startTimeOf(pid: number): string | null {
+  try {
+    // Field 22 of /proc/<pid>/stat, counted after the command name, which may contain spaces.
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Runs tasks for the same key one after another, in arrival order. */
 class KeyedMutex {
   private readonly tails = new Map<string, Promise<unknown>>();
@@ -70,7 +101,7 @@ export class MemoryCampaignStore implements CampaignStore {
   async get(id: string): Promise<CampaignRecord> {
     const raw = this.records.get(id);
     if (raw === undefined) throw new RecordNotFoundError(id);
-    return CampaignRecord.parse(JSON.parse(raw));
+    return sameCampaign(id, CampaignRecord.parse(JSON.parse(raw)));
   }
 
   update<T>(id: string, change: (record: CampaignRecord) => T | Promise<T>): Promise<T> {
@@ -153,7 +184,8 @@ export class FileCampaignStore implements CampaignStore {
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
     const lockPath = `${this.path(id)}.lock`;
     const token = randomBytes(12).toString("hex");
-    const mine = `${process.pid} ${token}\n`;
+    // Owner: process id, this run of the process, when it started, and a token for this lock.
+    const mine = `${process.pid} ${PROCESS_INSTANCE} ${startTimeOf(process.pid) ?? "-"} ${token}\n`;
     const deadline = Date.now() + this.lockTimeoutMs;
     let pause = 5;
     for (;;) {
@@ -195,8 +227,9 @@ export class FileCampaignStore implements CampaignStore {
   private async clearDeadLock(lockPath: string): Promise<boolean> {
     const content = await readFile(lockPath, "utf8").catch(() => null);
     if (content === null) return true; // released in the meantime
-    const pid = Number(content.split(" ")[0]);
-    if (!Number.isInteger(pid) || pid <= 0 || this.alive(pid)) {
+    const [pidText, instance, started] = content.trim().split(" ");
+    const pid = Number(pidText);
+    if (!Number.isInteger(pid) || pid <= 0 || this.alive(pid, instance, started)) {
       // A lock with no readable owner is treated as held until it is old enough to be
       // certain that no writer is part-way through creating it.
       if (Number.isInteger(pid) && pid > 0) return false;
@@ -220,15 +253,21 @@ export class FileCampaignStore implements CampaignStore {
     return true;
   }
 
-  private alive(pid: number): boolean {
-    if (pid === process.pid) return true;
+  /**
+   * True when the lock's owner is still running. A process id alone is not enough: ids are
+   * reused, and after a restart in a container the new process often has the old one's id.
+   */
+  private alive(pid: number, instance: string | undefined, started: string | undefined): boolean {
+    if (pid === process.pid) return instance === PROCESS_INSTANCE;
     try {
       process.kill(pid, 0);
-      return true;
     } catch (error) {
       // EPERM means the process exists but belongs to someone else.
-      return (error as NodeJS.ErrnoException).code === "EPERM";
+      if ((error as NodeJS.ErrnoException).code !== "EPERM") return false;
     }
+    // The id is in use. It is the same process only if it started when the lock says it did.
+    const now = startTimeOf(pid);
+    return now === null || started === undefined || started === "-" || now === started;
   }
 
   create(record: CampaignRecord): Promise<void> {
@@ -253,7 +292,7 @@ export class FileCampaignStore implements CampaignStore {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new RecordNotFoundError(id);
       throw error;
     }
-    return CampaignRecord.parse(JSON.parse(raw));
+    return sameCampaign(id, CampaignRecord.parse(JSON.parse(raw)));
   }
 
   update<T>(id: string, change: (record: CampaignRecord) => T | Promise<T>): Promise<T> {

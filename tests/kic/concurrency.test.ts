@@ -88,14 +88,23 @@ test("file store: a lock is taken over only when its owner is gone, never becaus
   const note = (detail: string) => store.update(id, (record) => void record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "lock-test", detail }));
   const old = new Date(Date.now() - 3_600_000);
 
-  // Held by a live process, and an hour old: still held. Writers wait, then report busy.
-  writeFileSync(lock, `${process.pid} someone-else\n`);
+  // Held by a live process (process 1 always exists), and an hour old: still held. Writers wait, then report busy.
+  const { readFileSync } = await import("node:fs");
+  const started = (() => {
+    try {
+      const stat = readFileSync("/proc/1/stat", "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] ?? "-";
+    } catch {
+      return "-";
+    }
+  })();
+  writeFileSync(lock, `1 another-process ${started} someone-else\n`);
   utimesSync(lock, old, old);
   await assert.rejects(note("must not be written"), /locked by another writer/);
   assert.ok(existsSync(lock), "a live owner's lock is left in place");
 
   // Held by a process that no longer exists: cleared at once, however new it is.
-  writeFileSync(lock, `${await deadPid()} crashed-writer\n`);
+  writeFileSync(lock, `${await deadPid()} gone - crashed-writer\n`);
   await note("after a crashed writer");
 
   // No readable owner: held while it could still be mid-creation, cleared once it is old.
@@ -137,12 +146,55 @@ test("file store: many stores recovering from a crashed writer at once do not lo
     const stores = Array.from({ length: 8 }, () => new FileCampaignStore(dir));
     const { service } = makeService({ store: stores[0]! });
     const { id } = await service.createCampaign(syntheticBrief());
-    writeFileSync(join(dir, `${id}.json.lock`), `${dead} crashed-writer\n`);
+    writeFileSync(join(dir, `${id}.json.lock`), `${dead} gone - crashed-writer\n`);
     await Promise.all(stores.map((store, i) => store.update(id, (record) => void record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "takeover", detail: `store ${i}` }))));
     const record = await stores[0]!.get(id);
     assert.equal(record.audit.filter((e) => e.event === "takeover").length, 8, `trial ${trial}: every update was applied`);
     assert.equal(record.revision, 8);
   }
+});
+
+test("file store: a lock left by an earlier process with the same id, or by a process whose id was reused, is cleared", async () => {
+  // The reviewer's case: after a crash and restart in a container the new process often has
+  // the old one's process id, and the old lock then looked live for ever.
+  const { writeFileSync } = await import("node:fs");
+  const dir = mkdtempSync(join(tmpdir(), "kic-pid-"));
+  const store = new FileCampaignStore(dir, { lockTimeoutMs: 300 });
+  const { service } = makeService({ store });
+  const { id } = await service.createCampaign(syntheticBrief());
+  const lock = join(dir, `${id}.json.lock`);
+  const note = (detail: string) => store.update(id, (record) => void record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "pid-test", detail }));
+
+  // Our own process id, but written by another run of the process.
+  writeFileSync(lock, `${process.pid} 0123456789abcdef 1 earlier-incarnation\n`);
+  await note("after an earlier incarnation");
+  // A live process id (pid 1 always exists), but the lock says its owner started at another time.
+  writeFileSync(lock, `1 fedcba9876543210 999999999999 reused-pid\n`);
+  await note("after a reused process id");
+  assert.deepEqual((await store.get(id)).audit.filter((e) => e.event === "pid-test").map((e) => e.detail), ["after an earlier incarnation", "after a reused process id"]);
+});
+
+test("file store: a record filed under another campaign's id is refused", async () => {
+  // The reviewer's case: one campaign's record copied over another's file, to get the
+  // operator to sign on top of a log its own ledger knows was rolled back.
+  const { copyFileSync } = await import("node:fs");
+  const dir = mkdtempSync(join(tmpdir(), "kic-mismatch-"));
+  const store = new FileCampaignStore(dir);
+  const { service, decide, operator } = makeService({ store });
+  const a = await service.createCampaign(syntheticBrief());
+  const b = await service.createCampaign(syntheticBrief());
+  const [narrative] = await service.generateNarratives(a.id, 2);
+  await decide(a.id, { kind: "narrative", id: narrative!.id }, "select");
+  copyFileSync(join(dir, `${a.id}.json`), join(dir, `${b.id}.json`));
+
+  await assert.rejects(store.get(b.id), /says it is campaign/);
+  await assert.rejects(service.getCampaign(b.id), /store has been altered/);
+  await assert.rejects(
+    service.requestDecision({ campaignId: b.id, subject: { kind: "narrative", id: narrative!.id }, action: "reject", proposedRationale: "x", requestedBy: "agent" }),
+    /store has been altered/,
+  );
+  assert.equal(operator.notices.length, 1, "no request was created through the wrong file");
+  assert.equal((await store.get(a.id)).decisions.length, 1, "and the real campaign's file is untouched");
 });
 
 test("steps started together cannot spend the same remaining budget", async () => {

@@ -24,12 +24,11 @@ export function syntheticBrief(): CampaignBrief {
 export const EDITOR: HumanActor = { kind: "human", id: "test-editor", name: "Test Editor (test actor)" };
 
 /**
- * What the editor read before deciding: the action, subject and content hash of a request,
- * taken from the campaign record as the operator tool takes them.
+ * What the editor read before deciding: the digest of the request as the campaign record
+ * describes it, which is what the operator tool makes the editor give back.
  */
 export async function expectedFor(service: CampaignService, campaignId: string, requestId: string) {
-  const shown = await service.describeRequest(campaignId, requestId);
-  return { action: shown.action, subject: shown.subject, contentSha256: shown.contentSha256 };
+  return { digest: (await service.describeRequest(campaignId, requestId)).digest };
 }
 
 export interface DraftSpec {

@@ -157,12 +157,11 @@ export class MistralGateway implements ModelGateway {
     // all attempts together never exceed MAX_TOKEN_FACTOR times the request's own allowance,
     // which is the figure callers reserve against.
     let maxTokens = request.maxTokens;
-    let allowanceLeft = request.maxTokens * MAX_TOKEN_FACTOR;
+    const allowance = { left: request.maxTokens * MAX_TOKEN_FACTOR };
 
     for (let attempt = 0; attempt <= this.retries; attempt++) {
-      if (maxTokens > allowanceLeft) break;
-      allowanceLeft -= maxTokens;
-      const completion = await this.call(request, correction, maxTokens, cost);
+      if (maxTokens > allowance.left) break;
+      const completion = await this.call(request, correction, maxTokens, cost, allowance);
       cost.usage.promptTokens += completion.usage?.prompt_tokens ?? 0;
       cost.usage.completionTokens += completion.usage?.completion_tokens ?? 0;
       cost.usage.reasoningTokens += completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
@@ -201,7 +200,13 @@ export class MistralGateway implements ModelGateway {
     throw new ModelOutputError(request.purpose, lastProblem, cost);
   }
 
-  private async call<T>(request: GenerateRequest<T>, correction: string | null, maxTokens: number, cost: CallCost): Promise<ChatCompletion> {
+  private async call<T>(
+    request: GenerateRequest<T>,
+    correction: string | null,
+    maxTokens: number,
+    cost: CallCost,
+    allowance: { left: number },
+  ): Promise<ChatCompletion> {
     const messages = [
       { role: "system", content: request.system },
       { role: "user", content: request.user },
@@ -231,6 +236,12 @@ export class MistralGateway implements ModelGateway {
       if (cost.providerRequests >= this.maxProviderRequests) {
         throw new ModelCallError(`Model call for "${request.purpose}" reached the limit of ${this.maxProviderRequests} provider requests.`, null, cost);
       }
+      // Every request sent draws on the call's allowance, retries after a failure included, so
+      // the total across all of them stays within MAX_TOKEN_FACTOR times the request's own.
+      if (maxTokens > allowance.left) {
+        throw new ModelCallError(`Model call for "${request.purpose}" used up its token allowance on failed requests.`, failure.status, cost);
+      }
+      allowance.left -= maxTokens;
       if (attempt > 0) await new Promise((r) => setTimeout(r, this.backoffMs * 3 ** (attempt - 1)));
       const timeout = AbortSignal.timeout(this.timeoutMs);
       const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
@@ -245,6 +256,9 @@ export class MistralGateway implements ModelGateway {
           redirect: "error",
         });
       } catch (error) {
+        // The provider may have generated up to the request's allowance before the connection
+        // failed and reported nothing. It is charged as if it had.
+        cost.usage.completionTokens += maxTokens;
         if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
         failure = new ModelCallError(`Model call for "${request.purpose}" failed: ${(error as Error).name}`, null, cost);
         continue;
@@ -253,12 +267,17 @@ export class MistralGateway implements ModelGateway {
         try {
           return await readCompletion(response);
         } catch (error) {
+          // A stream that broke off reported no usage. Charged at the request's allowance.
+          cost.usage.completionTokens += maxTokens;
           if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
           failure = new ModelCallError(`Model call for "${request.purpose}" broke off mid-stream: ${(error as Error).name}`, null, cost);
           continue;
         }
       }
       // The body may echo request content; report the status only.
+      // A gateway error may follow generation that was never delivered; a refusal (4xx) does not.
+      if (response.status >= 500) cost.usage.completionTokens += maxTokens;
+      else allowance.left += maxTokens;
       failure = new ModelCallError(`Model call for "${request.purpose}" returned HTTP ${response.status}.`, response.status, cost);
       await response.body?.cancel().catch(() => undefined);
       if (response.status !== 429 && response.status < 500) break;

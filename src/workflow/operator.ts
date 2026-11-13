@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { Id } from "../contracts/index.ts";
 
 /**
  * Tells the editor that a decision is waiting, and carries its one-time code. It carries
@@ -67,7 +68,15 @@ export class FileOperatorChannel implements OperatorChannel {
       // One unreadable or malformed file must not stop the editor from seeing the rest.
       try {
         const parsed = JSON.parse(await readFile(join(this.dir, name), "utf8")) as Partial<DecisionNotice>;
-        if (typeof parsed.requestId === "string" && typeof parsed.campaignId === "string" && typeof parsed.code === "string" && typeof parsed.expiresAt === "string") {
+        // The file's content is not trusted: ids must be well-formed, and a notice must sit in
+        // the file named for its own request, so that nothing in it can point elsewhere.
+        const wellFormed =
+          Id.safeParse(parsed.requestId).success &&
+          Id.safeParse(parsed.campaignId).success &&
+          typeof parsed.code === "string" &&
+          typeof parsed.expiresAt === "string" &&
+          name === `${parsed.requestId}.json`;
+        if (wellFormed && typeof parsed.requestId === "string" && typeof parsed.campaignId === "string" && typeof parsed.code === "string" && typeof parsed.expiresAt === "string") {
           notices.push({ requestId: parsed.requestId, campaignId: parsed.campaignId, code: parsed.code, expiresAt: parsed.expiresAt });
         } else {
           this.skipped.push(name);
@@ -79,7 +88,12 @@ export class FileOperatorChannel implements OperatorChannel {
     return notices;
   }
 
+  /** Remove the notice for a request. Only a well-formed id is accepted, and only a file inside the channel is removed. */
   async clear(requestId: string): Promise<void> {
-    await unlink(join(this.dir, `${requestId}.json`)).catch(() => undefined);
+    if (!Id.safeParse(requestId).success) return;
+    const root = resolve(this.dir);
+    const target = resolve(root, `${requestId}.json`);
+    if (!target.startsWith(root + sep)) return;
+    await unlink(target).catch(() => undefined);
   }
 }

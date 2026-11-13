@@ -116,7 +116,11 @@ const NOT_A_FIGURE = [
   /\bQ[1-4]\b/g,
   /\b24\/7\b/g,
   /\b[A-Z]{2,}-\d{1,5}\b/g,
-  /\b(?:in|since|by|during|from|until|before|after|early|late|mid)[\s-]+(?:19|20)\d{2}\b(?!\s*(?:%|percent))/gi,
+  // A span of years ("2019 to 2024"). Checked before single years, which would otherwise take its first half.
+  /\b(?:19|20)\d{2}\s*(?:-|\u2013|to)\s*(?:19|20)\d{2}\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi,
+  // A year named as a date: after a date word, and followed by the end of the clause or by a
+  // word that cannot be the thing counted ("in 2026 we", not "in 2026 customers").
+  /\b(?:in|since|by|during|from|until|before|after|early|late|mid)[\s-]+(?:19|20)\d{2}\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|to|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi,
 ];
 
 /** The numbers written in digits in a text, without clock times and everyday terms, as plain digit strings. */
@@ -146,7 +150,9 @@ function matchForms(text: string): string[] {
     .replace(/\p{M}/gu, "")
     .replace(/[\u0131\u0261\u0251\u0269\u026A\u028F\u0299\u1D00-\u1D22\u0142\u00F8\u0111\u0127\u017F\u01C0]/g, (c) => CONFUSABLE[c] ?? c);
   const undotted = folded.replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ""));
-  const unbroken = undotted.replace(/(?<=[\p{L}\p{N}])[-*_~`\u00B7\u2022\p{Extended_Pictographic}\uFE0F\u200D]+(?=[\p{L}\p{N}])/gu, "");
+  // Anything slipped between two letters that is not itself a letter, digit or space: hyphens,
+  // emphasis marks, symbols, emoji, and any character that takes no space.
+  const unbroken = undotted.replace(/(?<=[\p{L}\p{N}])[-*_~`\u00B7\u2022\p{S}\p{Extended_Pictographic}\p{Default_Ignorable_Code_Point}\p{Cf}]+(?=[\p{L}\p{N}])/gu, "");
   const joined = unbroken.replace(/\b(?:[A-Za-z][ .]){3,}[A-Za-z]\b/g, (m) => m.replace(/[ .]/g, ""));
   return [...new Set([text, folded, undotted, unbroken, joined])];
 }

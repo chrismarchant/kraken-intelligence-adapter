@@ -10,6 +10,7 @@ import type { Clock } from "../util/runtime.ts";
 import { canonicalJson, sha256 } from "../util/runtime.ts";
 import { WorkflowError, draftContentHash, latestDecisionFor, selectedNarrativeOf } from "./service.ts";
 import type { DecisionVerifier, LogHead } from "./signing.ts";
+import { verifyDecisionLog } from "./signing.ts";
 
 export const GENERATOR_VERSION = "0.1.0";
 
@@ -144,7 +145,7 @@ export interface ReleaseInput {
   rationale: string;
   /** Head of the decision log, as checked by the operator's service against its own ledger. */
   logHead: LogHead;
-  sign: (packageSha256: string) => { alg: "ed25519"; keyId: string; value: string } | null;
+  sign: (statement: string) => { alg: "ed25519"; keyId: string; value: string } | null;
   clock: Clock;
 }
 
@@ -155,33 +156,43 @@ export interface ReleaseInput {
  */
 export function releaseProgramme(pkg: ProgrammePackage, input: ReleaseInput): ProgrammePackage {
   if (pkg.release !== null) throw new WorkflowError("already-released", "This package has already been released.");
-  if (pkg.decisions.length !== input.logHead.sequence) {
+  // The package must carry exactly the log the operator checked: same length, same head.
+  const carried = verifyDecisionLog({ id: pkg.campaignId, decisions: pkg.decisions }, null);
+  if (!carried.ok || carried.head.sequence !== input.logHead.sequence || carried.head.sha256 !== input.logHead.sha256) {
     throw new WorkflowError("decision-log-rolled-back", "The package was assembled from a decision log that differs from the one the operator checked.");
   }
   const actor = HumanActorSchema.safeParse(input.actor);
   if (!actor.success) throw new WorkflowError("invalid-actor", "A release must name the person making it (kind: human, id, name).");
   const rationale = ShortText.safeParse(input.rationale);
   if (!rationale.success) throw new WorkflowError("invalid-rationale", "The editor must give a reason of 1 to 400 characters.");
-  const digest = packageDigest(pkg);
-  return ProgrammePackageSchema.parse({
-    ...pkg,
-    release: {
-      releasedBy: actor.data,
-      releasedAt: input.clock.now().toISOString(),
-      rationale: rationale.data,
-      packageSha256: digest,
-      decisionLogSequence: input.logHead.sequence,
-      signature: input.sign(digest),
-    },
-  });
+  const statement = {
+    releasedBy: actor.data,
+    releasedAt: input.clock.now().toISOString(),
+    rationale: rationale.data,
+    packageSha256: packageDigest(pkg),
+    decisionLogSequence: input.logHead.sequence,
+  };
+  return ProgrammePackageSchema.parse({ ...pkg, release: { ...statement, signature: input.sign(releaseStatement(statement)) } });
+}
+
+/** The exact bytes a release signature covers: who released what, when, why, and on which log. */
+export function releaseStatement(release: Omit<NonNullable<ProgrammePackage["release"]>, "signature">): string {
+  return `kic-release\n${canonicalJson({
+    releasedBy: release.releasedBy,
+    releasedAt: release.releasedAt,
+    rationale: release.rationale,
+    packageSha256: release.packageSha256,
+    decisionLogSequence: release.decisionLogSequence,
+  })}`;
 }
 
 /** True when a package carries a release that matches its content and, with a verifier, a valid operator signature. */
 export function releaseIsValid(pkg: ProgrammePackage, verifier: DecisionVerifier | null): boolean {
   const release = pkg.release;
-  if (release === null || release.packageSha256 !== packageDigest(pkg)) return false;
+  if (release === null || release.packageSha256 !== packageDigest(pkg) || release.decisionLogSequence !== pkg.decisions.length) return false;
   if (verifier === null) return true;
-  return release.signature !== null && verifier.verify(release.signature.keyId, `kic-release\n${release.packageSha256}`, release.signature.value);
+  const { signature, ...statement } = release;
+  return signature !== null && verifier.verify(signature.keyId, releaseStatement(statement), signature.value);
 }
 
 export function programmeMarkdown(pkg: ProgrammePackage): string {

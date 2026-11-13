@@ -92,7 +92,7 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
       code: operator.codeFor(request.requestId),
       actor: SYNTHETIC_EDITOR,
       rationale,
-      expected: { action: shown.action, subject: shown.subject, contentSha256: shown.contentSha256 },
+      expected: { digest: shown.digest },
     });
   };
 
@@ -169,7 +169,7 @@ export async function runSyntheticCampaign(options: ScenarioOptions): Promise<Sc
     actor: SYNTHETIC_EDITOR,
     rationale: "Scripted: released for the test run.",
     logHead: await service.decisionLogHead(id),
-    sign: (digest) => service.signRelease(digest),
+    sign: (statement) => service.signRelease(statement),
     clock,
   });
   const exported = await exportProgramme(pkg, options.exportRoot);

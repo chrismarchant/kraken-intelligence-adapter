@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { createOperatorRuntime } from "../mcp/runtime.ts";
 import { systemClock } from "../util/runtime.ts";
 import { assembleProgramme, exportProgramme, releaseProgramme } from "../workflow/assemble.ts";
+import { FileOperatorLedger } from "../workflow/ledger.ts";
 import { generateDecisionKeyPair } from "../workflow/signing.ts";
 
 /**
@@ -18,14 +19,16 @@ import { generateDecisionKeyPair } from "../workflow/signing.ts";
  *   node src/cli/operator.ts init --key <private-key-file>
  *   node src/cli/operator.ts list
  *   node src/cli/operator.ts show --request <id>
- *   node src/cli/operator.ts confirm --request <id> --action <action> --subject <id> --sha <first 12 of content sha>
+ *   node src/cli/operator.ts confirm --request <id> --action <action> --subject <id> --digest <request digest>
  *                                    --id <your id> --name "<your name>" --reason "<why>"
  *   node src/cli/operator.ts decline --request <id>
  *   node src/cli/operator.ts release --campaign <id> --id <your id> --name "<your name>" --reason "<why>" [--partial]
+ *   node src/cli/operator.ts new-ledger --accept-current-state      only on a new operator machine, or after the ledger was lost
  *
  * The key file comes from --key or KIC_OPERATOR_KEY_FILE. `confirm` makes the editor name
- * the action, the subject and the start of the content hash that `show` displayed, so that
- * what is signed is what was read.
+ * the action and the subject, and give the whole request digest that `show` displayed. The
+ * digest covers the request, its action, subject, any revision instruction and the exact
+ * content, so that what is signed is what was read.
  */
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -35,7 +38,8 @@ const { positionals, values } = parseArgs({
     campaign: { type: "string" },
     action: { type: "string" },
     subject: { type: "string" },
-    sha: { type: "string" },
+    digest: { type: "string" },
+    "accept-current-state": { type: "boolean", default: false },
     id: { type: "string" },
     name: { type: "string" },
     reason: { type: "string" },
@@ -70,6 +74,8 @@ async function main(): Promise<void> {
     try {
       await writeNew(privateTemp, pair.privateKeyPem, 0o600);
       await writeNew(publicTemp, pair.publicKeyPem, 0o644);
+      // The ledger starts empty, with the key. From here on a missing ledger is an error.
+      await new FileOperatorLedger(`${privatePath}.ledger.json`).create();
       await rename(publicTemp, publicPath);
       await rename(privateTemp, privatePath);
     } catch (error) {
@@ -78,23 +84,32 @@ async function main(): Promise<void> {
       throw error;
     }
     console.log(`Operator key ${pair.signer.keyId} created.`);
-    console.log(`  Private key: ${privatePath}  (keep this, and its ledger file, where the agent runtime cannot read or write)`);
+    console.log(`  Private key: ${privatePath}  (keep this where the agent runtime cannot read it)`);
+    console.log(`  Ledger:      ${privatePath}.ledger.json  (keep this with the key; if it is lost, removed decisions go undetected)`);
     console.log(`  Public key:  ${publicPath}   (give this to the server as KIC_DECISION_PUBLIC_KEY_FILE)`);
   } else {
     if (!keyFile) throw new Error("Set --key or KIC_OPERATOR_KEY_FILE to the operator's private key.");
+    if (command === "new-ledger") {
+      if (!values["accept-current-state"]) {
+        throw new Error("new-ledger starts trusting every campaign's decision log as it stands now. If that is intended, add --accept-current-state.");
+      }
+      await new FileOperatorLedger(`${resolve(keyFile)}.ledger.json`).create();
+      console.log("A new, empty ledger was created. Decision logs are trusted as they stand from this point.");
+      return;
+    }
     const { service, operator, config } = createOperatorRuntime(resolve(keyFile));
 
     if (command === "release") {
       if (!values.campaign || !values.id || !values.name || !values.reason) throw new Error("release needs --campaign, --id, --name and --reason.");
-      // The decision log is checked against the operator's own ledger before anything is signed.
-      const logHead = await service.decisionLogHead(values.campaign);
-      const record = await service.getCampaign(values.campaign);
+      // The decision log is checked against the operator's own ledger before anything is signed,
+      // and the package is assembled from the very record that was checked.
+      const { record, head: logHead } = await service.checkedRecord(values.campaign);
       const preview = assembleProgramme(record, { allowPartial: values.partial, clock: systemClock, limits: service.limits, verifier: service.verifier });
       const released = releaseProgramme(preview, {
         actor: { kind: "human", id: values.id, name: values.name },
         rationale: values.reason,
         logHead,
-        sign: (digest) => service.signRelease(digest),
+        sign: (statement) => service.signRelease(statement),
         clock: systemClock,
       });
       const exported = await exportProgramme(released, config.exportDir);
@@ -121,6 +136,8 @@ async function main(): Promise<void> {
             continue;
           }
           waiting += 1;
+          // If an earlier run stopped between storing a decision and noting it, note it now.
+          await service.advanceLedger(n.campaignId);
           console.log(`${described.requestId}  campaign ${described.campaignId}  ${described.action} ${described.subject.kind} ${described.subject.id}  (${described.content.title})  expires ${described.expiresAt}`);
         }
         if (waiting === 0) console.log("No decisions are waiting.");
@@ -135,6 +152,7 @@ async function main(): Promise<void> {
         console.log(`\n${d.content.title}\n${"-".repeat(60)}\n${d.content.text}`);
         if (d.content.hashtags.length) console.log(`\n${d.content.hashtags.join(" ")}`);
         console.log("-".repeat(60));
+        for (const part of d.content.unpublished) console.log(`${part.label} (recorded, not published): ${part.text}`);
         console.log(d.content.evaluation ?? "Not evaluated.");
         if (d.content.eligibilityFailures.length) {
           console.log("FAILS MANDATORY CONSTRAINTS:");
@@ -144,18 +162,20 @@ async function main(): Promise<void> {
         }
         if (!d.unchanged) console.log("THE CONTENT HAS CHANGED SINCE THIS REQUEST WAS MADE. It cannot be confirmed.");
         console.log(`Content sha256: ${d.contentSha256}`);
-        console.log(`\nTo confirm: confirm --request ${d.requestId} --action ${d.action} --subject ${d.subject.id} --sha ${d.contentSha256.slice(0, 12)} --id <you> --name "<your name>" --reason "<why>"`);
+        console.log(`Request digest: ${d.digest}`);
+        console.log(`\nTo confirm: confirm --request ${d.requestId} --action ${d.action} --subject ${d.subject.id} --digest ${d.digest} --id <you> --name "<your name>" --reason "<why>"`);
       } else if (command === "confirm") {
         const n = find();
         if (!values.id || !values.name || !values.reason) throw new Error("confirm needs --id, --name and --reason.");
-        if (!values.action || !values.subject || !values.sha) throw new Error("confirm needs --action, --subject and --sha, exactly as `show` displayed them.");
-        if (values.sha.length < 12) throw new Error("--sha needs at least the first 12 characters of the content hash.");
+        if (!values.action || !values.subject || !values.digest) throw new Error("confirm needs --action, --subject and --digest, exactly as `show` displayed them.");
+        // The whole digest, not a prefix: a short prefix can be matched by a second, different request.
+        if (!/^[0-9a-f]{64}$/.test(values.digest)) throw new Error("--digest must be the whole 64-character request digest that `show` displayed.");
         const d = await service.describeRequest(n.campaignId, n.requestId);
         if (values.action !== d.action || values.subject !== d.subject.id) {
           throw new Error(`Request ${d.requestId} is to ${d.action} ${d.subject.kind} ${d.subject.id}. That is not what you asked to confirm. Nothing was recorded.`);
         }
-        if (!d.contentSha256.startsWith(values.sha.toLowerCase())) {
-          throw new Error("The content is not the content whose hash you gave. Run `show` again and read it. Nothing was recorded.");
+        if (d.digest !== values.digest) {
+          throw new Error("The request is not the one whose digest you gave: its content, action, subject or revision instruction differs. Run `show` again and read it. Nothing was recorded.");
         }
         const decision = await service.confirmDecision({
           campaignId: n.campaignId,
@@ -163,7 +183,8 @@ async function main(): Promise<void> {
           code: n.code,
           actor: { kind: "human", id: values.id, name: values.name },
           rationale: values.reason,
-          expected: { action: d.action, subject: d.subject, contentSha256: d.contentSha256 },
+          // What the editor typed, not what was just read: the service checks it against the record under the lock.
+          expected: { digest: values.digest },
         });
         await operator.clear(n.requestId);
         console.log(`Recorded ${decision.id} (decision ${decision.sequence} in this campaign): ${decision.action} ${decision.subject.kind} ${decision.subject.id}, signed with key ${decision.signature?.keyId}.`);
@@ -173,7 +194,7 @@ async function main(): Promise<void> {
         await operator.clear(n.requestId);
         console.log(`Declined ${n.requestId}. The request is closed.`);
       } else {
-        throw new Error(`Unknown command "${command}". Use init, list, show, confirm, decline or release.`);
+        throw new Error(`Unknown command "${command}". Use init, list, show, confirm, decline, release or new-ledger.`);
       }
     }
   }

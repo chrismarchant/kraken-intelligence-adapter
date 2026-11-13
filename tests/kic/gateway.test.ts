@@ -136,9 +136,9 @@ test("transient failures are retried; a client error is not", async () => {
   });
   assert.equal(refused.bodies.length, 1);
 
-  const down = fakeFetch(Array.from({ length: 4 }, () => () => new Response("x", { status: 503 })));
+  const down = fakeFetch(Array.from({ length: 6 }, () => () => new Response("x", { status: 503 })));
   await assert.rejects(gateway(down.impl).generateJson(request), (error: unknown) => error instanceof ModelCallError && error.status === 503);
-  assert.equal(down.bodies.length, 4, "retries are bounded");
+  assert.equal(down.bodies.length, 3, "retries stop when the call's token allowance is used up");
 });
 
 test("recorded output replays exactly, a missing recording is an error, and a stale one is refused", async () => {
@@ -220,4 +220,33 @@ test("all attempts of one call together never exceed three times its token allow
   await assert.rejects(gateway(wrong.impl, { retries: 9 }).generateJson(request), ModelOutputError);
   assert.equal(wrong.bodies.length, 3);
   assert.ok(wrong.bodies.reduce((sum, b) => sum + (b.max_tokens as number), 0) <= MAX_TOKEN_FACTOR * request.maxTokens);
+});
+
+test("requests that report no usage are charged at their allowance, and count against the call's limit", async () => {
+  // The reviewer's point: a stream that breaks off, a dropped connection or a gateway error
+  // may follow real generation that is never reported.
+  const broken = () => new Response(new ReadableStream({ start: (c) => c.error(new Error("reset")) }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  const flaky = fakeFetch([
+    broken,
+    () => {
+      throw new TypeError("fetch failed");
+    },
+    () => json(completion('{"theme":"t","score":1}')),
+  ]);
+  const result = await gateway(flaky.impl).generateJson(request);
+  assert.equal(result.providerRequests, 3);
+  assert.equal(result.usage.completionTokens, 1000 + 1000 + 50, "two unreported requests at 1000 each, plus the reported one");
+
+  // Every request, failed or not, draws on the same allowance: three at 1000, then no more.
+  const dead = fakeFetch(Array.from({ length: 10 }, () => broken));
+  const failure = await gateway(dead.impl, { transientAttempts: 10, maxProviderRequests: 10 }).generateJson(request).then(() => null, (e: unknown) => e);
+  assert.ok(failure instanceof ModelCallError);
+  assert.equal(dead.bodies.length, 3);
+  assert.equal(costOf(failure).usage.completionTokens, 3000);
+  assert.ok(costOf(failure).usage.completionTokens <= MAX_TOKEN_FACTOR * request.maxTokens);
+
+  // A refusal by the provider (4xx) generated nothing: it is neither charged nor counted against the allowance.
+  const refused = fakeFetch([() => new Response("{}", { status: 400 })]);
+  const refusal = await gateway(refused.impl).generateJson(request).then(() => null, (e: unknown) => e);
+  assert.equal(costOf(refusal).usage.completionTokens, 0);
 });
