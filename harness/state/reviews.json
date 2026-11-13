@@ -1310,6 +1310,124 @@
       ],
       "reportPath": "docs/review/2026-11-13-scope-review-b-2537386.md",
       "at": "2026-11-13T14:05:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-a2-1d8bafe",
+      "gate": "KIC-01",
+      "commit": "1d8bafe969d3ebfa3cee42a9889cdab848443081",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-13",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/evaluation/**",
+        "src/contracts/**",
+        "src/creators/**",
+        "src/shim/normalize.ts",
+        "src/shim/server.ts (non-streamed normalisation)",
+        "clip in src/workflow/service.ts",
+        "tests for those",
+        "closure of rev-2026-11-13-agent-scope-a-2537386 F1-F13",
+        "claims (e)-(j)"
+      ],
+      "skipped": [
+        {
+          "path": "src/skills/**, src/evaluation/criteria.ts, src/contracts/brief.ts and decision.ts in detail",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "src/store/**, src/mcp/**, src/gateway/**",
+          "reason": "the other reviewer's scope"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "high",
+          "summary": "Extended-Latin look-alike letters are neither folded nor refused; a ruled-out term written with them passes",
+          "status": "open"
+        },
+        {
+          "id": "N2",
+          "severity": "medium",
+          "summary": "The mostly-Latin rule can be tipped with unpublished claim text, after which unfolded look-alikes pass",
+          "status": "open"
+        },
+        {
+          "id": "N3",
+          "severity": "medium",
+          "summary": "Regression: the stream normaliser treats a single CRLF as the end of an event and drops valid multi-line events",
+          "status": "open"
+        },
+        {
+          "id": "N4",
+          "severity": "low",
+          "summary": "Regression: three-letter terms no longer catch their inflections",
+          "status": "open"
+        },
+        {
+          "id": "N5",
+          "severity": "low",
+          "summary": "Regression: apostrophes are removed, so contractions match ruled-out words",
+          "status": "open"
+        },
+        {
+          "id": "N6",
+          "severity": "low",
+          "summary": "clip cuts by code unit and can leave text out of canonical form or half a character",
+          "status": "open"
+        },
+        {
+          "id": "N7",
+          "severity": "info",
+          "summary": "The mock evaluator judges on redacted text; its choice can be discarded leaving no recommendation",
+          "status": "open"
+        },
+        {
+          "id": "N8",
+          "severity": "low",
+          "summary": "Reasoning at choice level, top level or as delta.thinking is passed on",
+          "status": "open"
+        },
+        {
+          "id": "N9",
+          "severity": "low",
+          "summary": "An unchanged event is passed on as it arrived, repeated keys included",
+          "status": "open"
+        },
+        {
+          "id": "N10",
+          "severity": "low",
+          "summary": "Dropping an unreadable event mid tool call silently changes the arguments the client assembles",
+          "status": "open"
+        },
+        {
+          "id": "N11",
+          "severity": "info",
+          "summary": "Words in another script are refused in a mostly-Latin post (by design)",
+          "status": "open"
+        },
+        {
+          "id": "N12",
+          "severity": "info",
+          "summary": "A long blocking-concern description makes the ranking throw",
+          "status": "open"
+        },
+        {
+          "id": "N13",
+          "severity": "info",
+          "summary": "Ordinary times not written in an accepted form are refused as figures",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-a2-1d8bafe.md",
+      "at": "2026-11-13T14:20:00Z"
     }
   ]
 }
