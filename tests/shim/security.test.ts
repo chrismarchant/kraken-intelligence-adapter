@@ -176,7 +176,18 @@ test("F8: startup refusals and acceptances in loadConfig", () => {
   assert.equal(loadConfig({ SHIM_PORT: "0" }).port, 0);
   assert.equal(loadConfig({ SHIM_UPSTREAM: "http://127.0.0.1:9999/" }).upstream, "http://127.0.0.1:9999");
   assert.equal(loadConfig({ SHIM_UPSTREAM: "http://localhost:9" }).upstream, "http://localhost:9");
-  const inj = loadConfig({ MISTRAL_API_KEY: KEY, SHIM_CLIENT_TOKEN: TOKEN, SHIM_HOST: "10.0.0.5", SHIM_ALLOWED_HOSTS: "Shim.Internal, other" });
+  // Key injection needs a model allow-list and a spend ceiling, or an explicit waiver of the ceiling.
+  const injection = { MISTRAL_API_KEY: KEY, SHIM_CLIENT_TOKEN: TOKEN };
+  throwsWith(injection, /SHIM_ALLOWED_MODELS is required/);
+  throwsWith({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4" }, /set a spend ceiling/);
+  throwsWith({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4", SHIM_SPEND_FILE: "/var/lib/shim/spend.state" }, /Set all of/);
+  throwsWith({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4", SHIM_SPEND_FILE: "relative.state", SHIM_MAX_TOTAL_REQUESTS: "10", SHIM_MAX_TOTAL_COMPLETION_TOKENS: "1000" }, /absolute path/);
+  throwsWith({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4", SHIM_SPEND_FILE: "/s", SHIM_MAX_TOTAL_REQUESTS: "0", SHIM_MAX_TOTAL_COMPLETION_TOKENS: "1000" }, /SHIM_MAX_TOTAL_REQUESTS/);
+  const bounded = loadConfig({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4", SHIM_SPEND_FILE: "/var/lib/shim/spend.state", SHIM_MAX_TOTAL_REQUESTS: "500", SHIM_MAX_TOTAL_COMPLETION_TOKENS: "2000000", SHIM_MAX_TOKENS_PER_REQUEST: "16000" });
+  assert.deepEqual(bounded.spend, { file: "/var/lib/shim/spend.state", maxRequests: 500, maxCompletionTokens: 2000000 });
+  assert.deepEqual([bounded.maxTokensPerRequest, bounded.maxConcurrent], [16000, 8]);
+  assert.equal(loadConfig({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4", SHIM_ALLOW_UNLIMITED: "1" }).spend, undefined);
+  const inj = loadConfig({ ...injection, SHIM_ALLOWED_MODELS: "mistral-large-4", SHIM_ALLOW_UNLIMITED: "1", SHIM_HOST: "10.0.0.5", SHIM_ALLOWED_HOSTS: "Shim.Internal, other" });
   assert.deepEqual(inj.allowedHosts, ["shim.internal", "other"]);
   assert.equal(inj.host, "10.0.0.5");
 });

@@ -151,7 +151,12 @@ export function canonicalText(text: string): string {
     .replace(/\r\n?/g, "\n")
     .replace(CONTROL, "")
     .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : ""))
-    .replace(/\u2800/g, "");
+    .replace(/\u2800/g, "")
+    // One space between words, none at the end of a line, at most one blank line: padding
+    // carries no meaning and can be used to push text to where a reader does not expect it.
+    .replace(/[ \t]+/g, " ")
+    .replace(/ +\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 /**
@@ -164,5 +169,30 @@ export function displaySafe(text: string, options: { multiline?: boolean } = {})
   const visible = (character: string) => `\\u{${(character.codePointAt(0) as number).toString(16)}}`;
   return text
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u2800]/g, (character) => (character === "\n" && options.multiline ? character : visible(character)))
-    .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : visible(character)));
+    .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : visible(character)))
+    // A run of spaces is written out too: padding is how text is pushed to the edge of a terminal.
+    .replace(/ {2,}/g, (run) => ` ${"\\u{20}".repeat(run.length - 1)}`);
+}
+
+/**
+ * Break one line of already-safe text into pieces that fit a terminal line, so that the
+ * caller can put a margin in front of every piece. Characters outside ASCII are counted as
+ * two columns wide, which is never too few.
+ */
+export function fitToWidth(line: string, width: number): string[] {
+  const pieces: string[] = [];
+  let piece = "";
+  let used = 0;
+  for (const character of line) {
+    const columns = (character.codePointAt(0) as number) < 0x80 ? 1 : 2;
+    if (used + columns > width && piece !== "") {
+      pieces.push(piece);
+      piece = "";
+      used = 0;
+    }
+    piece += character;
+    used += columns;
+  }
+  pieces.push(piece);
+  return pieces;
 }

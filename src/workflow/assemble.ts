@@ -1,4 +1,4 @@
-import { mkdir, open, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { buildProvisionalCommand } from "../commands/provisional.ts";
 import type { CampaignRecord, EditorialDecision, HumanActor, PackagedPost, PostDraft, ProgrammePackage } from "../contracts/index.ts";
@@ -8,7 +8,7 @@ import type { Limits } from "../limits.ts";
 import { fenced, inline } from "../util/markdown.ts";
 import type { Clock } from "../util/runtime.ts";
 import { canonicalJson, sha256 } from "../util/runtime.ts";
-import { WorkflowError, draftContentHash, latestDecisionFor, selectedNarrativeOf } from "./service.ts";
+import { WorkflowError, draftContentHash, selectedNarrativeOf, settledByLog } from "./service.ts";
 import type { DecisionVerifier, LogHead } from "./signing.ts";
 import { verifyDecisionLog } from "./signing.ts";
 
@@ -18,19 +18,22 @@ export const GENERATOR_VERSION = "0.1.0";
  * The approval that makes a draft publishable in principle, or null.
  *
  * A draft counts as approved only if all of these hold: the campaign's whole decision log
- * is intact (in order, chained, and validly signed when decisions are signed); the draft's
- * status says approved; it has not been revised; the latest decision about it is an
- * approval; and that approval was made on exactly this text. A status with no decision
- * behind it, an approval followed by a rejection or a revision request, text edited after
- * approval, and a log that has been reordered, cut in the middle or mis-signed all fail.
+ * is intact (in order, chained, and validly signed when decisions are signed); the latest
+ * approval the log records for the draft's post is an approval of this draft, not followed
+ * by a rejection of it or a request to revise it; it has not been revised; and that
+ * approval was made on exactly this content. A status with no decision behind it, an
+ * approval the editor later replaced with another draft's, text edited after approval, and
+ * a log that has been reordered, cut in the middle or mis-signed all fail. If the latest
+ * approval for a post no longer stands, the post is undecided: an earlier one never returns.
  */
 export function approvalOf(record: CampaignRecord, draft: PostDraft, verifier: DecisionVerifier | null): EditorialDecision | null {
-  if (draft.status !== "approved") return null;
-  // A draft that has been revised is superseded, whatever its status field says.
+  // Read from the signed log alone. The draft's status field is not consulted: a store writer
+  // can set it, and could otherwise bring back an approval the editor had replaced.
+  const held = settledByLog(record, verifier).approvals.get(draft.slot);
+  if (!held || held.subject.id !== draft.id) return null;
+  // A draft that has been revised is superseded.
   if (record.drafts.some((d) => d.revisionOf === draft.id)) return null;
-  const latest = latestDecisionFor(record, { kind: "draft", id: draft.id }, verifier);
-  if (!latest || latest.action !== "approve") return null;
-  return latest.subjectContentSha256 === draftContentHash(record, draft) ? latest : null;
+  return held.subjectContentSha256 === draftContentHash(record, draft) ? held : null;
 }
 
 export interface AssembleOptions {
@@ -69,7 +72,8 @@ export function assembleProgramme(record: CampaignRecord, options: AssembleOptio
     if (approvals.length > 1) {
       throw new WorkflowError("inconsistent-record", `Slot ${slot.slot} has more than one approved draft. The campaign record is inconsistent.`);
     }
-    const approved = approvals[0]?.draft ?? null;
+    // The package states what the log says, whatever the draft's status field was left as.
+    const approved = approvals[0] ? { ...approvals[0].draft, status: "approved" as const } : null;
     const approval = approvals[0]?.approval ?? null;
     if (approved && approval) {
       // Defence in depth: the mandatory constraints are checked once more at assembly.
@@ -301,7 +305,15 @@ export async function exportProgramme(pkg: ProgrammePackage, exportRoot: string)
   const name = `${pkg.assembledAt.replace(/[^0-9TZ]/g, "")}-${packageSha256.slice(0, 12)}${pkg.release ? "-released" : "-preview"}`;
   const dir = resolve(root, pkg.programmeId, name);
   if (!dir.startsWith(root + sep)) throw new WorkflowError("invalid-export-path", "Export path escapes the export directory.");
-  await mkdir(dir, { recursive: true, mode: 0o700 });
+  // One level at a time, and never through a link: a link planted where a directory is
+  // expected is refused before anything is created on the far side of it.
+  for (const level of [resolve(root, pkg.programmeId), dir]) {
+    await mkdir(level, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "EEXIST") throw error;
+    });
+    const found = await lstat(level);
+    if (!found.isDirectory() || found.isSymbolicLink()) throw new WorkflowError("invalid-export-path", "Export path resolves outside the export directory.");
+  }
   if ((await realpath(dir)) !== dir) throw new WorkflowError("invalid-export-path", "Export path resolves outside the export directory.");
 
   const packagePath = join(dir, "programme.json");

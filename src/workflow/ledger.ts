@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { open, readFile, rename, stat, unlink } from "node:fs/promises";
+import { open, readFile, rename, unlink } from "node:fs/promises";
+import { withOwnedLock } from "../store/lock.ts";
 import type { LogHead, OperatorLedger } from "./signing.ts";
 
 export class LedgerMissingError extends Error {
@@ -55,21 +56,7 @@ export class FileOperatorLedger implements OperatorLedger {
   async set(campaignId: string, head: LogHead): Promise<void> {
     // Read, change and write under a lock, so that two operator processes working on
     // different campaigns cannot drop each other's entries.
-    const lockPath = `${this.path}.lock`;
-    const deadline = Date.now() + 10_000;
-    for (;;) {
-      try {
-        await (await open(lockPath, "wx", 0o600)).close();
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const age = await stat(lockPath).then((s) => Date.now() - s.mtimeMs, () => 0);
-        if (age > 30_000) await unlink(lockPath).catch(() => undefined);
-        else if (Date.now() > deadline) throw new Error("The operator's ledger is locked by another operator process.");
-        else await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-    }
-    try {
+    await withOwnedLock(`${this.path}.lock`, "The operator's ledger", async () => {
       const heads = await this.read();
       const current = Object.hasOwn(heads, campaignId) ? heads[campaignId] : undefined;
       // The ledger only ever moves forward.
@@ -89,8 +76,6 @@ export class FileOperatorLedger implements OperatorLedger {
         await unlink(temporary).catch(() => undefined);
         throw error;
       }
-    } finally {
-      await unlink(lockPath).catch(() => undefined);
-    }
+    });
   }
 }

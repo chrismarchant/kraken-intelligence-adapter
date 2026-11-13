@@ -2,8 +2,8 @@ import { open, readFile, rename, stat, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { ProgrammePackage } from "../contracts/index.ts";
-import { createOperatorRuntime } from "../mcp/runtime.ts";
-import { canonicalJson, displaySafe, systemClock } from "../util/runtime.ts";
+import { createOperatorRuntime, inside } from "../mcp/runtime.ts";
+import { canonicalJson, displaySafe, fitToWidth, systemClock } from "../util/runtime.ts";
 import { assembleProgramme, exportProgramme, packageDigest, releaseDigest, releaseIsValid, releaseProgramme } from "../workflow/assemble.ts";
 import { FileOperatorLedger } from "../workflow/ledger.ts";
 import { generateDecisionKeyPair } from "../workflow/signing.ts";
@@ -36,9 +36,11 @@ import { generateDecisionKeyPair } from "../workflow/signing.ts";
  * `release` must be given back.
  *
  * Everything read from a campaign record is printed with control, invisible and direction
- * characters written out as visible codes, and text of several lines is printed behind a
- * margin, so that stored text cannot move the cursor, erase a line or pass for a line of
- * this tool's own.
+ * characters and runs of spaces written out as visible codes, and always behind a margin:
+ * a line of stored text starts with "  | ", and when it is too long for the terminal the
+ * rest follows on lines that start with "  |     ". Nothing stored ever starts in the first
+ * column, where this tool's own lines start, so stored text cannot move the cursor, erase a
+ * line, or pass for a line of this tool's own or for the start of another stored line.
  */
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -58,25 +60,39 @@ const { positionals, values } = parseArgs({
   },
 });
 
+/** Terminal width to break lines at: the terminal's own when there is one, otherwise 80 columns. */
+const WIDTH = Math.max(40, Math.min(process.stdout.isTTY ? (process.stdout.columns ?? 80) : 80, 160)) - 1;
+const LINE = "  | "; // where a line of stored text starts
+const REST = "  |     "; // where the rest of a line that was too long continues
+
 /**
- * Every value in a document, one per line, with its place in the document: "plan.slots[2].theme: ...".
- * Text is printed on one line with anything a terminal would act on written out.
+ * Stored text, safe to print and behind the margin. `lead` is this tool's own label for
+ * the first line, inside the margin. With `multiline`, the text's own line feeds start new
+ * stored lines; without it they are written out as codes and the whole is one stored line.
+ */
+function stored(text: string, options: { lead?: string; multiline?: boolean } = {}): string {
+  return displaySafe(text, { multiline: options.multiline })
+    .split("\n")
+    .flatMap((line, index) => fitToWidth((index === 0 ? (options.lead ?? "") : "") + line, WIDTH - REST.length).map((piece, part) => (part === 0 ? LINE : REST) + piece))
+    .join("\n");
+}
+
+/** A label of this tool's own, then the stored text it introduces on the lines below it. */
+const labelled = (label: string, text: string) => `${label}\n${stored(text)}`;
+
+/**
+ * Every value in a document, one stored line each, with its place in the document:
+ * "plan.slots[2].theme: ...". The place names are this program's own field names.
  */
 function everyValue(value: unknown, path = ""): string[] {
   if (value === undefined) return [];
-  if (value === null || typeof value !== "object") return [`${path}: ${displaySafe(String(value))}`];
-  if (Array.isArray(value)) return value.length === 0 ? [`${path}: (none)`] : value.flatMap((item, index) => everyValue(item, `${path}[${index + 1}]`));
+  if (value === null || typeof value !== "object") return [stored(String(value), { lead: `${path}: ` })];
+  if (Array.isArray(value)) return value.length === 0 ? [stored("(none)", { lead: `${path}: ` })] : value.flatMap((item, index) => everyValue(item, `${path}[${index + 1}]`));
   return Object.entries(value).flatMap(([key, item]) => everyValue(item, path ? `${path}.${displaySafe(key)}` : displaySafe(key)));
 }
 
-/** One line of stored text, safe to print. */
+/** An id, an enumerated word or a timestamp: values whose form the record's schema already fixes. */
 const one = (text: string) => displaySafe(text);
-/** Stored text of several lines, safe to print, each line behind a margin. */
-const many = (text: string) =>
-  displaySafe(text, { multiline: true })
-    .split("\n")
-    .map((line) => `  | ${line}`)
-    .join("\n");
 const command = positionals[0] ?? "list";
 const keyFile = values.key ?? process.env.KIC_OPERATOR_KEY_FILE;
 
@@ -128,7 +144,7 @@ async function main(): Promise<void> {
       console.log("A new, empty ledger was created. Decision logs are trusted as they stand from this point.");
       return;
     }
-    const { service, operator } = createOperatorRuntime(resolve(keyFile));
+    const { service, operator, config } = createOperatorRuntime(resolve(keyFile));
 
     if (command === "verify") {
       if (!values.package) throw new Error("verify needs --package <programme.json>.");
@@ -137,7 +153,8 @@ async function main(): Promise<void> {
       if (!releaseIsValid(pkg, service.verifier)) {
         throw new Error("This package is not a release signed with this operator key, or it was changed after it was released.");
       }
-      console.log(`${one(pkg.programmeId)}: released by ${one(pkg.release?.releasedBy.name ?? "")} at ${one(pkg.release?.releasedAt ?? "")}, signature valid, content unchanged.`);
+      console.log(`${one(pkg.programmeId)}: released at ${one(pkg.release?.releasedAt ?? "")}, signature valid, content unchanged.`);
+      console.log(labelled("Released by:", pkg.release?.releasedBy.name ?? ""));
       // The commands file beside it, if there is one, must say exactly what the package says.
       const commandsPath = join(dirname(path), "provisional-commands.NON-EXECUTABLE.json");
       const beside = await readFile(commandsPath, "utf8").then((text) => JSON.parse(text) as { commands?: unknown; packageSha256?: unknown }, () => null);
@@ -154,6 +171,12 @@ async function main(): Promise<void> {
       if (command === "release" && !/^[0-9a-f]{64}$/.test(values.digest ?? "")) {
         throw new Error("release needs --digest: the whole 64-character release digest that `review` displayed.");
       }
+      // Releases are kept on the operator's side, beside the key, unless told otherwise, and never
+      // where the agent runtime can write: checked before anything is read or signed.
+      const releaseDir = process.env.KIC_RELEASE_DIR ? resolve(process.env.KIC_RELEASE_DIR) : join(dirname(resolve(keyFile)), "releases");
+      if (inside(config.dataDir, releaseDir) || inside(config.operatorDir, releaseDir)) {
+        throw new Error("KIC_RELEASE_DIR must not be in the data directory or the operator channel: a release kept there could be altered. Nothing was released.");
+      }
       // The decision log is checked against the operator's own ledger before anything is signed,
       // and the package is assembled from the very record that was checked.
       const { record, head: logHead } = await service.checkedRecord(values.campaign);
@@ -162,23 +185,26 @@ async function main(): Promise<void> {
       if (command === "review") {
         const brief = preview.brief;
         console.log(`Programme ${one(preview.programmeId)} (${preview.approvalState}), on ${logHead.sequence} recorded decision(s).`);
-        console.log(`Brief for ${one(brief.client.name)}. Evidence policy: ${one(brief.constraints.evidencePolicy)}`);
-        console.log(`The brief rules out: ${brief.constraints.mustAvoid.map(one).join("; ") || "nothing"}`);
-        for (const reference of brief.references) console.log(`Reference ${one(reference.id)}: ${one(reference.title)}. ${one(reference.summary)}`);
-        console.log(`Narrative ${one(preview.narrative.id)}: ${one(preview.narrative.title)}`);
+        console.log(labelled("Brief for:", brief.client.name));
+        console.log(labelled("Evidence policy:", brief.constraints.evidencePolicy));
+        console.log("The brief rules out:");
+        for (const term of brief.constraints.mustAvoid.length ? brief.constraints.mustAvoid : ["nothing"]) console.log(stored(term));
+        for (const reference of brief.references) console.log(labelled(`Reference ${one(reference.id)}:`, `${reference.title}. ${reference.summary}`));
+        console.log(labelled(`Narrative ${one(preview.narrative.id)}:`, preview.narrative.title));
         for (const post of preview.posts) {
           const slot = post.slot;
-          console.log(`\nPost ${slot.slot} (week ${slot.week}, number ${slot.orderInWeek}): ${post.state}. Theme: ${one(slot.theme)}. Purpose: ${slot.intent}.`);
+          console.log(`\nPost ${slot.slot} (week ${slot.week}, number ${slot.orderInWeek}): ${post.state}. Purpose: ${slot.intent}.`);
+          console.log(labelled("Theme:", slot.theme));
           if (!post.approvedDraft) continue;
           console.log(`Approved draft ${one(post.approvedDraft.id)}:`);
-          console.log(many(post.approvedDraft.body));
-          if (post.approvedDraft.hashtags.length) console.log(many(post.approvedDraft.hashtags.join(" ")));
+          console.log(stored(post.approvedDraft.body, { multiline: true }));
+          if (post.approvedDraft.hashtags.length) console.log(stored(post.approvedDraft.hashtags.join(" ")));
         }
         console.log(`\n${preview.provisionalCommands.length} provisional command(s), all NON-EXECUTABLE.`);
         // Nothing is released that was not put in front of the editor: every value in the
         // package, by its place in it. The digest below covers exactly this.
         console.log("\nEVERYTHING IN THIS PACKAGE (the release digest covers all of it, and nothing else is released):");
-        for (const line of everyValue({ ...preview, assembledAt: undefined, release: undefined })) console.log(`  ${line}`);
+        for (const line of everyValue({ ...preview, assembledAt: undefined, release: undefined })) console.log(line);
         console.log(`\nRelease digest: ${digest}`);
         console.log(`\nTo release: release --campaign ${one(record.id)}${values.partial ? " --partial" : ""} --digest ${digest} --id <you> --name "<your name>" --reason "<why>"`);
         return;
@@ -195,7 +221,7 @@ async function main(): Promise<void> {
       });
       // Released packages are kept on the operator's side, beside the key, unless told otherwise:
       // the campaign data directory can be written by the agent runtime.
-      const exported = await exportProgramme(released, process.env.KIC_RELEASE_DIR ? resolve(process.env.KIC_RELEASE_DIR) : join(dirname(resolve(keyFile)), "releases"));
+      const exported = await exportProgramme(released, releaseDir);
       console.log(`Released ${one(released.programmeId)} (${released.approvalState}): ${released.provisionalCommands.length} approved post(s), on ${logHead.sequence} recorded decision(s).`);
       for (const post of released.posts) console.log(`  post ${post.slot.slot}: ${post.state}${post.approvedDraft ? ` (${one(post.approvedDraft.id)})` : ""}`);
       console.log(`  ${exported.packagePath}`);
@@ -221,7 +247,8 @@ async function main(): Promise<void> {
           waiting += 1;
           // If an earlier run stopped between storing a decision and noting it, note it now.
           await service.advanceLedger(n.campaignId);
-          console.log(`${one(described.requestId)}  campaign ${one(described.campaignId)}  ${described.action} ${described.subject.kind} ${one(described.subject.id)}  (${one(described.content.title)})  expires ${one(described.expiresAt)}`);
+          console.log(`${one(described.requestId)}  campaign ${one(described.campaignId)}  ${described.action} ${described.subject.kind} ${one(described.subject.id)}  expires ${one(described.expiresAt)}`);
+          console.log(stored(described.content.title));
         }
         if (waiting === 0) console.log("No decisions are waiting.");
       } else if (command === "show") {
@@ -229,26 +256,29 @@ async function main(): Promise<void> {
         const d = await service.describeRequest(n.campaignId, n.requestId);
         console.log(`Request ${one(d.requestId)} in campaign ${one(d.campaignId)} — ${d.state}, expires ${one(d.expiresAt)}`);
         console.log(`YOU ARE ASKED TO: ${d.action.toUpperCase()} ${d.subject.kind} ${one(d.subject.id)}`);
-        console.log(`Requested by: ${one(d.requestedBy)}`);
-        console.log(`Requester's reason (not verified): ${one(d.proposedRationale)}`);
-        if (d.revisionInstruction) console.log(`Revision instruction: ${one(d.revisionInstruction)}`);
-        console.log(`\n${one(d.content.title)}\n${"-".repeat(60)}\n${many(d.content.text)}`);
-        if (d.content.hashtags.length) console.log(`\n${many(d.content.hashtags.join(" "))}`);
+        console.log(labelled("Requested by:", d.requestedBy));
+        console.log(labelled("Requester's reason (not verified):", d.proposedRationale));
+        if (d.revisionInstruction) console.log(labelled("Revision instruction:", d.revisionInstruction));
+        console.log(`\n${stored(d.content.title)}\n${"-".repeat(60)}\n${stored(d.content.text, { multiline: true })}`);
+        if (d.content.hashtags.length) console.log(`\n${stored(d.content.hashtags.join(" "))}`);
         console.log("-".repeat(60));
-        for (const part of d.content.unpublished) console.log(`${part.label} (recorded, not published): ${one(part.text)}`);
+        for (const part of d.content.unpublished) console.log(labelled(`${part.label} (recorded, not published):`, part.text));
         for (const part of d.content.basis) {
-          console.log(`${one(part.label)}:`);
-          for (const line of part.lines) console.log(`  - ${one(line)}`);
+          console.log(stored(part.label));
+          for (const line of part.lines) console.log(stored(line, { lead: "- " }));
         }
-        console.log(d.content.evaluation ? one(d.content.evaluation) : "Not evaluated.");
+        console.log(d.content.evaluation ? labelled("Evaluation:", d.content.evaluation) : "Not evaluated.");
         if (d.content.eligibilityFailures.length) {
           console.log("FAILS MANDATORY CONSTRAINTS:");
-          for (const failure of d.content.eligibilityFailures) console.log(`  - ${one(failure)}`);
+          for (const failure of d.content.eligibilityFailures) console.log(stored(failure, { lead: "- " }));
         } else if (d.subject.kind === "draft") {
           console.log("Passes the mandatory constraints checked by code.");
         }
         if (!d.unchanged) console.log("THE CONTENT HAS CHANGED SINCE THIS REQUEST WAS MADE. It cannot be confirmed.");
-        console.log(`Content sha256: ${d.contentSha256}`);
+        // Nothing is signed that was not put in front of the editor: every value the digest covers.
+        console.log("\nEVERYTHING THIS DECISION RESTS ON (the request digest covers all of it):");
+        for (const line of everyValue(d.covers)) console.log(line);
+        console.log(`\nContent sha256: ${d.contentSha256}`);
         console.log(`Request digest: ${d.digest}`);
         console.log(`\nTo confirm: confirm --request ${one(d.requestId)} --action ${d.action} --subject ${one(d.subject.id)} --digest ${d.digest} --id <you> --name "<your name>" --reason "<why>"`);
       } else if (command === "confirm") {
@@ -289,6 +319,8 @@ async function main(): Promise<void> {
 
 // A refusal is reported in one plain line. Nothing was recorded unless the tool said so.
 main().catch((error: unknown) => {
-  console.error(`Refused: ${displaySafe(error instanceof Error ? error.message : String(error))}`);
+  // One statement, on as many lines as it needs; what follows the first line is behind the margin.
+  const pieces = fitToWidth(`Refused: ${displaySafe(error instanceof Error ? error.message : String(error))}`, WIDTH - REST.length);
+  console.error(pieces.map((piece, part) => (part === 0 ? "" : REST) + piece).join("\n"));
   process.exitCode = 1;
 });

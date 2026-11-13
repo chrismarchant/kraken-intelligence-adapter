@@ -54,6 +54,7 @@ test("a forged, unsigned, mis-signed or transplanted decision invalidates the wh
     previousSha256: decisionDigest(id, before.decisions[0]!),
     requestId: "req-forged",
     subject: { kind: "draft" as const, id: draft.id },
+    subjectSlot: draft.slot,
     action: "approve" as const,
     actor: EDITOR,
     rationale: "Forged.",
@@ -79,11 +80,10 @@ test("a forged, unsigned, mis-signed or transplanted decision invalidates the wh
     assert.throws(() => approvalOf(record, record.drafts.find((d) => d.id === draft.id)!, keys.verifier), code("decision-log-invalid"));
     assert.throws(() => assemble(record, true), code("decision-log-invalid"));
   }
-  // Nothing more is signed on top of a log that cannot be trusted.
+  // Nothing more is asked for or signed on top of a log that cannot be trusted.
   const other = (await service.getCampaign(id)).drafts.find((d) => d.slot === 2)!;
-  const request = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: other.id }, action: "select", proposedRationale: "Next.", requestedBy: "agent" });
   await assert.rejects(
-    service.confirmDecision({ campaignId: id, requestId: request.requestId, code: operator.codeFor(request.requestId), actor: EDITOR, rationale: "Select.", expected: await expectedFor(service, id, request.requestId) }),
+    service.requestDecision({ campaignId: id, subject: { kind: "draft", id: other.id }, action: "select", proposedRationale: "Next.", requestedBy: "agent" }),
     code("decision-log-invalid"),
   );
 });

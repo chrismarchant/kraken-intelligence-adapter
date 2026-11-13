@@ -34,6 +34,7 @@ export function decisionPayload(campaignId: string, decision: UnsignedDecision):
     id: decision.id,
     requestId: decision.requestId,
     subject: decision.subject,
+    subjectSlot: decision.subjectSlot,
     action: decision.action,
     actor: decision.actor,
     rationale: decision.rationale,
@@ -69,7 +70,11 @@ export function verifierFromPublicKeyPem(pem: string): DecisionVerifier {
     verify(candidateKeyId, payload, signature) {
       if (candidateKeyId !== keyId) return false;
       try {
-        return verify(null, Buffer.from(payload, "utf8"), publicKey, Buffer.from(signature, "base64"));
+        // One spelling per signature: base64 decoding is lenient, and the log's chain is computed over the
+        // stored string, so a re-spelled signature would verify and still change every digest after it.
+        const bytes = Buffer.from(signature, "base64");
+        if (bytes.toString("base64") !== signature) return false;
+        return verify(null, Buffer.from(payload, "utf8"), publicKey, bytes);
       } catch {
         return false;
       }

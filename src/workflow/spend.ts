@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Limits } from "../limits.ts";
 import { LimitExceededError } from "../limits.ts";
+import { withOwnedLock } from "../store/lock.ts";
 
 /**
  * The instance's own account of what has been spent on model calls, kept where the agent
@@ -87,15 +88,17 @@ function reserveIn(state: SpendState, campaignId: string, calls: number, tokens:
 
 function settleIn(state: SpendState, campaignId: string, reserved: { calls: number; tokens: number }, used: { calls: number; tokens: number }): void {
   const campaign = Object.hasOwn(state.campaigns, campaignId) ? state.campaigns[campaignId] : undefined;
-  // Never below zero, and never a correction larger than what was reserved.
-  const calls = Math.max(0, Math.min(reserved.calls, reserved.calls - used.calls));
-  const tokens = Math.max(0, Math.min(reserved.tokens, reserved.tokens - used.tokens));
+  // The correction: negative gives back what was not used, never more than was reserved;
+  // positive charges the excess when more was used than reserved. Nothing goes below zero.
+  const sane = (value: number) => (Number.isFinite(value) && value >= 0 ? value : 0);
+  const calls = sane(used.calls) - reserved.calls >= 0 ? sane(used.calls) - reserved.calls : -Math.min(reserved.calls, reserved.calls - sane(used.calls));
+  const tokens = sane(used.tokens) - reserved.tokens >= 0 ? sane(used.tokens) - reserved.tokens : -Math.min(reserved.tokens, reserved.tokens - sane(used.tokens));
   if (campaign) {
-    campaign.calls = Math.max(0, campaign.calls - calls);
-    campaign.tokens = Math.max(0, campaign.tokens - tokens);
+    campaign.calls = Math.max(0, campaign.calls + calls);
+    campaign.tokens = Math.max(0, campaign.tokens + tokens);
   }
-  state.calls = Math.max(0, state.calls - calls);
-  state.tokens = Math.max(0, state.tokens - tokens);
+  state.calls = Math.max(0, state.calls + calls);
+  state.tokens = Math.max(0, state.tokens + tokens);
 }
 
 const totalsOf = (state: SpendState) => ({ campaigns: Object.keys(state.campaigns).length, calls: state.calls, tokens: state.tokens });
@@ -145,21 +148,7 @@ export class FileSpendLedger implements SpendLedger {
 
   private async change(apply: (state: SpendState) => void): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    const lockPath = `${this.path}.lock`;
-    const deadline = Date.now() + 10_000;
-    for (;;) {
-      try {
-        await (await open(lockPath, "wx", 0o600)).close();
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const age = await stat(lockPath).then((s) => Date.now() - s.mtimeMs, () => 0);
-        if (age > 30_000) await unlink(lockPath).catch(() => undefined);
-        else if (Date.now() > deadline) throw new Error("The instance's spend account is locked by another process.");
-        else await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-    }
-    try {
+    await withOwnedLock(`${this.path}.lock`, "The instance's spend account", async () => {
       const state = await this.read();
       apply(state); // a refusal throws here, before anything is written
       const temporary = `${this.path}.${randomBytes(8).toString("hex")}.tmp`;
@@ -176,9 +165,7 @@ export class FileSpendLedger implements SpendLedger {
         await unlink(temporary).catch(() => undefined);
         throw error;
       }
-    } finally {
-      await unlink(lockPath).catch(() => undefined);
-    }
+    });
   }
 
   registerCampaign(campaignId: string, limits: Limits): Promise<void> {

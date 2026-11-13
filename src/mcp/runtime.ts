@@ -78,8 +78,16 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env, cwd: str
     throw new Error("KIC_OPERATOR_DIR must be outside the data directory and the working directory.");
   }
 
+  // The data directory is the agent's to write; nothing that decides whose decisions count may sit in it, or it in them.
+  if (inside(operatorDir, dataDir)) throw new Error("KIC_DATA_DIR must not be inside KIC_OPERATOR_DIR.");
   let decisionPublicKeyFile: string | null = null;
-  if (env.KIC_DECISION_PUBLIC_KEY_FILE) decisionPublicKeyFile = resolve(cwd, env.KIC_DECISION_PUBLIC_KEY_FILE);
+  if (env.KIC_DECISION_PUBLIC_KEY_FILE) {
+    decisionPublicKeyFile = resolve(cwd, env.KIC_DECISION_PUBLIC_KEY_FILE);
+    // Whoever can replace the public key decides which signatures the server accepts.
+    if (inside(dataDir, decisionPublicKeyFile) || inside(cwd, decisionPublicKeyFile)) {
+      throw new Error("KIC_DECISION_PUBLIC_KEY_FILE must be outside the data directory and the working directory.");
+    }
+  }
   else if (env.KIC_ALLOW_UNSIGNED_DECISIONS !== "1") {
     throw new Error("Set KIC_DECISION_PUBLIC_KEY_FILE to the operator's public key (or KIC_ALLOW_UNSIGNED_DECISIONS=1 for development only).");
   }
@@ -148,6 +156,10 @@ export function createRuntime(config: RuntimeConfig = loadRuntimeConfig()) {
 
 /** The operator's runtime. It holds the private key and is the only place decisions are recorded. */
 export function createOperatorRuntime(privateKeyFile: string, config: RuntimeConfig = loadRuntimeConfig()) {
+  // The operator's key and the ledger beside it must be out of reach of whatever writes the campaign store.
+  if (inside(config.dataDir, privateKeyFile) || inside(config.operatorDir, privateKeyFile)) {
+    throw new Error("The operator key must not be kept in the data directory or in the operator channel.");
+  }
   const pem = readFileSync(privateKeyFile, "utf8");
   const signer = signerFromPrivateKeyPem(pem);
   // The public half is derived from the private key, so the two cannot disagree.

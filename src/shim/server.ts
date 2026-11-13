@@ -6,6 +6,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { pipeline, Readable } from "node:stream";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { pathToFileURL } from "node:url";
+import { DEFAULT_LIMITS, LimitExceededError } from "../limits.ts";
+import { FileSpendLedger } from "../workflow/spend.ts";
 import { createSseNormalizer, normalizeChatCompletion } from "./normalize.ts";
 
 export interface ShimConfig {
@@ -24,7 +26,21 @@ export interface ShimConfig {
   allowedHosts?: string[];
   /** One line per request. Defaults to stderr. Never receives credentials or bodies. */
   log?: (line: string) => void;
+  /**
+   * Key injection mode only: whoever holds the client token spends the provider key, so what
+   * one request may ask for, how many run at once and how much may be spent in total are
+   * limited here. In pass-through mode the caller spends its own key and none of this applies.
+   */
+  /** The most completion tokens one request may ask for. A request that names none is given this. Default 32,000. */
+  maxTokensPerRequest?: number;
+  /** Requests in flight at once. Default 8. */
+  maxConcurrent?: number;
+  /** A ceiling on everything spent through this shim, kept in a file that survives restarts. */
+  spend?: { file: string; maxRequests: number; maxCompletionTokens: number };
 }
+
+const DEFAULT_MAX_TOKENS_PER_REQUEST = 32_000;
+const DEFAULT_MAX_CONCURRENT = 8;
 
 const LOOPBACK_NAMES = ["127.0.0.1", "::1", "localhost"];
 const MIN_TOKEN_LENGTH = 24;
@@ -92,6 +108,29 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (env["MISTRAL_API_KEY"]) cfg.apiKey = env["MISTRAL_API_KEY"];
   if (env["SHIM_CLIENT_TOKEN"]) cfg.clientToken = env["SHIM_CLIENT_TOKEN"];
   checkAuthRules(cfg);
+  if (cfg.apiKey) {
+    // Key injection: the holder of the client token spends the provider key. The process refuses
+    // to start unless that spending is bounded, or the operator says in so many words that it need not be.
+    cfg.maxTokensPerRequest = strictInt("SHIM_MAX_TOKENS_PER_REQUEST", env["SHIM_MAX_TOKENS_PER_REQUEST"], DEFAULT_MAX_TOKENS_PER_REQUEST, 1, 1_000_000);
+    cfg.maxConcurrent = strictInt("SHIM_MAX_CONCURRENT", env["SHIM_MAX_CONCURRENT"], DEFAULT_MAX_CONCURRENT, 1, 1024);
+    if (cfg.allowedModels === null) throw new Error("MISTRAL_API_KEY is set (key injection mode): SHIM_ALLOWED_MODELS is required, so that the key cannot be spent on any model it can reach");
+    const ceiling = [env["SHIM_SPEND_FILE"], env["SHIM_MAX_TOTAL_REQUESTS"], env["SHIM_MAX_TOTAL_COMPLETION_TOKENS"]];
+    if (ceiling.every((v) => v !== undefined && v !== "")) {
+      cfg.spend = {
+        file: ceiling[0] as string,
+        maxRequests: strictInt("SHIM_MAX_TOTAL_REQUESTS", ceiling[1], 0, 1, Number.MAX_SAFE_INTEGER),
+        maxCompletionTokens: strictInt("SHIM_MAX_TOTAL_COMPLETION_TOKENS", ceiling[2], 0, 1, Number.MAX_SAFE_INTEGER),
+      };
+      if (!cfg.spend.file.startsWith("/")) throw new Error("SHIM_SPEND_FILE must be an absolute path");
+    } else if (ceiling.some((v) => v !== undefined && v !== "")) {
+      throw new Error("Set all of SHIM_SPEND_FILE, SHIM_MAX_TOTAL_REQUESTS and SHIM_MAX_TOTAL_COMPLETION_TOKENS, or none");
+    } else if (env["SHIM_ALLOW_UNLIMITED"] !== "1") {
+      throw new Error(
+        "MISTRAL_API_KEY is set (key injection mode): set a spend ceiling with SHIM_SPEND_FILE, SHIM_MAX_TOTAL_REQUESTS and SHIM_MAX_TOTAL_COMPLETION_TOKENS, " +
+          "or set SHIM_ALLOW_UNLIMITED=1 to run without one (then the provider must limit the key)",
+      );
+    }
+  }
   return cfg;
 }
 
@@ -174,6 +213,22 @@ export function createShimServer(config: ShimConfig): http.Server {
   const upstreamBase = config.upstream.replace(/\/+$/, "");
   const hostAllow = new Set([...LOOPBACK_NAMES, bareHost(config.host), ...(config.allowedHosts ?? []).map(bareHost)]);
   const tokenHash = config.clientToken !== undefined ? sha256(config.clientToken) : undefined;
+  // Spending limits, key injection mode only.
+  const limited = config.apiKey !== undefined;
+  const perRequest = config.maxTokensPerRequest ?? DEFAULT_MAX_TOKENS_PER_REQUEST;
+  const maxConcurrent = config.maxConcurrent ?? DEFAULT_MAX_CONCURRENT;
+  const account = limited && config.spend ? new FileSpendLedger(config.spend.file) : null;
+  const ceilings = config.spend
+    ? {
+        ...DEFAULT_LIMITS,
+        maxCampaigns: 1,
+        maxModelCalls: config.spend.maxRequests,
+        maxInstanceModelCalls: config.spend.maxRequests,
+        maxCompletionTokens: config.spend.maxCompletionTokens,
+        maxInstanceCompletionTokens: config.spend.maxCompletionTokens,
+      }
+    : DEFAULT_LIMITS;
+  let inFlight = 0;
 
   function checkAuth(req: IncomingMessage): AuthState {
     if (!tokenHash) return "none";
@@ -212,9 +267,21 @@ export function createShimServer(config: ShimConfig): http.Server {
       }
     };
 
+    // What this request holds against the limits, to be given back or settled when it ends.
+    let admitted = false;
+    let reservedTokens = 0;
+    let charged = false;
+    let upstreamStatus = 0;
     res.on("close", () => {
       if (timer) clearTimeout(timer);
       if (!res.writableFinished) abort.abort(); // client went away
+      if (admitted) inFlight -= 1;
+      if (charged && account) {
+        // What the provider reported, if it reported; nothing if it refused the request outright;
+        // otherwise the whole of what was asked for, because what was generated is not known.
+        const used = usage.completion !== undefined ? usage.completion : upstreamStatus >= 400 && upstreamStatus < 500 ? 0 : reservedTokens;
+        void account.settle("shim", { calls: 1, tokens: reservedTokens }, { calls: 1, tokens: used }).catch(() => undefined);
+      }
       status = res.statusCode;
       const u = usage.total !== undefined ? ` tokens=${usage.prompt ?? "-"}/${usage.completion ?? "-"}/${usage.total}` : "";
       log(`${method} ${pathname} ${status} ${Date.now() - started}ms auth=${auth} model=${model}${u}`);
@@ -297,6 +364,37 @@ export function createShimServer(config: ShimConfig): http.Server {
         sendError(res, 400, "Model not allowed by shim", "invalid_request_error");
         return;
       }
+      if (limited) {
+        // One answer per request, and no more tokens than the shim allows.
+        if (p["n"] !== undefined && p["n"] !== 1) {
+          sendError(res, 400, "n must be 1 through this shim", "invalid_request_error");
+          return;
+        }
+        const named = [p["max_tokens"], p["max_completion_tokens"]].filter((v) => v !== undefined && v !== null);
+        if (named.some((v) => typeof v !== "number" || !Number.isInteger(v) || v < 1 || v > perRequest)) {
+          sendError(res, 400, `max_tokens must be a whole number from 1 to ${perRequest} through this shim`, "invalid_request_error");
+          return;
+        }
+        reservedTokens = named.length > 0 ? Math.max(...(named as number[])) : perRequest;
+        if (named.length === 0) body = Buffer.from(JSON.stringify({ ...p, max_tokens: perRequest }), "utf8");
+        if (inFlight >= maxConcurrent) {
+          res.setHeader("retry-after", "1");
+          sendError(res, 429, "Too many requests in flight through this shim", "rate_limit_error");
+          return;
+        }
+        inFlight += 1;
+        admitted = true;
+        if (account) {
+          try {
+            await account.reserve("shim", 1, reservedTokens, ceilings);
+            charged = true;
+          } catch (e) {
+            if (e instanceof LimitExceededError) sendError(res, 429, "The spend ceiling of this shim has been reached", "insufficient_quota");
+            else sendError(res, 503, "The shim's spend account is unavailable", "shim_error");
+            return;
+          }
+        }
+      }
     }
 
     // Build upstream request. Egress is limited to the configured upstream origin.
@@ -321,6 +419,7 @@ export function createShimServer(config: ShimConfig): http.Server {
       return;
     }
 
+    upstreamStatus = up.status;
     if (up.status >= 300 && up.status < 400) {
       void up.body?.cancel().catch(() => undefined);
       sendError(res, 502, "Upstream returned a redirect; refused", "upstream_error");

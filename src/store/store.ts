@@ -59,10 +59,10 @@ function sameCampaign(id: string, record: CampaignRecord): CampaignRecord {
  * Identifies this run of this process. A lock naming our own process id but another
  * instance was left by an earlier process that had the same id, and is dead.
  */
-const PROCESS_INSTANCE = randomBytes(8).toString("hex");
+export const PROCESS_INSTANCE = randomBytes(8).toString("hex");
 
 /** When a process started, as the system records it; null where that cannot be read. */
-function startTimeOf(pid: number): string | null {
+export function startTimeOf(pid: number): string | null {
   try {
     // Field 22 of /proc/<pid>/stat, counted after the command name, which may contain spaces.
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");

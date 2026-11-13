@@ -42,6 +42,12 @@ export const EditorialDecision = z.strictObject({
   previousSha256: z.string().regex(/^[0-9a-f]{64}$/),
   requestId: Id,
   subject: DecisionSubject,
+  /**
+   * For a decision about a draft, the post it is a draft of; null for a narrative. Covered by
+   * the signature, so that which draft holds a post can be read from the log alone and never
+   * from a status field or from where a draft is filed now.
+   */
+  subjectSlot: z.number().int().min(1).nullable(),
   action: DecisionAction,
   actor: HumanActor,
   /** The editor's own reason, recorded verbatim. */

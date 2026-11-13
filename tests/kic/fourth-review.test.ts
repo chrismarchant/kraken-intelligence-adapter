@@ -31,13 +31,16 @@ const RLO = "\u202e";
 const ZWJ = "\u200d";
 const VS16 = "\ufe0f";
 
-async function operator(args: string[], env: Record<string, string>): Promise<{ code: number; out: string }> {
+/** The tool breaks long stored lines and continues them behind "  |     "; this joins them again for matching. */
+const unwrap = (text: string) => text.replace(/\n  \|     /g, "");
+
+async function operator(args: string[], env: Record<string, string>): Promise<{ code: number; out: string; raw: string }> {
   try {
     const { stdout, stderr } = await run(process.execPath, [OPERATOR, ...args], { cwd: REPO, env: { PATH: process.env.PATH ?? "", ...env } });
-    return { code: 0, out: stdout + stderr };
+    return { code: 0, out: unwrap(stdout + stderr), raw: stdout + stderr };
   } catch (error) {
     const failed = error as { code?: number; stdout?: string; stderr?: string };
-    return { code: failed.code ?? 1, out: `${failed.stdout ?? ""}${failed.stderr ?? ""}` };
+    return { code: failed.code ?? 1, out: unwrap(`${failed.stdout ?? ""}${failed.stderr ?? ""}`), raw: `${failed.stdout ?? ""}${failed.stderr ?? ""}` };
   }
 }
 

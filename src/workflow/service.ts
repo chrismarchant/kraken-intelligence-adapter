@@ -178,6 +178,12 @@ export interface RequestDescription {
      */
     basis: Array<{ label: string; lines: string[] }>;
   };
+  /**
+   * Everything the content hash is computed over, in full: the draft or narrative as stored
+   * (apart from its status and how it was generated), the planned post, and the whole brief.
+   * Shown to the editor so that nothing the digest covers is signed unseen.
+   */
+  covers: Record<string, unknown>;
   /** SHA-256 of the content as it is now. */
   contentSha256: string;
   /** What the editor confirms: a digest of this request, its action, subject, instruction and content. */
@@ -802,6 +808,10 @@ export class CampaignService {
       if (draft.status === "superseded" || draft.status === "rejected") {
         throw new WorkflowError("draft-not-revisable", `Draft ${draftId} is ${draft.status}.`);
       }
+      // One revision per draft, read from what exists and not from the status field: a request to
+      // revise is used up by the revision it produced. A further change is asked for on the revision.
+      const existing = record.drafts.find((d) => d.revisionOf === draftId);
+      if (existing) throw new WorkflowError("draft-not-revisable", `Draft ${draftId} has already been revised as ${existing.id}.`);
       const hash = draftContentHash(record, draft);
       // The latest decision about the draft must be the editor's request to revise this exact text.
       const latest = latestDecisionFor(record, { kind: "draft", id: draftId }, this.verifier);
@@ -909,10 +919,17 @@ export class CampaignService {
 
     const draft = record.drafts.find((d) => d.id === subject.id);
     if (!draft) throw new WorkflowError("unknown-draft", `No draft ${subject.id} in this campaign.`);
-    if (draft.status === "superseded") throw new WorkflowError("draft-superseded", `Draft ${subject.id} was superseded by a revision.`);
-    if (draft.status === "rejected") throw new WorkflowError("draft-rejected", `Draft ${subject.id} was rejected.`);
+    // What has happened to a draft is read from the signed log and from what exists, not only from its status field.
+    const latest = latestDecisionFor(record, subject, this.verifier);
+    if (draft.status === "superseded" || record.drafts.some((d) => d.revisionOf === draft.id)) {
+      throw new WorkflowError("draft-superseded", `Draft ${subject.id} was superseded by a revision.`);
+    }
+    if (draft.status === "rejected" || latest?.action === "reject") throw new WorkflowError("draft-rejected", `Draft ${subject.id} was rejected.`);
     if (action === "approve") {
-      if (draft.status === "approved") throw new WorkflowError("already-approved", `Draft ${subject.id} is already approved.`);
+      const held = settledByLog(record, this.verifier).approvals.get(draft.slot);
+      if (held?.subject.id === draft.id && held.subjectContentSha256 === draftContentHash(record, draft)) {
+        throw new WorkflowError("already-approved", `Draft ${subject.id} is already approved.`);
+      }
       // The editor must have been shown a comparison of this exact draft before approving it.
       if (!this.latestEvaluationFor(record, draft.id)) {
         throw new WorkflowError("not-evaluated", `Draft ${subject.id} has not been evaluated. Evaluate the slot before approval.`);
@@ -988,6 +1005,16 @@ export class CampaignService {
     ];
   }
 
+  /** What the content hash of a subject is computed over, with the brief in full instead of as a hash. */
+  private coveredBy(record: CampaignRecord, subject: DecisionSubject): Record<string, unknown> {
+    if (subject.kind === "narrative") {
+      const { status: _status, generation: _generation, ...content } = record.narratives.find((n) => n.id === subject.id) as Narrative;
+      return { narrative: content, brief: record.brief };
+    }
+    const { status: _status, generation: _generation, ...content } = record.drafts.find((d) => d.id === subject.id) as PostDraft;
+    return { draft: content, plannedPost: record.plan?.slots.find((s) => s.slot === content.slot) ?? null, brief: record.brief };
+  }
+
   private contentHashOf(record: CampaignRecord, subject: DecisionSubject): string | null {
     if (subject.kind === "narrative") {
       const narrative = record.narratives.find((n) => n.id === subject.id);
@@ -1020,6 +1047,7 @@ export class CampaignService {
       requestedBy: request.requestedBy,
       expiresAt: request.expiresAt,
       content: this.contentOf(record, request.subject),
+      covers: this.coveredBy(record, request.subject),
       contentSha256: hash,
       digest: requestDigest({ campaignId: record.id, requestId: request.id, action: request.action, subject: request.subject, revisionInstruction: request.revisionInstruction, contentSha256: hash }),
       unchanged: hash === request.subjectContentSha256,
@@ -1179,6 +1207,8 @@ export class CampaignService {
         previousSha256: check.head.sequence === 0 ? GENESIS_SHA256 : check.head.sha256,
         requestId: request.id,
         subject: request.subject,
+        // Read from the record under the lock; the content hash the editor confirmed covers it.
+        subjectSlot: request.subject.kind === "draft" ? (record.drafts.find((d) => d.id === request.subject.id)?.slot ?? null) : null,
         action: request.action,
         actor: actor.data,
         rationale: rationale.data,
@@ -1326,12 +1356,48 @@ export function latestDecisionFor(record: CampaignRecord, subject: DecisionSubje
   return null;
 }
 
-/** The narrative an editor selected, backed by the latest decision on its exact text; otherwise null. */
-export function selectedNarrativeOf(record: CampaignRecord, verifier: DecisionVerifier | null): Narrative | null {
-  for (const narrative of record.narratives) {
-    if (narrative.status !== "selected") continue;
-    const decision = latestDecisionFor(record, { kind: "narrative", id: narrative.id }, verifier);
-    if (decision?.action === "select" && decision.subjectContentSha256 === narrativeContentHash(record, narrative)) return narrative;
+/**
+ * What the signed decision log, and nothing else, says the editor has settled: which draft
+ * holds each post, and which narrative is chosen. Status fields are a convenience for display
+ * and are never consulted, because whoever can write the store can write them.
+ *
+ * A post is held by the draft of the latest approval for that post. A later rejection of, or
+ * request to revise, that same draft empties the post. An earlier approval never comes back:
+ * if the latest one no longer stands, the post is undecided. The chosen narrative is the one
+ * of the latest selection, unless it was rejected afterwards.
+ */
+export interface SettledByLog {
+  /** Post number to the approval that currently holds it. */
+  approvals: Map<number, EditorialDecision>;
+  selection: EditorialDecision | null;
+}
+
+export function settledByLog(record: CampaignRecord, verifier: DecisionVerifier | null): SettledByLog {
+  const approvals = new Map<number, EditorialDecision>();
+  let selection: EditorialDecision | null = null;
+  for (const decision of trustedDecisions(record, verifier)) {
+    if (decision.subject.kind === "narrative") {
+      if (decision.action === "select") selection = decision;
+      else if (decision.action === "reject" && selection?.subject.id === decision.subject.id) selection = null;
+      continue;
+    }
+    if (decision.action === "approve") {
+      if (decision.subjectSlot === null) continue; // not a decision this version could have signed
+      // A draft holds one post at most: approving it for a post takes it out of any other.
+      for (const [slot, held] of approvals) if (held.subject.id === decision.subject.id) approvals.delete(slot);
+      approvals.set(decision.subjectSlot, decision);
+    } else if (decision.action === "reject" || decision.action === "request-revision") {
+      for (const [slot, held] of approvals) if (held.subject.id === decision.subject.id) approvals.delete(slot);
+    }
   }
-  return null;
+  return { approvals, selection };
+}
+
+/** The narrative an editor selected: the one of the latest selection in the log, on its exact text; otherwise null. */
+export function selectedNarrativeOf(record: CampaignRecord, verifier: DecisionVerifier | null): Narrative | null {
+  const { selection } = settledByLog(record, verifier);
+  if (!selection) return null;
+  const narrative = record.narratives.find((n) => n.id === selection.subject.id);
+  if (!narrative) return null;
+  return selection.subjectContentSha256 === narrativeContentHash(record, narrative) ? narrative : null;
 }
