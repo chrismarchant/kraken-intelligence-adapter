@@ -24,6 +24,23 @@ These are the deployment requirements in `docs/architecture/kic-companion.md`, s
 4. The MCP endpoint and the shim listen on a private interface, each behind its bearer token. **Test:** a request without the token is refused; a request with a foreign `Host` is refused.
 5. No outbound connection is possible from the instance except to the model provider and, with OpenBot, to that client's Intelligence project. **Test:** record egress during a campaign run and compare with that list.
 
+## Additional requirements if the workspace is OpenBot — proposed by mediation KIC-ARCH-MED-01
+
+Proposals (D5: P2, P13, P14). None has been tried. OpenBot is a general agent platform: its Bots can browse, sign in and act. An instance is prepare-only only if it is configured to be, and the first proof (D7 step 0) must show that it is. Where a mechanism below has not been confirmed at a released tag, it says so.
+
+| # | Requirement | How it would be checked |
+|---|---|---|
+| 6 | OpenBot runs at a named release tag, with its source unmodified | `git diff` against the tag is empty |
+| 7 | Built-in Bots only. No remote Bots: their own tools are outside OpenBot's approval policy | The Bot list |
+| 8 | Each Bot holds only the KIC tools it needs. Grants are given by a person in the instance (the tenant package does not grant tools) and are written down in the instance's runbook | The grants as OpenBot reports them, compared with the runbook |
+| 9 | Nothing a Bot could use to act outside: no saved site logins; the Bot's browser signed in to nothing; no publishing, messaging, mail or payment app connected; no app-broker key set | The password store, the connections list and the environment file |
+| 10 | The consequential kinds of action (post, send, share, pay, delete, change account settings) are closed for everybody, in the team edition. **Mechanism and effect to be confirmed at the tag.** The personal edition has no admin who can do this | An attempt to submit a post to a stand-in page inside the instance is refused |
+| 11 | Automatic approval of learned skills is off. The personal edition's default is on | The learning settings |
+| 12 | Vendor telemetry is off (`COPILOTKIT_TELEMETRY_DISABLED`, `DO_NOT_TRACK`) | The environment file; recorded egress (check 5) |
+| 13 | The Bots' own model usage has a ceiling, at the model shim or at the provider. KIC's ceilings cover only KIC's own calls | A run that reaches the ceiling is stopped |
+| 14 | Routines are fired by a second process or a cron job, as upstream requires; anything that must not be missed has its own check, because a firing more than ten minutes late is skipped | A routine fires after a restart |
+| 15 | Conversations hold nothing that the client has not agreed may be stored by the Intelligence service in use | Policy, and the licence answer (OD-8) |
+
 ## Configuration that belongs to the client
 
 Kept outside the template's source, in the instance:
