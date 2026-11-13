@@ -110,7 +110,19 @@ Both were remediated in commit `a1affd2c4e9677baa8d15a60fe330ceec13e3c08`.
 | Part A (`independent-review-agent-15`), `docs/review/2026-11-13-review-a3-a1affd2.md` | **changes-requested**: 1 high, 3 medium, 5 low, 1 info. The letters and the stream normaliser were found sound (3,000 random streams against a reference parser, no mismatch). High, and older than this work: characters that are not letters but are drawn as letters (squared-letter emoji, mathematical symbols, combining small letters) were neither refused nor read as letters. Medium: plain look-alikes; **a regression** in the apostrophe rule; evaluator strings that could exceed their own contract and block a campaign |
 | Part B (`independent-review-agent-16`), `docs/review/2026-11-13-review-b3-a1affd2.md` | **approved, with follow-ups** (6 low, 1 info). The lock held in nine volume trials with real processes and about 1,500 kills: nothing lost, nothing duplicated, no worker failed. The HTTP shut-out is gone. The approval covers the store, gateway and MCP code at `a1affd2`, not the commit as a whole |
 
-Remediated in `efe9415` (part A) and `1f159a20109bb0759c54fdc262abd95aa2800294` (part B follow-ups): 262 product and 83 harness tests pass; the secret scan is clean. **Three reviews of `1f159a2` are commissioned: the evaluator and normaliser; a delta review of the store, gateway and MCP follow-ups; and a delta review of the approval path, because files it rests on have changed since `2537386`, the commit its approving reviews covered. Until they are recorded here, no commit meets the review requirement.**
+Remediated in `efe9415` (part A) and `1f159a20109bb0759c54fdc262abd95aa2800294` (part B follow-ups).
+
+**Reviews of `1f159a2`:**
+
+| Review | Outcome |
+|---|---|
+| Approval path, delta from `2537386` (`independent-review-agent-19`), `docs/review/2026-11-13-approval-path-delta-review-1f159a2.md` | **approved**, one low follow-up. Signing, the ledger, the operator tool and the decision contract are byte-identical to `2537386`; every attack re-run was refused or detected |
+| Store, gateway and MCP, delta from `a1affd2` (`independent-review-agent-18`), `docs/review/2026-11-13-review-b4-1f159a2.md` | **approved, with follow-ups** (1 low to medium, 3 low, 1 info). Nine more volume trials of the lock, 1,549 kills: nothing lost or duplicated. The follow-up that mattered: the new limit on decision requests could lock a campaign out of decisions |
+| Evaluator and normaliser (`independent-review-agent-17`), `docs/review/2026-11-13-review-a4-1f159a2.md` | **changes-requested**: 4 high, 5 medium. A regression (a stand-in symbol followed by an exclamation mark); short ruled-out terms never looked for in hashtags, which every earlier review had missed; flags made of two letters; figures and words drawn as emoji. Contracts, creator ranking, the evaluator's output bounds and the stream normaliser held |
+
+Remediated in `e30451c517bae16982ad75599d3f62cc4534ff13`: every character a draft may contain is now named, 694 in all, and looking for a term is rebuilt to read each word every way a reader could; the follow-ups of the store review are fixed. 274 product and 83 harness tests pass; the secret scan is clean. **Two reviews of `e30451c` are commissioned: the evaluator and normaliser; and a delta review covering the store, the gateway, the decision-request change and its effect on the approval path. Until they are recorded here, no commit meets the review requirement.**
+
+This is the fifth round on the rules that look for disguised text. If the next review of them again finds a new way round, the orchestrator will not start a sixth round on its own: whether those rules are to be made complete, or stated to be what they are, pattern rules behind an editor who reads every word, is a question for the owner.
 
 The entries for reviews A and B in the append-only review ledger show their findings as "open", as they were when recorded.
 
