@@ -19,7 +19,7 @@ Order of authority when records disagree: owner directives and accepted decision
 - No product implementation outside an accepted gate. Research, tests in scratch space and documentation are allowed.
 - Never push to `main`. Never merge. Changes go through draft pull requests.
 - **JEV stays disabled.** No call to any TypeSafe decision endpoint, even though a credential is present in the environment. Mocks and recorded fixtures only.
-- No dependency on CopilotKit Intelligence: no Intelligence credentials, endpoints or licence tokens anywhere.
+- CopilotKit Intelligence may be used only under a legitimately obtained licence (owner clarification 2026-11-13). Its memory and learned skills are never authoritative for contracts, permissions or approved skills. Do not strip or modify OpenBot until the full application has been tested and the foundation decision is accepted.
 - Do not import upstream code without a licence check and an entry in `LICENSES/`.
 - Do not write to Kraken, `jev-router` or any other programme repository.
 - Never print, log or commit a credential. Check presence only.
@@ -31,7 +31,7 @@ Order of authority when records disagree: owner directives and accepted decision
 ## Model notes (verified 2026-11-12)
 
 - Product and coding model: `mistral-large-4` / `mistral-large-4-0` on the Mistral API; the key is injected by the session proxy.
-- It returns a `thinking` block before the `text` block and spends most completion tokens on reasoning. Budget `max_tokens` generously and extract the text block.
+- It returns a `thinking` block before the `text` block and spends most completion tokens on reasoning. Budget `max_tokens` generously and extract the text block. OpenBot's OpenAI-compatible client rejects this shape; a normalising shim is required (see `docs/gates/KIC-01-ASSESSMENT.md` §2).
 
 ## Before ending a session
 

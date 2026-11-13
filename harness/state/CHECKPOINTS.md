@@ -2,6 +2,23 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (OD-1 reopened; KIC-01 assessment presented)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees
+CURRENT_GATE: KIC-00 not formally accepted. KIC-01 bounded assessment presented; implementation NOT authorised.
+COMPLETED: owner clarification recorded (Intelligence is to be reused under licence);
+  OpenBot deps installed and personal edition configured in scratch;
+  Mistral Large 4 through OpenBot's model client: fails as shipped, passes with a flattening shim (non-streamed);
+  extension mechanisms, JEV adapter route, licence pages read; docs/gates/KIC-01-ASSESSMENT.md
+OPEN: C1 (boot on a free Intelligence project), C2 (streaming shim), C3 (licence confirmation).
+  OD-1 formal acceptance, OD-7, OD-8, and OD-2..OD-6 from KIC-00.
+NEXT_ACTION: wait for the owner. With OD-7 cleared: run C1 and C2 in scratch, two-day timebox, no product code.
+  Do NOT strip or modify OpenBot. JEV stays disabled.
+REFERENCES: docs/gates/KIC-01-ASSESSMENT.md, docs/decisions/OWNER_DECISIONS.md
+```
+
 ## Orchestrator checkpoint — 2026-11-12 (KIC-00 report presented)
 
 ```
