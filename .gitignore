@@ -1,0 +1,8 @@
+node_modules/
+out/
+data/
+*.log
+.env
+.env.*
+!.env.example
+harness/state/GLOBAL_STOP

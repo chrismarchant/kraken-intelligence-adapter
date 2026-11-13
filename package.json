@@ -1,0 +1,27 @@
+{
+  "name": "kraken-intelligence-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Campaign-preparation intelligence companion. Prepares programmes; never publishes.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --test-reporter=spec \"tests/**/*.test.ts\"",
+    "test:harness": "node --test --test-reporter=spec \"harness/tests/**/*.test.mjs\"",
+    "check": "npm run typecheck && npm test && npm run test:harness",
+    "mcp:stdio": "node src/mcp/stdio.ts",
+    "mcp:http": "node src/mcp/http.ts",
+    "shim": "node src/shim/server.ts",
+    "demo": "node src/cli/demo.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.3"
+  }
+}
