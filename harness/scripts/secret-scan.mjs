@@ -34,7 +34,14 @@ export function entropy(s) {
   return h;
 }
 
-const isPlaceholder = (s) => PLACEHOLDERS.some((p) => s.toLowerCase().includes(p));
+// A placeholder is skipped only when the WHOLE credential value equals it. A longer token that merely
+// contains the word (e.g. a key prefix followed by "dummy") is still a finding.
+const isPlaceholder = (s) => PLACEHOLDERS.includes(s.toLowerCase());
+// Bare 32-character alphanumeric value on a *_KEY / *_TOKEN / *_SECRET name or after "Bearer ".
+const BARE32_RES = [
+  /(?:_KEY|_TOKEN|_SECRET)["']?\s*[:=]\s*["']?([A-Za-z0-9]{32})(?![A-Za-z0-9])/gi,
+  /\bBearer\s+([A-Za-z0-9]{32})(?![A-Za-z0-9])/g,
+];
 
 // Returns rule names that fire on one line.
 export function scanLine(line) {
@@ -42,7 +49,14 @@ export function scanLine(line) {
   const hits = [];
   for (const [name, re] of PREFIX_RULES) {
     const m = re.exec(line);
-    if (m && !isPlaceholder(m[0])) hits.push(name);
+    if (m && !isPlaceholder(m[0].replace(/^Bearer\s+/i, ''))) hits.push(name);
+  }
+  for (const re of BARE32_RES) {
+    re.lastIndex = 0;
+    let b;
+    while ((b = re.exec(line))) {
+      if (!isPlaceholder(b[1]) && entropy(b[1]) >= 3.0) hits.push('bare-32-char-secret');
+    }
   }
   ASSIGN_RE.lastIndex = 0;
   let m;
@@ -52,6 +66,8 @@ export function scanLine(line) {
     if (isPlaceholder(v) || VALUE_STOPWORDS.some((w) => low.includes(w))) continue;
     if (v.length >= 20 && /[0-9]/.test(v) && /[A-Za-z]/.test(v) && entropy(v) >= 3.5) hits.push('high-entropy-assignment');
   }
+  // The bare rule is a fallback for values the other rules miss; do not double-report a line.
+  if (hits.length > 1 && hits.includes('bare-32-char-secret')) return hits.filter((h) => h !== 'bare-32-char-secret');
   return hits;
 }
 

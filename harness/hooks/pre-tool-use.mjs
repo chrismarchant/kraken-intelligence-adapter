@@ -50,14 +50,19 @@ try {
 let stopPath = null;
 try { stopPath = findStop(input && input.cwd); } catch { stopPath = null; }
 
+const deny = (reason) => process.stdout.write(JSON.stringify({
+  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
+}) + '\n');
+
+// Fail CLOSED under a stop (unparseable or empty input, or any error while building the reason: deny);
+// fail OPEN with no stop (any error: print nothing, exit 0). The hook never prints "allow".
 if (stopPath) {
-  const tool = input && typeof input.tool_name === 'string' ? input.tool_name : null;
-  if (!tool || !ALLOW_UNDER_STOP.has(tool)) {
-    const reason = `AEH GLOBAL STOP is active: ${reasonText(stopPath)}. Tool ${tool || '(unknown)'} is denied. ` +
-      'Only the Human Owner clears it: aeh clear --level global --by <name> --reason "...".';
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
-    }) + '\n');
-  }
+  try {
+    const tool = input && typeof input.tool_name === 'string' ? input.tool_name : null;
+    if (!tool || !ALLOW_UNDER_STOP.has(tool)) {
+      deny(`AEH GLOBAL STOP is active: ${reasonText(stopPath)}. Tool ${tool || '(unknown)'} is denied. ` +
+        'Only the Human Owner clears it: aeh clear --level global --by <name> --owner-reference <ref> --reason "...".');
+    }
+  } catch { deny('AEH GLOBAL STOP is active (internal error while evaluating the tool call; denied)'); }
 }
 process.exit(0);

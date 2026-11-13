@@ -29,7 +29,7 @@ function fail(reason, extra = {}) {
 }
 const globalStopReason = () => {
   const s = globalStop(root);
-  return s ? `GLOBAL STOP active (${s.reason}). Clear it with: aeh clear --level global --by <name> --reason "..."` : null;
+  return s ? `GLOBAL STOP active (${s.reason}). Clear it with: aeh clear --level global --by <name> --owner-reference <where the owner authorised it> --reason "..."` : null;
 };
 // Every check-* command refuses to pass under a global stop.
 function guardStop() {
@@ -95,6 +95,12 @@ function cmdStop(clear) {
   if (!reason) return fail('--reason is required');
   if (clear && !by) return fail('--by is required to clear a stop');
   const entry = { at: now(), by, action: clear ? 'clear' : 'stop', level, reason };
+  if (clear && level === 'global') {
+    // A recorded attestation, NOT authentication: the script cannot verify who typed this.
+    const ref = str(flags['owner-reference']);
+    if (!ref) return fail('clearing a global stop requires --owner-reference <text> (pointer to where the owner authorised it: a directive file path, PR or issue URL). This is recorded in the stop log as an attestation; it is not verified.');
+    entry.ownerReference = ref;
+  }
 
   if (level === 'global') {
     const p = P.stop(root);
@@ -159,25 +165,71 @@ function gateViolations(files, gdoc) {
   return out;
 }
 
+// Load the gate map from the BASE revision so a change cannot authorise its own gate.
+// Returns { gdoc, source: 'base'|'head', note }.
+function gateMapFor(base) {
+  if (!base) return { gdoc: loadGates(root), source: 'head', note: 'no base revision: using the gate map in the working tree' };
+  const s = git(root, ['show', `${base}:harness/config/gates.json`]);
+  if (s.ok) {
+    try { return { gdoc: JSON.parse(s.out), source: 'base', note: `gate map loaded from base ${base}` }; } catch { /* fall through */ }
+  }
+  return { gdoc: loadGates(root), source: 'head', note: `base ${base} has no readable harness/config/gates.json (first introduction, or no base): FALLING BACK to the gate map in the checked commit, so this check cannot detect a self-authorised gate` };
+}
+
+function gateMapChanges(base, head, baseDoc, headDoc) {
+  const d = git(root, ['diff', '--name-only', '--no-renames', base, head, '--', 'harness/config/gates.json']);
+  if (!d.ok || !d.out.trim()) return [];
+  const byId = (doc) => new Map(((doc && doc.gates) || []).map((g) => [g.id, g]));
+  const a = byId(baseDoc), b = byId(headDoc);
+  const out = [];
+  for (const id of new Set([...a.keys(), ...b.keys()])) {
+    const x = a.get(id), y = b.get(id);
+    if (!x) out.push(`gate ${id}: added (status ${y.status})`);
+    else if (!y) out.push(`gate ${id}: removed`);
+    else {
+      const bits = [];
+      if (x.status !== y.status) bits.push(`status ${x.status} -> ${y.status}`);
+      if (JSON.stringify(x.paths) !== JSON.stringify(y.paths)) bits.push('paths changed');
+      if (x.reviewRequired !== y.reviewRequired) bits.push(`reviewRequired ${x.reviewRequired} -> ${y.reviewRequired}`);
+      if (bits.length) out.push(`gate ${id}: ${bits.join(', ')}`);
+    }
+  }
+  if (JSON.stringify(baseDoc && baseDoc.alwaysAllowed) !== JSON.stringify(headDoc && headDoc.alwaysAllowed)) out.push('alwaysAllowed changed');
+  return out;
+}
+
 function cmdCheckGates() {
   if (guardStop()) return;
   let files;
+  let base = null;
+  let head = 'HEAD';
   if (flags.files !== undefined) files = list(flags.files).flatMap((s) => String(s).split(',')).map((s) => s.trim()).filter(Boolean);
   else {
-    const base = str(flags.base);
+    base = str(flags.base);
     if (!base) return fail('--base <ref> is required (or --files for tests)');
-    const head = str(flags.head) || 'HEAD';
-    const d = git(root, ['diff', '--name-only', base, head]);
+    head = str(flags.head) || 'HEAD';
+    // --no-renames: a rename is reported as a deletion of the source AND an addition of the destination.
+    const d = git(root, ['diff', '--name-only', '--no-renames', '-z', base, head]);
     if (!d.ok) return fail(`git diff failed: ${d.err.trim().split('\n')[0]}`);
-    files = d.out.split('\n').filter(Boolean);
+    files = d.out.split('\0').filter(Boolean);
   }
-  const v = gateViolations(files, loadGates(root));
+  const { gdoc, source, note } = gateMapFor(base);
+  const notes = [note];
+  if (base && source === 'base') {
+    const h = git(root, ['show', `${head}:harness/config/gates.json`]);
+    let headDoc = null;
+    try { headDoc = h.ok ? JSON.parse(h.out) : null; } catch { headDoc = null; }
+    for (const c of gateMapChanges(base, head, gdoc, headDoc)) {
+      notes.push(`NOTICE gate map change not in effect for this check (needs the owner's merge to the base first): ${c}`);
+    }
+  }
+  const v = gateViolations(files, gdoc);
   if (v.length) {
     exit = 1;
-    return emit({ ok: false, reason: 'changed paths belong to gates that are not authorised', violations: v }, [
-      'FAIL: changed paths violate gate state', ...v.map((x) => `  ${x.path}: ${x.reason}`)]);
+    return emit({ ok: false, reason: 'changed paths belong to gates that are not authorised', gateMapSource: source, notes, violations: v }, [
+      ...notes, 'FAIL: changed paths violate gate state', ...v.map((x) => `  ${x.path}: ${x.reason}`)]);
   }
-  emit({ ok: true, checked: files.length }, [`check-gates: ${files.length} changed path(s) allowed`]);
+  emit({ ok: true, checked: files.length, gateMapSource: source, notes }, [...notes, `check-gates: ${files.length} changed path(s) allowed`]);
 }
 
 // ---------------------------------------------------------------- check-records
@@ -250,16 +302,33 @@ function evaluateReviews(reviews, gate, commit, root) {
     const other = reviews.filter((r) => r.gate === gate).length;
     return { ok: false, reasons: [`no review is bound to commit ${commit} for gate ${gate}` + (other ? ` (${other} review(s) exist for other commits; a review of an ancestor does not count)` : '')] };
   }
+  // Blocking: ANY entry for this commit+gate can fail the check; a passing entry never outvotes it.
+  const hasSignoff = (f) => f.ownerSignoff && ['by', 'at', 'reference'].every((k) => typeof f.ownerSignoff[k] === 'string' && f.ownerSignoff[k].trim());
+  const blockingFinding = (f) => {
+    if (!['high', 'critical'].includes(f.severity)) return null;
+    if (f.status === 'open') return 'open';
+    if (f.status === 'fixed') return FULL_SHA.test(f.remediationCommit || '') ? null : 'marked fixed without remediationCommit (treated as open)';
+    if (f.status === 'accepted' || f.status === 'wontfix') return hasSignoff(f) ? null : `${f.status} without ownerSignoff {by, at, reference}`;
+    return 'unrecognised status (treated as open)';
+  };
+  const blocking = [];
+  for (const r of cands) {
+    if (['changes-requested', 'failed', 'unavailable'].includes(r.verdict)) blocking.push(`review ${r.id}: verdict is ${r.verdict}`);
+    for (const f of r.findings || []) {
+      const why = blockingFinding(f);
+      if (why) blocking.push(`review ${r.id}: ${f.severity} finding ${f.id} ${why}`);
+    }
+  }
+  // Qualifying: independent, different principal (self-declared), approving verdict, report file exists.
   const results = cands.map((r) => {
     const why = [];
     if (r.independent !== true) why.push('review not marked independent');
     if (!r.reviewer || !r.author || r.reviewer.id === r.author.id) why.push('reviewer is the author');
     if (!['approve', 'approve-with-followups'].includes(r.verdict)) why.push(`verdict is ${r.verdict}`);
     if (!r.reportPath || !fs.existsSync(path.join(root, r.reportPath))) why.push(`report file missing: ${r.reportPath}`);
-    const open = (r.findings || []).filter((f) => ['high', 'critical'].includes(f.severity) && f.status === 'open');
-    if (open.length) why.push(`open ${open.map((f) => f.severity).join('/')} finding(s): ${open.map((f) => f.id).join(', ')}`);
     return { id: r.id, why };
   });
+  if (blocking.length) return { ok: false, reasons: [...blocking, ...results.filter((x) => x.why.length).map((x) => `review ${x.id} does not qualify: ${x.why.join('; ')}`)] };
   const good = results.find((x) => x.why.length === 0);
   if (good) return { ok: true, review: good.id, reasons: [] };
   return { ok: false, reasons: results.map((x) => `review ${x.id}: ${x.why.join('; ')}`) };

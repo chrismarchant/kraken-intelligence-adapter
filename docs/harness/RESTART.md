@@ -24,7 +24,7 @@ npm run test:harness
 
 ## 3. Global stop first
 
-If `harness/state/GLOBAL_STOP` exists, stop. Report its reason (it holds reason, time, who). Do not delete it, edit it or work around it. Only the Human Owner clears it: `node harness/scripts/aeh.mjs clear --level global --by <name> --reason "..."`. Read-only work is still allowed.
+If `harness/state/GLOBAL_STOP` exists, stop. Report its reason (it holds reason, time, who). Do not delete it, edit it or work around it. Only the Human Owner clears it: `node harness/scripts/aeh.mjs clear --level global --by <name> --owner-reference <where the owner authorised it> --reason "..."`. Read-only work is still allowed.
 
 ## 4. Reconcile ledger against git
 

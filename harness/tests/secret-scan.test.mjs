@@ -53,11 +53,40 @@ test('flags high-entropy assignments to KEY/TOKEN/SECRET/PASSWORD names', () => 
   assert.deepEqual(r.json.findings.map((f) => f.path).sort(), ['f.env.txt', 'g.json', 'h.py', 'i.txt']);
 });
 
-test('does not flag placeholders proxy-injected and dummy', () => {
+test('does not flag a value that is exactly the placeholder proxy-injected or dummy', () => {
   const r = scan({
-    'ok1.txt': 'MISTRAL_API_KEY=proxy-injected\n', 'ok2.txt': 'API_KEY=dummy\nTOKEN="dummy-dummy-dummy-dummy-1234"\n',
-    'ok3.txt': 'Authorization: Bearer proxy-injected\n', 'ok4.txt': 'k = "sk' + '-dummy-dummy-dummy-dummy-dummy"\n',
+    'ok1.txt': 'MISTRAL_API_KEY=proxy-injected\n', 'ok2.txt': 'API_KEY=dummy\nTOKEN="dummy"\n',
+    'ok3.txt': 'Authorization: Bearer proxy-injected\n', 'ok4.txt': 'API_KEY="proxy-injected"\nBearer dummy\n',
   });
+  assert.equal(r.code, 0, r.out);
+});
+
+test('F14: a placeholder word inside a longer token is NOT skipped', () => {
+  const r = scan({
+    'a.txt': 'k = "sk' + '-dummy-dummy-dummy-dummy-dummy"\n',
+    'b.txt': 'k = "sk' + '-proxy-injected-' + rand(30, 4) + '"\n',
+    'c.txt': 'Authorization: Bearer dummy' + rand(30, 8) + '\n',
+    'd.txt': 'API_KEY=dummy' + rand(26, 12) + '\n',
+  });
+  assert.equal(r.code, 1);
+  assert.deepEqual(r.json.findings.map((f) => f.path).sort(), ['a.txt', 'b.txt', 'c.txt', 'd.txt']);
+});
+
+test('F14: bare 32-character alphanumeric values on _KEY/_TOKEN/_SECRET names or after Bearer are flagged, value never printed', () => {
+  const v1 = 'ab' + rand(30, 21).toLowerCase(); // letters and digits, no prefix, no digit guarantee
+  const v2 = rand(32, 22).replace(/[0-9]/g, 'q'); // letters only: escapes the digit-required assignment rule
+  const v3 = rand(32, 23).replace(/[0-9]/g, 'k');
+  const r = scan({
+    'a.txt': `SERVICE_KEY=${v2}\n`, 'b.txt': `WEBHOOK_SECRET: "${v1.replace(/[0-9]/g, 'z')}"\n`, 'c.txt': `curl -H "Authorization: Bearer ${v3}"\n`,
+  });
+  assert.equal(r.code, 1);
+  assert.ok(r.json.findings.some((f) => f.rule === 'bare-32-char-secret' && f.path === 'a.txt'), r.out);
+  assert.deepEqual([...new Set(r.json.findings.map((f) => f.path))].sort(), ['a.txt', 'b.txt', 'c.txt']);
+  assert.ok(!r.out.includes(v2) && !r.err.includes(v2) && !r.out.includes(v3));
+});
+
+test('F14: 32-character low-entropy or non-credential-named values are not flagged by the bare rule', () => {
+  const r = scan({ 'ok.txt': `SERVICE_KEY=${'a'.repeat(32)}\nCHECKSUM=${rand(32, 31)}\n` });
   assert.equal(r.code, 0, r.out);
 });
 

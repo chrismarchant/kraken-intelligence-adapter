@@ -88,6 +88,6 @@ test('global stop makes every check-* fail; clearing restores them', () => {
   assert.notEqual(aeh(root, 'check-records').code, 0);
   assert.notEqual(aeh(root, 'check-gates', '--files', 'README.md').code, 0);
   assert.notEqual(aeh(root, 'check-reviews', '--commit', 'a'.repeat(40)).code, 0);
-  assert.equal(aeh(root, 'clear', '--level', 'global', '--reason', 'done', '--by', 'owner').code, 0);
+  assert.equal(aeh(root, 'clear', '--level', 'global', '--reason', 'done', '--by', 'owner', '--owner-reference', 'docs/decisions/OWNER_DECISIONS.md').code, 0);
   assert.equal(aeh(root, 'check-records').code, 0);
 });
