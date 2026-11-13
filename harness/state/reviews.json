@@ -1616,6 +1616,87 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-a3-a1affd2.md",
       "at": "2026-11-13T14:50:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-b3-a1affd2",
+      "gate": "KIC-01",
+      "commit": "a1affd2c4e9677baa8d15a60fe330ceec13e3c08",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-16",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/store/**",
+        "src/workflow/spend.ts",
+        "src/workflow/ledger.ts (lock use)",
+        "src/gateway/** (usage handling re-checked; the rest as reviewed at 1d8bafe)",
+        "src/mcp/**",
+        "evaluateDrafts and the budget path in src/workflow/service.ts",
+        "tests for those",
+        "claims (k)-(p)"
+      ],
+      "skipped": [
+        {
+          "path": "src/evaluation/**, src/contracts/**, src/shim/**",
+          "reason": "the other reviewer's scope, where rev-2026-11-13-agent-a3-a1affd2 requested changes"
+        },
+        {
+          "path": "a file of another user at the lock path; a real file system without hard links; pinning at 256 connections",
+          "reason": "not covered by the reviewer"
+        }
+      ],
+      "verdict": "approve-with-followups",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "low",
+          "summary": "The no-op short-cut for a repeated evaluation compares with any stored evaluation, not the latest for the post",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "low",
+          "summary": "A named pipe at the lock path blocks the caller for ever",
+          "status": "open"
+        },
+        {
+          "id": "3",
+          "severity": "low",
+          "summary": "Reported completion capped at ten times each attempt's allowance, above the reservation",
+          "status": "open"
+        },
+        {
+          "id": "4",
+          "severity": "low",
+          "summary": "Old decision requests are never removed; the record grows without budget",
+          "status": "open"
+        },
+        {
+          "id": "5",
+          "severity": "info",
+          "summary": "A connection flood delays callers on fresh connections",
+          "status": "accepted"
+        },
+        {
+          "id": "6",
+          "severity": "low",
+          "summary": "An empty right file counts as a live remover for ever",
+          "status": "open"
+        },
+        {
+          "id": "7",
+          "severity": "low",
+          "summary": "Each assembly call writes a new export directory without limit",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-b3-a1affd2.md",
+      "at": "2026-11-13T15:05:00Z"
     }
   ]
 }
