@@ -38,13 +38,17 @@ Invalid values are a startup error (the process exits with a message that never 
 | `SHIM_HOST` | `127.0.0.1` | Listen address. A non-loopback value (anything except `127.0.0.1`, `::1`, `localhost`) requires `SHIM_CLIENT_TOKEN` |
 | `SHIM_PORT` | `8787` | Listen port, integer 0 to 65535 (0 is for tests) |
 | `SHIM_UPSTREAM` | `https://api.mistral.ai` | Only egress target; `/v1/...` is appended. Must be `https:`, or `http:` only for a loopback host (test mocks). No embedded credentials |
-| `SHIM_ALLOWED_MODELS` | unset (any) | Comma list; other models get 400 before any upstream call |
+| `SHIM_ALLOWED_MODELS` | unset (any) in pass-through; **required in key injection** | Comma list; other models get 400 before any upstream call |
 | `SHIM_MAX_BODY_BYTES` | `2097152` | Request body limit, positive integer; larger gets 413 |
 | `SHIM_UPSTREAM_TIMEOUT_MS` | `120000` | Positive integer. Time to response headers and idle time between body chunks; exceeded gets 504 (or the stream is cut if headers were already sent) |
 | `SHIM_EXPOSE_REASONING` | off | `1`/`true`: add thinking text as `reasoning_content` |
 | `SHIM_CLIENT_TOKEN` | unset | At least 24 characters, no whitespace. When set, every `/v1/*` request must carry `Authorization: Bearer <token>`. Required if `MISTRAL_API_KEY` is set or `SHIM_HOST` is not loopback |
 | `SHIM_ALLOWED_HOSTS` | unset | Comma list of extra `Host` header names accepted (see Security notes) |
 | `MISTRAL_API_KEY` | unset | Enables key injection mode; replaces the Authorization header upstream. Requires `SHIM_CLIENT_TOKEN` |
+| `SHIM_MAX_TOKENS_PER_REQUEST` | `32000` | Key injection only. The most completion tokens a request may ask for; a larger figure gets 400, and a request that names none is given this. A request for more than one answer (`n`) gets 400 |
+| `SHIM_MAX_CONCURRENT` | `8` | Key injection only. Requests in flight at once; more get 429 |
+| `SHIM_SPEND_FILE`, `SHIM_MAX_TOTAL_REQUESTS`, `SHIM_MAX_TOTAL_COMPLETION_TOKENS` | unset | Key injection only. A persistent ceiling on everything spent through the shim. Each request is charged at what it asked for when admitted and corrected to what the provider reported; one that reports nothing stays charged in full; a provider refusal costs no tokens. At the ceiling, requests get 429 and nothing is sent upstream. The file must be an absolute path out of the workspace's reach |
+| `SHIM_ALLOW_UNLIMITED` | unset | `1` starts key injection without a ceiling. Otherwise the process refuses to start in key injection unless all three ceiling variables are set |
 
 ## Pointing a client at it
 
@@ -74,6 +78,8 @@ In a session where the network proxy injects the key, run the shim with `NODE_US
 Deployment note for a client instance: the shim process holds `MISTRAL_API_KEY`; the agent workspace is given only `SHIM_CLIENT_TOKEN` (and the shim URL), never the provider key. Rotating either secret is then independent, and a leaked workspace token cannot reach any endpoint beyond chat completions and model listing.
 
 ## Security notes
+
+- Spending: in key injection the holder of the client token spends the provider's key. The limits above exist for that reason (approval-path security review, 2026-11-13). In pass-through the caller spends its own key and nothing is limited. In key injection a request body that names no `max_tokens` is rewritten to carry the shim's cap; otherwise bodies are still forwarded as written.
 
 - Path and method allowlist: only `POST /v1/chat/completions`, `GET /v1/models` and `GET /v1/models/<id>` are forwarded. Batch, files, fine-tuning and all DELETE/PUT/PATCH requests are refused with 404 or 405 before any upstream call. Path traversal such as `%2e%2e` or an encoded slash fails the id pattern and gets 404.
 - Client authentication: when `SHIM_CLIENT_TOKEN` is set, `/v1/*` requires `Authorization: Bearer <token>`; otherwise 401 and nothing is forwarded. The comparison hashes both sides with SHA-256 and uses `timingSafeEqual`, so neither content nor length leaks through timing. In key injection mode the token is consumed by the shim and never forwarded; the upstream request carries the injected key. `/healthz` is unauthenticated.

@@ -8,7 +8,7 @@ No client is named and none needs to be. The questions describe a pattern: a sma
 
 - OpenBot's README: Kubernetes or production use "requires a production Intelligence license beyond evaluation. OpenBot for Business includes Intelligence for use with OpenBot." Managed Intelligence "needs no separate license token". The local licence lasts 30 days and is renewable.
 - The public pricing page (read 2026-11-13): a free plan; pay as you go per organisation with included interactions and unpublished graduated rates; annual plans, the only ones with offline operation. OpenBot for Business is priced per active user and "covers CopilotKit Intelligence to run OpenBot for Business"; "Building agents into your own product requires a separate Intelligence license."
-- The documentation describes self-hosted Intelligence as a preview and "not a production installation".
+- The local evaluation of Intelligence on macOS is described as "not a production installation"; self-hosting on Kubernetes with a production licence token is described as the production route, and OpenBot's Helm chart bundles it. OpenBot for Business is offered as early access.
 
 ## Licence and plan
 
@@ -23,12 +23,13 @@ No client is named and none needs to be. The questions describe a pattern: a sma
 ## Where data is kept
 
 8. With managed Intelligence: where are conversation threads, memory and learning evidence stored (region), for how long, and how are they deleted on request? Is a data-processing agreement available, and who are the sub-processors?
-9. Can a client run Intelligence entirely in its own infrastructure in production? On which plan? When does self-hosted Intelligence stop being a preview? What does a self-hosted deployment report back, and can it run without an outbound connection?
+9. A client runs Intelligence entirely in its own infrastructure, on Kubernetes, in production. On which plan, and how is the production licence token obtained and renewed? What does such a deployment report back, and can it run without an outbound connection?
 10. What telemetry do the runtime, the Channels packages and OpenBot send by default, and do `COPILOTKIT_TELEMETRY_DISABLED` and `DO_NOT_TRACK` switch all of it off?
 
 ## Channels
 
-11. Does reaching Slack or Teams from a self-hosted OpenBot require the managed channel runner, or can OpenTag and the Channels packages run entirely in the client's infrastructure? Under what licence is OpenTag distributed?
+11. Reaching Slack or Teams from a self-hosted OpenBot: the public OpenTag repository requires an Intelligence key and has Intelligence hold the Slack and Teams credentials, and at the commit we read it does not implement what OpenBot `v1.0.2` expects of it. Can the whole path run in the client's infrastructure with the client's own credentials, and which OpenTag version pairs with which OpenBot release? (Channels are deferred on our side; this is for the record.)
+12a. OpenBot `v1.0.2` accepts a custom MCP server only over https at a hostname. Is attaching a tool server on the same private network supported in a release, and from which version?
 12. Is multi-workspace installation supported, or one workspace per instance?
 
 ## Models and upgrades

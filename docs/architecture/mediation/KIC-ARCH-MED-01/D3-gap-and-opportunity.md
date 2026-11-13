@@ -1,6 +1,6 @@
 # D3 — Architecture gap and opportunity report
 
-Mediation KIC-ARCH-MED-01. Findings are ranked by how much they change the decision. Evidence is in D1 (this repository) and D2 (upstream); labels are as in D2. Nothing here was established by running OpenBot or any of the other projects. This version includes the corrections from the independent review of the package (`docs/review/2026-11-13-mediation-review-ee303a2.md`).
+Mediation KIC-ARCH-MED-01. Findings are ranked by how much they change the decision. Evidence is in D1 (this repository) and D2 (upstream); labels are as in D2. Nothing here was established by running OpenBot or any of the other projects. This version includes the corrections from both independent reviews of the package (`docs/review/2026-11-13-mediation-review-ee303a2.md`, `docs/review/2026-11-13-mediation-re-review-177a8c4.md`) and the release-tag and OpenTag audits in A1.
 
 ## Summary
 
@@ -18,7 +18,7 @@ No OpenBot-derived runtime exists in this programme. This repository is a standa
 
 ### 2. All five depend on CopilotKit Intelligence; the licence tier and the data location are undecided (risk, high)
 
-Every project refuses to run conversations without Intelligence (V). OpenBot's README states that Kubernetes or production use needs "a production Intelligence license beyond evaluation" and that "OpenBot for Business includes Intelligence for use with OpenBot" (V). Managed Intelligence needs no licence token (V) but keeps conversation threads in the vendor's service, which sits uneasily with a client-owned instance. Self-hosted Intelligence is documented as a non-production preview, and the local licence is a 30-day renewable one on macOS with Docker Desktop (V, D). Which plan a client-owned production instance needs is **not verified**. This is OD-8, and it now gates more than before: memory, Slack and Teams, team Bots and isolated computers all sit behind the edition and licence.
+Every project refuses to run conversations without Intelligence (V). OpenBot's README states that Kubernetes or production use needs "a production Intelligence license beyond evaluation" and that "OpenBot for Business includes Intelligence for use with OpenBot" (V). Managed Intelligence needs no separate licence token (V) and presumably keeps conversation threads in the vendor's service, which sits uneasily with a client-owned instance. Self-hosting Intelligence on Kubernetes with a production licence is the documented production route and OpenBot's Helm chart bundles it; only the local evaluation on macOS, with its 30-day renewable licence, is described as not for production (V, D). OpenBot for Business is offered as early access. Which plan a client-owned production instance needs is **not verified**. This is OD-8, and it now gates more than before: memory, Slack and Teams, team Bots and isolated computers all sit behind the edition and licence.
 
 ### 3. OpenBot's two editions are different products for governance purposes (gap, high)
 
@@ -37,7 +37,7 @@ The earlier assessment worked with the personal edition. The standing rule "auto
 
 OpenBot is a general agent platform. In both editions the cloud browser, the cloud network and a password manager are on (V). The six kinds of consequential action — including posting and sending — ask first, but are "open by default": a person can answer "always" (V). The start script can provision app connectors through a third-party broker (S). So a Bot with a browser in which someone is signed in to LinkedIn could post, after one approval that can be made permanent. Checking that "no publishing tool is granted" would not catch this, because the browser is the tool.
 
-This repository's guarantee that it cannot publish is unaffected: it has no such capability. But an instance that puts OpenBot in front of it would not be prepare-only unless it is made so. In the team edition an admin can close kinds of action for everybody; whether the browser, network and password manager can be switched off or confined at a released tag is **not verified**; in the personal edition there is no admin to do it. This is the largest risk in the recommended option and must be settled in the first proof (D7).
+This repository's guarantee that it cannot publish is unaffected: it has no such capability. But an instance that puts OpenBot in front of it would not be prepare-only unless it is made so. What was then read at the release tag (A1): in the team edition an instance can run with no Bot computer at all, an admin can switch off the browser, network and password-manager capabilities, and can set a kind of action to "Members do it themselves", which is the only setting under which the Bot never does it ("Ask every time" still lets a person allow it once). **In the personal edition none of this is available**: a computer is mandatory, the capabilities are fixed on, and team settings are not read. None of it has been run. This is the largest risk in the recommended option; the first proof tests it (D7 step 0d), and the simplest safe arrangement is no Bot computer, since campaign preparation needs no browsing.
 
 ### 5. Skins add nothing to the architecture (finding, decisive for Option B)
 
@@ -79,7 +79,7 @@ It shares nothing with OpenBot and would be a second runtime, store, scheduler a
 
 ### 10. Channels is a messaging layer; through OpenBot it can also carry tool approvals (opportunity, limited; a decision is needed)
 
-It contains no social publishing (S), so it is not a route to LinkedIn. OpenBot reaches Slack and Teams through OpenTag, described in OpenBot's source as CopilotKit's open-source front on the Channels SDK (V); OpenTag's own repository was not among the clones, so its licence, deployment and hosted dependencies are not verified.
+It contains no social publishing (S), so it is not a route to LinkedIn. OpenBot reaches Slack and Teams through OpenTag, described in OpenBot's source as CopilotKit's open-source front on the Channels SDK (V). The read-only audit of OpenTag (A1) found that it requires CopilotKit Intelligence, that Intelligence holds the Slack and Teams credentials, and that the public repository at the commit read does not implement what OpenBot `v1.0.2` expects of it.
 
 Two different things must not be confused. The Channels SDK's own choice prompt is held in memory by default and is unsupported on the managed path (S). But through OpenTag, an **OpenBot tool approval can be answered by a card in Slack or Teams and is recorded durably in OpenBot's approvals service** (V). So adopting channels means deciding whether a Bot's tool permissions may be granted from a chat message.
 
@@ -91,7 +91,7 @@ OpenBot's own schema comment says a reclaimed item "may already have called a to
 
 ### 12. OpenBot's approval layer is a per-person, unsigned control (gap, medium)
 
-"Extra vigilant" is each person's own switch and is off by default (V). An admin can close kinds and add team rules in the team edition only. Per OpenBot's documentation, a remote Bot's own tools are outside the policy (D). Decisions are rows and audit entries, not signatures. For this programme: built-in Bots only; team rules rather than personal switches where the edition allows; and the signed decision log as the sole authority for editorial decisions.
+"Extra vigilant" is each person's own switch and is off by default (V). An admin can set a kind to "Ask every time" or "Members do it themselves", and add team rules, in the team edition only. Per OpenBot's documentation, a remote Bot's own tools are outside the policy (D). Decisions are rows and audit entries, not signatures. For this programme: built-in Bots only; team rules rather than personal switches where the edition allows; and the signed decision log as the sole authority for editorial decisions.
 
 ### 13. There is no feedback path, and there cannot be one until Kraken defines a receipt (gap, medium)
 
@@ -99,15 +99,15 @@ Learning from execution needs an outcome record. This repository has none becaus
 
 ### 14. Bot model spend has no ceiling and no owner (gap, medium)
 
-This repository caps its own model calls per campaign and per instance. The Bots' own conversation with the model goes through the shim and is not capped by anything; OpenBot records usage but does not limit it. The spend ceiling decision (OD-6) is open. Any live proof spends money on both.
+This repository caps its own model calls per campaign and per instance. The Bots' own conversation with the model goes through the shim; OpenBot records usage but does not limit it. When this was first written nothing capped it. The approval-path security review found the same gap, and the shim now limits spend in key-injection mode (commit `12a7626`: a cap per request, a concurrency limit, a persistent ceiling). The figure for the ceiling is the owner's (OD-6).
 
 ### 15. Upstream is moving very fast, on private interfaces, ahead of its releases (risk, medium)
 
-OpenBot: at least 200 commits in five days, 85% from one author; three unreleased migrations on main; headless turns reach into five private runtime methods "restated by hand" (V). Channels: three minor versions in under three weeks. A client instance must pin a released tag and treat each upgrade as a tested change. Capabilities read on main must be re-checked at the tag. The less of OpenBot's inside this programme touches, the cheaper each upgrade is.
+OpenBot: at least 200 commits in five days, 85% from one author; three unreleased migrations on main; headless turns reach into five private runtime methods "restated by hand" (V). Channels: three minor versions in under three weeks. A client instance must pin a released tag — `v1.0.2` is the latest — and treat each upgrade as a tested change. The capabilities relied on were re-checked at that tag (A1). The less of OpenBot's inside this programme touches, the cheaper each upgrade is.
 
 ### 16. OpenBot is an MCP client, not an MCP server (constraint, medium)
 
-OpenBot publishes a REST API and an AG-UI endpoint (S), but nothing can call it through the standard tool interface. So OpenBot is not the stable interface a future intelligence provider such as Metis would plug into. The KIC MCP server can be: OpenBot is one client of it today, and another intelligence could be a second.
+OpenBot has an AG-UI endpoint, and on main a published REST API specification that is absent at `v1.0.2` (S), but nothing can call it through the standard tool interface. So OpenBot is not the stable interface a future intelligence provider such as Metis would plug into. The KIC MCP server can be: OpenBot is one client of it today, and another intelligence could be a second.
 
 ### 17. Telemetry defaults send usage data to the vendor (gap, low)
 
@@ -116,6 +116,10 @@ SDK telemetry is on by default in OpenDots, OpenMuse and the Channels core, and 
 ### 18. The `vector` extension requirement is narrower than recorded (correction, low)
 
 OpenBot's first migration creates the extension and a later one drops it (V). The database role must be able to create and drop it during migration, but OpenBot does no local vector search.
+
+### 19. At the release tag, the KIC MCP server cannot be attached over a private interface (risk, high for the first proof)
+
+At `v1.0.2` OpenBot accepts a custom MCP server only over https at a hostname that is not an address literal, `localhost` or an internal name; an admin adds it, with one stored credential used for everybody (S, re-read). The loopback override exists only on unreleased main. This programme's design assumed the MCP endpoint would sit on a private interface behind a token. Attaching it to an unmodified `v1.0.2` needs TLS and a name, and it is not known whether OpenBot will then reach a name that resolves to a private address. The first step of the proof has to settle this; if it cannot be done without modifying OpenBot, the foundation is not usable at this release.
 
 ## Redundancy check
 

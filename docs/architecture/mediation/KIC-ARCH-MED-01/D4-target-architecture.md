@@ -1,14 +1,14 @@
 # D4 — Recommended target architecture
 
-Mediation KIC-ARCH-MED-01. A recommendation for owner review. Nothing in it is implemented beyond what D1 lists, and nothing in it has been run inside OpenBot. This version includes the corrections from the independent review of the package.
+Mediation KIC-ARCH-MED-01. **Provisionally accepted by the owner on 2026-11-13**, subject to independent review of the corrected package; that review approved it with corrections, which are in this version. Nothing in it is implemented beyond what D1 lists, and nothing in it has been run inside OpenBot. Statements about OpenBot were read in source and re-checked at release tag `v1.0.2` (A1). Where a line below describes how an instance would be arranged, it is a proposal: no instance exists.
 
 ## Recommendation in one paragraph
 
-Keep OpenBot, unmodified and pinned to a released version, as the workspace and agent runtime. Keep this repository's MCP server as the one boundary through which every campaign capability is reached, and as the place where editorial decisions, eligibility and budgets are enforced. Use what OpenBot already has that fits — routines, hand-off between Bots with per-Bot grants, its approval gateway, its audit — set up in each instance, not by adding OpenDuet, OpenDots or OpenMuse. Treat skins as a per-person display choice. Add channels later, narrowly. Keep every external business action with Kraken, and configure each instance so that a Bot cannot take one through its browser. This is Option A, with the free part of Option B (skins) and the part of Option C that already exists (the boundary), and without a new control plane. It is conditional on the first proof and on the licence; if either fails, the fallback already recorded in OD-1 — the same MCP server and operator tool without OpenBot — loses nothing that has been built.
+OpenBot, unmodified and pinned to release `v1.0.2`, is the **preferred workspace candidate, conditional on licensing, runtime verification and confinement** (owner's decision). This repository's MCP server is the authoritative campaign-preparation boundary: every campaign capability is reached through it, and editorial decisions, eligibility and budgets are enforced there. Use what OpenBot already has that fits — routines, hand-off between Bots with per-Bot grants, its approval gateway, its audit — set up in each instance, not by adding OpenDuet, OpenDots or OpenMuse, whose standalone runtimes are excluded. Treat skins as a per-person display choice. Channels are deferred. Kraken is the sole authority for external commercial execution, and each instance would be arranged so that a Bot cannot act outside: in the first place by giving it no computer. This is Option A, with the free part of Option B (skins) and the part of Option C that already exists (the boundary), and without a new control plane. Until OpenBot has passed its runtime, streaming, persistence, tool-execution and confinement tests, the working system is this repository without it, and nothing that has been built is lost either way.
 
-## A point the owner should confirm
+## What "execution" means here (confirmed by the owner)
 
-The directive calls OpenBot the foundation for "execution". Two different things are called execution:
+The directive called OpenBot the foundation for "execution". Two different things are called execution, and the owner has confirmed Kraken as the sole authority for the second:
 
 | | Meaning | Owner |
 |---|---|---|
@@ -34,7 +34,7 @@ flowchart TB
       BOTS["Built-in Bots<br/>campaign assistant + specialists<br/>granted KIC tools only"]
       BG["Routines · triggers<br/>propose, never decide<br/>(check-ins: read only)"]
       GATE["OpenBot approvals + audit<br/>tool permissions"]
-      COMP["Agent computer<br/>confined: no sign-ins, no posting"]
+      COMP["Bot computer<br/>proposed: none"]
     end
 
     SHIM["Model shim"]
@@ -51,7 +51,7 @@ flowchart TB
       REL[("Released packages")]
     end
 
-    TAG["OpenTag / Channels<br/>later · team edition · notify and converse only"]
+    TAG["OpenTag / Channels<br/>deferred"]
   end
 
   INTEL[("CopilotKit Intelligence<br/>threads · memory · learning<br/>never authoritative")]
@@ -93,14 +93,14 @@ One owner per responsibility. Where two components could each claim it, the tabl
 | 2 | Noticing work that could be done | **OpenBot routines and triggers** | A routine runs as the person who created it and may read campaign state and open a decision request through KIC's tools. A check-in is read-only by upstream design: it cannot open a request, and can read KIC only if KIC is connected per person | Native upstream; D3 finding 6 |
 | 3 | Planning and breaking work down | **KIC workflow** for campaign structure (brief, narrative, plan, drafts). **OpenBot Bots** for conversational planning around it | — | Campaign structure is typed and checked; conversation is not |
 | 4 | Delegation to specialists | **OpenBot** hand-off, with per-Bot grants given by a person in the instance | KIC decides what each tool may do whoever calls it | Native upstream; the tenant package does not grant tools |
-| 5 | Tool and browser use | **OpenBot** computer for reading; **KIC** for campaign tools | No tool with an external business effect is granted to any Bot, **and** the instance closes the routes a browser offers: no saved logins, no publishing or messaging apps connected, the posting, sending, sharing and paying kinds closed for everybody where the edition allows | D3 findings 4 and 11; accepted separation |
+| 5 | Tool and browser use | **KIC** for campaign tools. **No Bot computer** in a client instance: campaign preparation needs no browsing | No tool with an external business effect is granted to any Bot. If a computer is ever wanted, the browser, network and password-manager capabilities are off and the posting, sending, sharing and paying kinds are set to "Members do it themselves" — the only setting under which the Bot never does it. All of this is team-edition only and unproven (A1) | D3 findings 4 and 11; accepted separation |
 | 6 | Human approval | Three different approvals, three owners: **editorial decisions and release → the operator tool (signed)**; **which tool a Bot may call → OpenBot's gateway**; **whether a business action runs → Kraken** | A Bot may request a decision; it can never record one | Only one of the three is signed and survives a store writer (D1) |
 | 7 | Execution feedback and learning | **Kraken** produces receipts; **KIC** stores them as evidence against the programme they belong to (proposed) | Intelligence may propose skills from conversations; a proposal is not an approved skill | D3 finding 13 |
-| 8 | Recovery from interruption | **KIC** for model steps (reserve, call, settle); **OpenBot** for agent turns (a turn runs at most twice); **Kraken** for business actions | — | Each recovers what it owns; none claims exactly-once |
-| 9 | Communication across channels | **OpenBot through OpenTag**, later | Notify and converse only. No editorial decision, no release, no approval of spend over a channel. Whether OpenBot's own tool approvals may be answered from a channel is a separate decision (D5 P5) | D3 finding 10 |
+| 8 | Recovery from interruption | **KIC** for model steps (reserve, call, settle); **OpenBot** for agent work (a task turn runs at most twice; a routine dispatch is retried up to the queue's limit); **Kraken** for business actions | — | Each recovers what it owns; none claims exactly-once |
+| 9 | Communication across channels | **Deferred by the owner.** If taken up: OpenBot through OpenTag | Notify and converse only; no editorial decision, release or approval of spend over a channel; a separate decision on OpenBot's own tool approvals from a channel card | D3 finding 10; A1 |
 | 10 | Continuous improvement | **KIC**: versioned prompts, recorded fixtures, eligibility rules, review records | Learned skills are input to a person's review, never applied automatically | Standing rule |
 | — | Execution state and external side effects | **Kraken** | — | Accepted separation |
-| — | Spend on models | **KIC** ceilings per campaign and per instance for its own calls. **The Bots' own model spend has no owner today**: proposed owner is the model shim (a ceiling there) or a limit at the provider | OpenBot records usage; it has no ceiling | D3 finding 14; OD-6 |
+| — | Spend on models | **KIC** ceilings per campaign and per instance for its own calls. **The model shim** for the Bots' own usage: a cap per request, a limit on requests in flight and a persistent ceiling, in key-injection mode (built and tested at `12a7626`). The figures are the owner's | OpenBot records usage; it has no ceiling | D3 finding 14; OD-6 |
 
 ## Components
 
@@ -110,10 +110,10 @@ One owner per responsibility. Where two components could each claim it, the tabl
 | Skins | UI only | None architecturally. An editor may choose one. |
 | Tenant package | One assistant, six skills; validated, never loaded | May define further Bots and their skills. It cannot grant tools or define routines: those are done by a person in each instance and belong in the instance runbook. |
 | Instance configuration | A proposal document only | New content: which tools each Bot is granted; which kinds of action are closed; no saved logins or connected publishing apps; learned-skill approval off; telemetry off; a ceiling on the Bots' model spend. |
-| KIC MCP server | Built, tested | No change to its role. It is the boundary for OpenBot today and for any other client later. |
+| KIC MCP server | Built, tested | No change to its role. **To be attached to OpenBot `v1.0.2` it needs TLS and a hostname**: that release accepts a custom MCP server only over https at a name, not at a loopback or private address (A1). Unresolved; the first step of the proof. |
 | Operator tool | Built, tested, unreviewed at its last commit | Unchanged authority. Where the editor uses it is OD-9. |
-| Model shim | Built, live outside OpenBot | Unchanged. |
-| Channels | Not present | Phase 2, through OpenTag, team edition, after OpenTag has been audited. |
+| Model shim | Built, live outside OpenBot. Since `12a7626` it limits spend in key-injection mode | The ceiling's figure, set per instance. |
+| Channels | Not present | Deferred by the owner. Read-only assessment in A1. |
 | Kraken hand-off | Provisional, non-executable command | Unchanged until Kraken accepts a contract. Then a translator, on this side, from the released package. |
 | Feedback | None | A typed feedback event accepted at the boundary (design below). |
 | Intelligence port | None | Design only (below). |
@@ -143,17 +143,19 @@ Whether separate Bots produce better campaigns than one assistant is **not known
 
 ## Governance and approval
 
+Proposals for an instance, except the first, which is how the code works today.
+
 - The signed decision log remains the only record that makes something selected, approved or released.
-- OpenBot's approval gateway is used as a second line for tool permissions. "Ask before every change" is each person's own switch, so it cannot be relied on as an instance setting: in the team edition an admin closes the consequential kinds of action for everybody and adds team rules; in the personal edition the control rests on the one user's settings, which is a reason not to use that edition beyond a single-editor pilot.
-- The instance closes what a browser could otherwise do (row 5 above).
-- The Bots' own model spend has a ceiling.
+- OpenBot's approval gateway would be a second line for tool permissions. "Ask before every change" is each person's own switch, so it cannot be relied on as an instance setting: in the team edition an admin sets the consequential kinds of action to "Members do it themselves" and adds team rules; in the personal edition none of that is available, which is a reason not to use that edition for a client.
+- The instance would run with no Bot computer (row 5 above).
+- The Bots' own model spend would have a ceiling, set in the shim.
 - Automatic approval of learned skills is switched off explicitly; the personal edition's default is on.
 - Telemetry opt-out variables are set in the instance.
 - OpenBot is pinned to a released tag; an upgrade is a tested change with its own record.
 
 ## Channels
 
-Narrow, and later:
+**Deferred by the owner on 2026-11-13.** The read-only assessment is in A1. If the question is reopened, the shape would be narrow:
 
 1. Outbound: "a decision is waiting for you", with the request id. No content of the decision beyond what the editor needs to find it.
 2. Inbound: conversation with the campaign assistant, mapped to a known person by a one-time link code.

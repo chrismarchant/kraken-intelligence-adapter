@@ -2,6 +2,22 @@
 
 Mediation KIC-ARCH-MED-01. **Every record below is a proposal.** None is accepted. No accepted decision is overwritten: where a proposal touches one, it says which and is recorded as a proposed amendment. This repository has had no architecture decision records until now; decisions were kept in the owner decision register (`docs/decisions/OWNER_DECISIONS.md`). If the owner accepts any of these, each becomes a numbered record under `docs/decisions/` and the register is updated.
 
+## The owner's direction of 2026-11-13
+
+Recorded verbatim in `docs/spec/directives/KIC-OWNER-DIRECTION-POST-ARCH-MED-01-2026-11-13.md`. The recommendation is provisionally accepted, subject to independent review of the corrected package (done: approved with corrections, applied here).
+
+| Proposal | Outcome |
+|---|---|
+| P1 | **Decided, provisionally and conditionally:** OpenBot is the preferred, unmodified workspace candidate, conditional on licensing, runtime verification and confinement; the standalone KIC MCP service is the authoritative campaign-preparation boundary. Production adoption is not authorised until the selected release passes runtime, model streaming, persistence, tool-execution and confinement tests |
+| P2 | **Decided:** Kraken is the sole authority for external commercial execution |
+| P4 | **Decided:** standalone OpenDots, OpenDuet and OpenMuse runtimes are excluded from this programme. Their use elsewhere is not restricted by this |
+| P5 | **Decided: deferred.** Read-only assessment of OpenTag and Channels permitted (done: A1) |
+| P7 | **Reserved to the owner.** No paid service or external communication is to be initiated |
+| P11 | **Decided:** "Kraken Intelligence Companion", without unnecessary renaming |
+| P3, P6, P8 to P10, P12 to P14 | Open |
+
+The proposals below are kept as written for the record, with corrections from the second review marked.
+
 ## How these proposals map to the decision register
 
 | Proposal | Register entry |
@@ -38,7 +54,7 @@ Mediation KIC-ARCH-MED-01. **Every record below is a proposal.** None is accepte
 ### P2 — One owner of business actions
 
 - **Decision proposed:** No Bot, routine or tool in a client instance may carry out an action with an external business effect. OpenBot performs agent work inside the preparation boundary; Kraken alone owns execution state, permission to act, and external side effects.
-- **What makes it true in an instance:** no tool with such an effect is granted; no site logins are saved and no publishing, messaging or payment app is connected; the posting, sending, sharing and paying kinds of action are closed for everybody where the edition allows; no app broker is provisioned. These are instance settings that the first proof must demonstrate at a released tag; in the personal edition there is no admin to enforce them.
+- **What would make it true in an instance (corrected):** first, no Bot computer at all, which the team edition allows and campaign preparation does not need. Then: no tool with such an effect granted; no site logins saved; no publishing, messaging or payment app connected; no app broker provisioned. If a computer is ever wanted: the browser, network and password-manager capabilities off, and the posting, sending, sharing and paying kinds set to "Members do it themselves" — "Ask every time" is not enough, because a person can still allow the action once. These were read at `v1.0.2` and not run; the first proof must demonstrate them. **In the personal edition none is available**, so a personal-edition instance cannot be confined by configuration.
 - **Relation to existing records:** Restates the founding separation and the hard rules in `CLAUDE.md`. Recorded because the directive describes OpenBot as the foundation for execution, which can be read otherwise.
 - **Evidence:** D3 findings 4 and 11; D4 "A point the owner should confirm".
 - **Class:** Owner, as a confirmation. If the owner intends otherwise, that is an amendment to the accepted separation and to Kraken's rule that the execution core acts.
@@ -73,7 +89,7 @@ Mediation KIC-ARCH-MED-01. **Every record below is a proposal.** None is accepte
 
 ### P7 — Edition and licence for a client instance
 
-- **Decision proposed:** Decide which OpenBot edition a client instance runs; obtain a written statement of the Intelligence licence that a client-owned production instance needs, including whether "OpenBot for Business" is the route; and decide where conversation threads may be kept (the vendor's managed service, or a self-hosted Intelligence, which is documented as a non-production preview).
+- **Decision proposed (corrected):** Decide which OpenBot edition a client instance runs; obtain a written statement of the Intelligence licence that a client-owned production instance needs, including whether "OpenBot for Business" (offered as early access) is the route; and decide where conversation threads may be kept: the vendor's managed service, or Intelligence self-hosted on Kubernetes with a production licence, which is the documented production route. Only the local evaluation on macOS is described as not for production. The confinement findings point to the team edition for a client instance.
 - **What the choice entails:**
 
 | | Personal edition | Team edition |
@@ -124,7 +140,7 @@ Mediation KIC-ARCH-MED-01. **Every record below is a proposal.** None is accepte
 
 ### P14 — A ceiling on the Bots' own model spend
 
-- **Decision proposed:** Set a spend ceiling (OD-6) and give the Bots' own model usage an owner: a limit in the model shim, or at the provider. This repository caps only its own calls.
+- **Decision proposed:** Set a spend ceiling (OD-6). The mechanism for the Bots' own usage now exists in the model shim (commit `12a7626`, following the approval-path security review): the owner sets its figures.
 - **Evidence:** D3 finding 14.
 - **Class:** Owner. Required before any live proof.
 
@@ -146,7 +162,7 @@ Mediation KIC-ARCH-MED-01. **Every record below is a proposal.** None is accepte
 - These documents, and corrections to them.
 - Updating `docs/deployment/INSTANCE-TEMPLATE.md` with the proposals in P13, marked as proposals.
 - Scratch-space experiments that import nothing into the codebase.
-- An audit of OpenTag from its public repository, read-only.
+- An audit of OpenTag from its public repository, read-only (done: A1).
 - Drafting the questions for CopilotKit that P7 needs.
 
 ## Not permitted without a decision

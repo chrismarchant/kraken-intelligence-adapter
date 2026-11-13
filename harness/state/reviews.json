@@ -675,6 +675,183 @@
       ],
       "reportPath": "docs/review/2026-11-13-fifth-review-765ae20.md",
       "at": "2026-11-13T11:40:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-b8e0170",
+      "gate": "KIC-01",
+      "commit": "b8e0170091d00fe396f642ce46ebdd240fbac532",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-6",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/workflow/**",
+        "src/cli/operator.ts",
+        "src/mcp/**",
+        "src/store/store.ts (locking, update)",
+        "src/contracts/decision.ts",
+        "src/contracts/content.ts",
+        "src/util/runtime.ts",
+        "src/gateway/** (part)"
+      ],
+      "skipped": [
+        {
+          "path": "src/evaluation/**, src/util/markdown.ts, src/commands/provisional.ts",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "harness/**, src/shim/**",
+          "reason": "outside the scope given"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "high",
+          "summary": "A store writer could bring back an approval or narrative selection the editor had replaced, by rewriting status fields",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F2",
+          "severity": "medium",
+          "summary": "Padding let stored text pass for the tool's own lines on the editor's terminal",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F3",
+          "severity": "low",
+          "summary": "The editor signed hashed fields that show did not display",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F4",
+          "severity": "low",
+          "summary": "Signature string not canonical: a re-encoded signature verified but changed the chain digest",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F5",
+          "severity": "info",
+          "summary": "Stale locks on the spend account and ledger were broken on age alone",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F6",
+          "severity": "info",
+          "summary": "A link planted in the export directory had a directory created through it",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-sixth-review-b8e0170.md",
+      "at": "2026-11-13T12:15:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-security-177a8c4",
+      "gate": "KIC-01",
+      "commit": "177a8c4671fa66d1a67b613f303d1cf573b8f766",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-security-review-agent-7",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "editorial signing",
+        "key isolation",
+        "MCP arguments",
+        "revision binding",
+        "replay protection",
+        "permission escalation",
+        "direct provider access (src/shim/**)",
+        "spend-limit bypass",
+        "src/workflow/**",
+        "src/cli/operator.ts",
+        "src/mcp/**",
+        "src/store/store.ts",
+        "src/gateway/mistral.ts"
+      ],
+      "skipped": [
+        {
+          "path": "src/shim/normalize.ts (in depth), src/evaluation/**, src/skills/prompts.ts, harness/**",
+          "reason": "not covered by the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "high",
+          "summary": "Superseded approval brought back by flipping status fields; released and verified by the operator tool",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F2",
+          "severity": "high",
+          "summary": "Replaced narrative selection brought back the same way",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F3",
+          "severity": "medium",
+          "summary": "One request to revise yielded any number of revisions",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F4",
+          "severity": "medium",
+          "summary": "The shim gave the client-token holder the provider key's spend with no ceiling",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F5",
+          "severity": "low",
+          "summary": "The decision public key file could sit in the agent-writable data directory",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F6",
+          "severity": "info",
+          "summary": "Operator key, ledger and release directory locations not checked",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F7",
+          "severity": "info",
+          "summary": "Export directory creation could follow a planted link",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        },
+        {
+          "id": "F8",
+          "severity": "info",
+          "summary": "Two processes could both break a stale lock; over-reported usage under-charged",
+          "status": "fixed",
+          "remediationCommit": "12a76260073fc8dce4fffa1267900ad40d585aa8"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-approval-path-security-review-177a8c4.md",
+      "at": "2026-11-13T12:20:00Z"
     }
   ]
 }

@@ -9,7 +9,7 @@
       "status": "blocked",
       "stop": {
         "level": "local",
-        "reason": "No Intelligence project key in the environment; pgvector unavailable (no Docker daemon, package not in repositories, source build refused). Owner decision OD-7.",
+        "reason": "No Intelligence project key in the environment; no Docker daemon and no Postgres with the vector extension; the team edition also needs an identity provider; and OpenBot v1.0.2 accepts a custom MCP server only over https at a hostname (OD-20). The owner requires the selected release to pass runtime, model streaming, persistence, tool-execution and confinement tests before production adoption; none has been run. Owner decisions OD-7, OD-8, OD-15, OD-20.",
         "since": "2026-11-13"
       },
       "evidence": []
@@ -154,9 +154,9 @@
       ],
       "status": "blocked",
       "evidence": [
-        "harness/state/reviews.json (six entries, none approving)",
-        "docs/review/ (five agent reviews, one Mistral review)",
-        "remediation commits aad2196, 075b358, 187f029, 765ae20, 8e4696c, dfa7458"
+        "harness/state/reviews.json (eight entries)",
+        "docs/review/ (seven agent reviews, one Mistral review)",
+        "remediation commits through 12a7626"
       ],
       "stop": {
         "level": "gate",

@@ -11,7 +11,7 @@ Every result below came from a command run in the session. Where something was n
 | **C1** Full OpenBot boots on a licensed Intelligence project and completes a conversation with a tool call and a recalled memory | **Not demonstrated. Blocked.** | No Intelligence project key exists in the environment (obtaining one needs a personal account sign-in). OpenBot's schema needs pgvector, which is unavailable: no Docker daemon, package not in the repositories, source build refused by the session's permission layer. Recorded once as a local stop on task `KIC-01-C1`; not retried. |
 | **C2** Mistral Large 4 works through a shim, streaming, with tools | **Demonstrated outside OpenBot. Not demonstrated inside it.** | See "Model shim" and "Agent runs". |
 | **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing new. The four questions are in `KIC-01-ASSESSMENT.md` §8. |
-| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by five independent reviews. Each review found a way through; each was closed and given a regression test. The last set of fixes has not been independently re-reviewed.** | See "Approval enforcement" and "Independent review". |
+| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by seven independent reviews. Each found a way through; each was closed and given a regression test. A review of the latest fixes (`12a7626`) is recorded in the gate ledger.** | See "Approval enforcement" and "Independent review". |
 
 ## What was built
 
@@ -33,7 +33,7 @@ Size: about 6,400 lines of product source and 3,600 lines of product tests.
 
 ## Tests
 
-`npm run check` at commit `8e4696c`: type check clean; **181 product tests pass; 83 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool).
+`npm run check` at commit `12a7626`: type check clean; **201 product tests pass; 83 harness tests pass**; secret scan clean. All tests are offline. Some start real child processes (four writers on one campaign; the operator tool; the shim against a loopback stand-in for the provider).
 
 GitHub Actions workflow `ci` succeeded on every push through `765ae20` (runs 1 to 10; run 10 is 43417308791).
 
@@ -132,7 +132,9 @@ What the code guarantees, each covered by tests in `tests/kic/approval.test.ts`,
 - The editor is shown the request from the campaign record, never from the operator channel, and must give back the whole 64-character digest of what they read: the request, its action, its subject, any revision instruction and the exact content. A decision is refused, and the request closed, if the stored request or the current text no longer produces that digest. A prefix of the digest is not accepted.
 - The operator channel can do no more than say that a request is waiting. Its files are accepted only with well-formed ids, and nothing in one can make the tool touch a file outside the channel.
 - The operator's ledger must exist. If it is missing, the tool stops; starting a new one is an explicit command.
-- The latest decision about a subject wins. A rejection, a request for revision, or the existence of a revision withdraws an approval, whatever the stored status says.
+- What is approved or selected is read from the signed log alone. A post is held by the draft of the latest approval for that post; a rejection of that draft, a request to revise it, or the existence of a revision empties the post; an approval the editor replaced never returns. Status fields in the store are not consulted (`tests/kic/sixth-review.test.ts`).
+- One request to revise yields one revision.
+- The operator tool prints stored text only behind a margin and prints every value a digest covers, at `show` and at `review` (`tests/kic/security-review.test.ts`, `fifth-review.test.ts`).
 - A draft cannot be approved unless it has been evaluated and passes the mandatory constraints, whatever it scores.
 - A programme cannot be planned without a selected narrative, or assembled without an approved post; pending posts need an explicit partial assembly.
 - What the agent-facing server assembles is a preview and says so. Only the operator tool releases a package. The release signature covers the package's digest, who released it, when, why, and the length of the decision log it was made on; any change to the package or to those facts invalidates it.
@@ -154,9 +156,11 @@ Result: both drafts ignored all of it, cited the survey reference for their one 
 | `075b358` | Third independent agent, Opus tier, scope limited to the nine findings and the remediation | changes-requested (2 high: a 12-character hash prefix could be collided; a planted notice could delete the operator's ledger) | `docs/review/2026-11-13-focused-re-review-075b358.md` |
 | `187f029` | Fourth independent agent, Opus tier, the decision path and the budget | changes-requested (2 high: terminal escape sequences could hide text from the editor; the budget could be reset by a store writer) | `docs/review/2026-11-13-fourth-review-187f029.md` |
 | `765ae20` | Fifth independent agent, Opus tier, focused on the fourth review's fixes | changes-requested (1 high: plan, interpretation and most of the brief were released without being shown) | `docs/review/2026-11-13-fifth-review-765ae20.md` |
-| `8e4696c` | **None.** The fixes for the fifth review each have a regression test, and the reviewer's probes fail against them, but no independent reviewer has read them. | — | — |
+| `b8e0170` | Sixth independent agent, Opus tier | changes-requested (1 high: a store writer could bring back an approval the editor had replaced) | `docs/review/2026-11-13-sixth-review-b8e0170.md` |
+| `177a8c4` | Approval-path security review commissioned by the owner; seventh independent agent, Opus tier | changes-requested (2 high: the same defect, for drafts and for narratives; 2 medium: unlimited revisions on one instruction; no spend ceiling on the model shim) | `docs/review/2026-11-13-approval-path-security-review-177a8c4.md` |
+| `12a7626` | New independent review of the resulting commit, as the owner directed | See the gate ledger for the outcome | — |
 
-Five rounds have now been run, and each found real defects in the round before, of decreasing reach: the first could lose or forge a decision; the fifth could release text the editor was not shown. The honest reading is that the approval controls have improved a great deal under attack and have not yet survived a review unbroken. Whether to commission another, and by whom, is an owner decision (OD-11); a reviewer outside this programme's sessions is recommended. Each review is recorded against its exact commit in `harness/state/reviews.json`.
+Seven rounds have now been run, and each found real defects in the round before. The sixth and seventh, working independently, found the same one: withdrawal of an approval was recorded in a status field and not in the signed log. The honest reading is unchanged: the approval controls have improved a great deal under attack and have not yet survived a review unbroken. Each review is recorded against its exact commit in `harness/state/reviews.json`.
 
 The Mistral Code Review Bot and Codex were not used: the bot's block-content defect is unfixed on its default branch, and the Codex credential is rejected.
 

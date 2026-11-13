@@ -2,6 +2,34 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (owner direction after the mediation; seven review rounds; confinement matrix)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees (no base branch exists; no pull request possible)
+CURRENT_GATE: none accepted. Owner direction of 2026-11-13 recorded verbatim; mediation provisionally accepted.
+COMPLETED:
+  Owner decisions recorded: OD-1 (provisional, conditional), OD-12, OD-13, OD-14 (deferred), OD-18.
+  Sixth review (b8e0170) and approval-path security review (177a8c4): both changes-requested; the same high
+     finding (a replaced approval could be brought back through status fields). Remediated in 5e4ee5d + 12a7626:
+     approvals and selection read from the signed log alone; post number signed; one revision per instruction;
+     operator output behind a margin and wrapped; show prints all a digest covers; shim spend limits; key and
+     release locations checked; owner-checked lock for spend account and ledger. 201 product + 83 harness tests.
+  New independent review of 12a7626 commissioned; outcome in GATE_STATE.md.
+  Mediation: re-review of the corrected package (177a8c4): approved with corrections, applied. A1 added
+     (OpenBot v1.0.2 against main; OpenTag). D7's confinement test replaced.
+  Confinement test matrix: docs/security/CONFINEMENT-TEST-MATRIX.md. Negative tests: tests/kic/confinement.test.ts.
+  Drafts, not sent: licence questions for CopilotKit. Nothing was sent to anyone; no paid service started.
+OPEN: OD-2..OD-11 (except as decided), OD-15..OD-17, OD-19, OD-20. C1 (local stop), C3.
+NEXT_ACTION: see the work queue in the latest handback. Not blocked on the owner: act on the review of 12a7626;
+  keep CI green. Blocked: every OpenBot runtime test (key, Docker, identity provider, OD-20); licensing (owner).
+  Do NOT run OpenBot against a paid service, contact CopilotKit, change tenant-package/, or touch Kraken or JEV.
+  To resume: read docs/harness/RESTART.md; run `npm ci && npm run check`; `node harness/scripts/aeh.mjs status`.
+REFERENCES: docs/spec/directives/KIC-OWNER-DIRECTION-POST-ARCH-MED-01-2026-11-13.md,
+  docs/security/CONFINEMENT-TEST-MATRIX.md, docs/architecture/mediation/KIC-ARCH-MED-01/ (README, A1),
+  docs/review/ (sixth review, security review, mediation re-review), harness/state/GATE_STATE.md
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (mediation KIC-ARCH-MED-01 presented; five review rounds on KIC-01)
 
 ```
