@@ -938,6 +938,102 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-12a7626.md",
       "at": "2026-11-13T12:40:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-55a66f2",
+      "gate": "KIC-01",
+      "commit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-9",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff 12a7626 55a66f2 and 5e4ee5d 55a66f2: src/**, tests/**",
+        "src/shim/server.ts",
+        "src/workflow/spend.ts",
+        "src/cli/operator.ts",
+        "src/util/runtime.ts (displaySafe, canonicalText, fitToWidth)",
+        "src/workflow/assemble.ts",
+        "src/workflow/service.ts (approval, confirm, describe, settle)",
+        "src/workflow/signing.ts (log and ledger)",
+        "claims (a)-(d) for the whole commit"
+      ],
+      "skipped": [
+        {
+          "path": "src/gateway/** budget path, src/mcp/** tools, store file locking under real concurrency, operator tool as a child process",
+          "reason": "not covered by the reviewer; unchanged by the commit"
+        },
+        {
+          "path": "real terminal rendering; the provider's behaviour",
+          "reason": "cannot be checked offline"
+        }
+      ],
+      "verdict": "approve-with-followups",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "medium",
+          "summary": "Availability regression: the shim added an idle-timeout listener per request, reachable without a token",
+          "status": "fixed",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F2",
+          "severity": "low",
+          "summary": "A caller that disconnected during reservation left it charged",
+          "status": "fixed",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F3",
+          "severity": "low",
+          "summary": "Query string of a chat request forwarded upstream",
+          "status": "fixed",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F4",
+          "severity": "info",
+          "summary": "Re-serialising the body can enlarge it and lose precision in very large integers",
+          "status": "accepted",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F5",
+          "severity": "low",
+          "summary": "displaySafe did not write out a backslash",
+          "status": "fixed",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F6",
+          "severity": "low",
+          "summary": "Private-use, unassigned and enclosing-mark characters passed through displaySafe",
+          "status": "fixed",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F7",
+          "severity": "info",
+          "summary": "A pager narrower than the wrap width can still wrap a stored line",
+          "status": "accepted",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        },
+        {
+          "id": "F8",
+          "severity": "info",
+          "summary": "Provider behaviour for reasoning tokens and disconnects not verified offline",
+          "status": "accepted",
+          "remediationCommit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-55a66f2.md",
+      "at": "2026-11-13T12:50:00Z"
     }
   ]
 }
