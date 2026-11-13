@@ -46,3 +46,20 @@ The commit-bound review of the remediation of scope-completing review B.
 ## The reviewer on the regression tests
 
 Sound: both F1 tests, "the right is held by one process", F4 with a real zombie, F6, F7, F8, F9. Weak: the first F2 test would also pass against the old code, which re-read the lock before moving it, so it does not model the old race itself; "many writers" and F3 run in one process, where every contender has the same process id, so the successor path is never exercised; the F5 test checks settings and never that an authenticated client gets through, which is why N3 was missed. No test covers N1 or N2.
+
+## Remediation in `a1affd2` (added by the orchestrator)
+
+| # | Change | Regression test |
+|---|---|---|
+| N1 | Something at the lock's path, or at a right's path, that is not a readable file (a directory, a dangling link, another user's file) makes the caller wait, and give up at its deadline. The first version of this fix missed the dangling link; the new test caught it | `tests/kic/scope-review-b.test.ts` "N1" |
+| N2 | Clearing up after a removed lock deletes only the rights themselves, which end in a number. A claimant whose unfinished file has gone all the same tries again | "N2" |
+| N3 | No limit that turns newcomers away. At 256 connections the server closes the one that has been idle longest, taking first from those that never showed a valid token, never one with a request in progress. Header timeout 5 s, checked every second | "F5, N3": 300 silent connections, then an attacker reconnecting every 2 ms; a caller with a token is served every time |
+| N4 | Export paths are the export's own two directory names and the file, however the export directory is reached | "N4", through a symlinked directory |
+| N5 | A reported completion figure is counted as at most ten times the request's allowance, a prompt figure as at most two million, and reasoning as at most the completion | "N5" |
+| N6 | Evaluating again what has not changed writes nothing: no evaluation, no audit entry, no new revision | "N6" |
+| N7 | Every thread is looked at before an owner is called dead | — (not reproducible on demand) |
+| N8 | A file system without hard links falls back to creating the file in place. Old leftovers of processes that died while taking a lock are tidied after a crash | — |
+
+The reviewer's two volume probes were re-run by the orchestrator on this code: nine trials, eight real processes each, about 690 kills, about 3,800 acknowledged updates; none lost, none duplicated, and no worker ended other than by being killed (the failure the reviewer saw in N2 did not recur).
+
+Not changed, and accepted as limits: a decision request whose delivery to the operator fails is voided at once and does not count towards the cap on pending requests (read by the reviewer, not run; it needs the operator channel to fail); 32 dead removers in a row block a lock.

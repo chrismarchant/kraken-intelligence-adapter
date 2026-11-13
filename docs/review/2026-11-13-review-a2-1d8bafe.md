@@ -55,3 +55,22 @@ The commit-bound review of the remediation of scope-completing review A.
 ## The reviewer on the regression tests
 
 Each new test checks what its name says and would fail with its fix reverted; none passes vacuously. Gaps: no extended-Latin or tipping case, no cut inside an emoji, no "at 1:12" case, no three-letter inflection, no contraction, and the mixed-separator test uses single-line events only, which is why N3 was not caught.
+
+## Remediation in `a1affd2` (added by the orchestrator)
+
+| # | Change | Regression test |
+|---|---|---|
+| N1, N2, what remained of F1 and F2 | A list of allowed letters replaces the lists of look-alikes: the Latin alphabet as European languages write it. Any other letter is refused, in every part of a draft, whatever the rest contains. The "mostly Latin" rule is removed. The extra letters of European alphabets are read as the plain letters they stand for | `tests/kic/scope-review-a.test.ts` "N1" (two tests), "N2" |
+| What remained of F7 | A blank that is not an ordinary space, and a private-use or unassigned character, are refused | "F7 remainder" |
+| N3 | A carriage return and line feed is one line end | `tests/shim/scope-review.test.ts` "N3": a tool call written over two such lines, delivered in pieces of 1, 2, 3 and 7 characters and whole |
+| N4 | A term of three letters or more is given the usual endings; one of one or two letters only "s", "ed" and "ing" | "N4" |
+| N5 | The apostrophe of a contraction or possessive is left in place | "N5" |
+| N6 | Text is clipped between characters; the cut moves back until the result is canonical and fits | "N6" |
+| N8 | Reasoning is removed at the top level, in each choice, and in `delta` and `message`, under the names `reasoning_content`, `reasoning` and `thinking` | "N8" (two tests) |
+| N9 | Data is always written out again from what was parsed | "N9" |
+| N10 | An event that cannot be read ends the stream with an error; it is neither passed on nor left out | "F10, N10" |
+| What remained of F12 | A released package's provenance, the lists in an evaluation and the lists in a creator set are bounded | "F12 remainder" |
+| N12 | A long description in a blocking concern is shortened to fit | "N12" |
+| Not raised by the reviewer | Keyboard symbols used in place of letters inside a word are read as those letters when a ruled-out term is looked for | "a ruled-out word written with keyboard symbols…" |
+
+Not changed, and accepted as limits: what remains of F8 (a figure can still be written so that it reads as a time of day; it then reads as one to the reader as well); N7 (the mock evaluator sees redacted text; eligibility and ranking do not depend on it); N11 and N13 (by design); a missing fee or unknown consent leaves a creator eligible (synthetic fixtures only).

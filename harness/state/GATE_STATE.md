@@ -92,7 +92,16 @@ Commissioned on 2026-11-13 after the audit, at the same commit, from two further
 
 A blocking verdict from either is bound to `2537386` and makes the review check for that commit fail, as it should.
 
-Both are remediated in commit `1d8bafe969d3ebfa3cee42a9889cdab848443081`: 28 regression tests added; 230 product and 83 harness tests pass; the secret scan is clean. What changed against each finding, and what was left as a limit, is at the end of each review's record. **New independent reviews against that exact commit are commissioned, one for each area. Until they are recorded here, `1d8bafe` has no review and the review requirement is not met at any commit.**
+Both were remediated in commit `1d8bafe969d3ebfa3cee42a9889cdab848443081`. What changed against each finding, and what was left as a limit, is at the end of each review's record.
+
+**Reviews of `1d8bafe`, one for each area, both requested changes again:**
+
+| Review | Outcome |
+|---|---|
+| Part A (`independent-review-agent-13`), `docs/review/2026-11-13-review-a2-1d8bafe.md` | **changes-requested**: 1 high, 2 medium, 7 low. High: letters from the extended Latin blocks that pass for plain ones were neither folded nor refused (also true at `2537386`; no earlier review had found it). Medium: the "mostly Latin" rule could be tipped with unpublished text; **a regression** in the rewritten stream normaliser read a single CRLF as the end of an event and dropped valid events |
+| Part B (`independent-review-agent-14`), `docs/review/2026-11-13-review-b2-1d8bafe.md` | **changes-requested**: 2 medium, 4 low. The lock's mutual exclusion held under volume and forced tests. Medium: **a regression**, the new connection limit let 64 silent connections shut out callers with a token; clearing up after a removed lock could delete another process's unfinished file and fail an honest update |
+
+Both are remediated in commit `a1affd2c4e9677baa8d15a60fe330ceec13e3c08`: 19 further regression tests; 249 product and 83 harness tests pass; the secret scan is clean. **Reviews of that exact commit are commissioned, again one for each area. Until they are recorded here, `a1affd2` has no review and the review requirement is not met at any commit.**
 
 The entries for reviews A and B in the append-only review ledger show their findings as "open", as they were when recorded.
 

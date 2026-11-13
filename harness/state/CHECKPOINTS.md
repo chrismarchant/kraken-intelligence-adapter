@@ -2,6 +2,43 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (review requirement withdrawn; two remediation rounds; reviews of a1affd2 in progress)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees (no base branch exists; no pull request possible; OD-4)
+CURRENT_GATE: none accepted. KIC-01 is NOT ready for an owner decision. THE BLOCK BELOW THIS ONE IS SUPERSEDED:
+  it says the review requirement was met at 2537386. It is not.
+WHAT HAPPENED:
+  An independent audit of the acceptance package found it overstated: the two approving reviews covered the
+     approval path only. Reviews of the rest of the code at 2537386 (scope reviews A and B) both requested changes.
+  Remediation 1: 1d8bafe. Reviews of 1d8bafe (agents 13 and 14) both requested changes again (1 high, 4 medium;
+     two of the mediums were regressions introduced by remediation 1).
+  Remediation 2: a1affd2. 249 product + 83 harness tests; secret scan clean. Lock volume tests (real processes,
+     kills): none lost, none duplicated.
+  Reviews of a1affd2 commissioned (agents 15: evaluator/contracts/normaliser; 16: store/gateway/MCP).
+     OUTCOME: see harness/state/reviews.json and GATE_STATE.md. If no entry for a1affd2 exists there, the reviews
+     were lost with the session and must be commissioned again.
+STATE OF THE REVIEW LEDGER: 2537386 and 1d8bafe each carry blocking reviews. No commit meets the requirement.
+NEXT_ACTION (owner's instruction of 2026-11-13, step 3: "If changes are requested, remediate and repeat the
+  commit-bound review process"):
+  1. Record each review of a1affd2 (docs/review/, aeh review add). 2. If either requests changes: remediate in
+  one commit with regression tests, run npm run check and the secret scan, push, commission reviews of that
+  exact commit, repeat. 3. When a commit has approving reviews of every area and no blocking one: bring
+  GATE_STATE.md, the evidence, the confinement matrix and the threat model up to it; reissue
+  docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md against it (the approval-path reviews 9 and 10 cover 2537386; say
+  plainly which reviews cover which code at the final commit, and get a delta review of the approval path if
+  the store or workflow changes touch it); raise a gate stop on KIC-01 ("presented for owner acceptance");
+  append a checkpoint; push; STOP AT THE OWNER ACCEPTANCE BOUNDARY.
+  Do NOT merge, deploy, run OpenBot, handle a signing key, contact CopilotKit, change tenant-package/, or touch
+  Kraken or JEV. Silence is not acceptance.
+OPEN: OD-11 (external approval-path assessment before real-client use; kept open by the owner). OD-2..OD-10,
+  OD-15..OD-17, OD-19, OD-20. C1 (OpenBot never run), C2 (not met as defined), C3 (licence, owner).
+  New product question for the owner: drafts may use only the Latin alphabet as European languages write it.
+REFERENCES: harness/state/GATE_STATE.md ("Scope-completing reviews"), docs/review/2026-11-13-scope-review-{a,b}-2537386.md,
+  docs/review/2026-11-13-review-{a2,b2}-1d8bafe.md, docs/review/2026-11-13-audit-of-acceptance-package.md
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (KIC-01 gate closure: review requirement met; acceptance package presented)
 
 ```
