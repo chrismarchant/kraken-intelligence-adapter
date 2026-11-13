@@ -1939,6 +1939,132 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-a4-1f159a2.md",
       "at": "2026-11-13T16:00:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-a5-e30451c",
+      "gate": "KIC-01",
+      "commit": "e30451c517bae16982ad75599d3f62cc4534ff13",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-20",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/evaluation/**",
+        "src/shim/normalize.ts",
+        "src/shim/server.ts (normalisation paths)",
+        "tests for those",
+        "claims (e), (f), (g), (j)"
+      ],
+      "skipped": [
+        {
+          "path": "src/contracts/**, src/creators/**, clip and the canonical-form helpers",
+          "reason": "unchanged since 1f159a2, where the previous reviewer found them sound"
+        },
+        {
+          "path": "src/store/**, src/mcp/**, src/gateway/**, src/workflow/**",
+          "reason": "the other reviewer's scope"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "high",
+          "summary": "A stand-in symbol at a word's edge with a mark there that is itself read as a letter passes (partly a regression)",
+          "status": "open"
+        },
+        {
+          "id": "F2",
+          "severity": "high",
+          "summary": "A short ruled-out term inside a CamelCase hashtag passes",
+          "status": "open"
+        },
+        {
+          "id": "F3",
+          "severity": "high",
+          "summary": "Contraction variants (other apostrophes, hyphen, stand-in letter) pass (partly a regression)",
+          "status": "open"
+        },
+        {
+          "id": "F4",
+          "severity": "high",
+          "summary": "A letter repeated for emphasis passes",
+          "status": "open"
+        },
+        {
+          "id": "F5",
+          "severity": "medium",
+          "summary": "A letter masked with a star or underscore passes",
+          "status": "open"
+        },
+        {
+          "id": "F6",
+          "severity": "medium",
+          "summary": "A word hyphenated across a line break passes",
+          "status": "open"
+        },
+        {
+          "id": "F7",
+          "severity": "medium",
+          "summary": "Regression: three-letter terms accept -es after any consonant and refuse other words",
+          "status": "open"
+        },
+        {
+          "id": "F8",
+          "severity": "low",
+          "summary": "Three-letter terms ending in e miss the past and -ing",
+          "status": "open"
+        },
+        {
+          "id": "F9",
+          "severity": "medium",
+          "summary": "Regression: a draft of capital I's takes seconds to evaluate",
+          "status": "open"
+        },
+        {
+          "id": "F10",
+          "severity": "medium",
+          "summary": "The digits 9, 6 and 2 are not read as letters",
+          "status": "open"
+        },
+        {
+          "id": "F11",
+          "severity": "high",
+          "summary": "Quantities in words outside the listed shapes are not seen as figures (not new)",
+          "status": "open"
+        },
+        {
+          "id": "F12",
+          "severity": "low",
+          "summary": "A literal term is not found when spaced",
+          "status": "open"
+        },
+        {
+          "id": "F13",
+          "severity": "low",
+          "summary": "A plain number is read as a word and honest text refused",
+          "status": "open"
+        },
+        {
+          "id": "F14",
+          "severity": "info",
+          "summary": "Ruled-out terms are not looked for in the hook, call to action or claims (by documented intent)",
+          "status": "accepted"
+        },
+        {
+          "id": "F15",
+          "severity": "info",
+          "summary": "The normaliser's last change has no test of its own",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-a5-e30451c.md",
+      "at": "2026-11-13T16:40:00Z"
     }
   ]
 }
