@@ -26,7 +26,11 @@ export interface Limits {
   reservationTtlMs: number;
   /** Decision requests that may be waiting for a person at one time, per campaign. */
   maxPendingDecisions: number;
-  /** Decision requests over a campaign's whole life, whatever became of them. */
+  /**
+   * Decision requests a campaign holds at one time, whatever became of them. A request that
+   * came to nothing is replaced when the same decision is asked for again, so this is not a
+   * count over the campaign's life.
+   */
   maxDecisionRequests: number;
   /** Previews of one programme kept in the export directory at once. */
   maxPreviewExports: number;

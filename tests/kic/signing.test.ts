@@ -409,12 +409,50 @@ test("a package is a preview until the editor releases it, and a release is boun
 test("the number of decisions waiting for the editor is bounded", async () => {
   const { service, evaluated } = makeService({ limits: { maxPendingDecisions: 3 } });
   const id = await evaluated();
+  const [draft, other] = (await service.getCampaign(id)).drafts;
+  const ask = (draftId: string, action: "select" | "reject") => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action, proposedRationale: "Again.", requestedBy: "agent" });
+  await ask(draft!.id, "select");
+  await ask(draft!.id, "reject");
+  await ask(other!.id, "select");
+  await assert.rejects(ask(other!.id, "reject"), (error: unknown) => error instanceof LimitExceededError && error.limit === "maxPendingDecisions");
+});
+
+test("one decision on one subject is asked for once at a time", async () => {
+  const { service, evaluated, operator, clock } = makeService();
+  const id = await evaluated();
   const draft = (await service.getCampaign(id)).drafts.find((d) => d.slot === 1)!;
-  const ask = () => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action: "select", proposedRationale: "Again.", requestedBy: "agent" });
-  await ask();
-  await ask();
-  await ask();
-  await assert.rejects(ask(), (error: unknown) => error instanceof LimitExceededError && error.limit === "maxPendingDecisions");
+  const ask = (action: "select" | "reject" = "select") => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action, proposedRationale: "Again.", requestedBy: "agent" });
+  const first = await ask();
+  const before = await service.getCampaign(id);
+  const notices = operator.notices.length;
+  // Asked again while the first is waiting: refused, and nothing is stored, said or sent.
+  for (let i = 0; i < 30; i++) {
+    await assert.rejects(ask(), (error: unknown) => error instanceof WorkflowError && error.code === "decision-pending" && error.message.includes(first.requestId));
+  }
+  let record = await service.getCampaign(id);
+  assert.deepEqual(record.decisionRequests, before.decisionRequests);
+  assert.deepEqual(record.audit, before.audit);
+  assert.equal(operator.notices.length, notices);
+  // Another decision on the same subject is a different decision.
+  await ask("reject");
+  // At the very moment the first expires it is still waiting, as it is at confirmation.
+  clock.advance(Date.parse(first.expiresAt) - (clock.now().getTime() + 1000));
+  await assert.rejects(ask(), (error: unknown) => error instanceof WorkflowError && error.code === "decision-pending" && error.message.includes(first.requestId));
+  // A moment later it has come to nothing: the new request replaces it, and the trail says so.
+  const second = await ask();
+  record = await service.getCampaign(id);
+  assert.equal(record.decisionRequests.some((r) => r.id === first.requestId), false);
+  const lines = record.audit.filter((e) => e.event === "decision-requested" && e.detail.includes(` select draft ${draft.id}`));
+  assert.equal(lines.length, 1, "one line for the decision");
+  assert.ok(lines[0]!.detail.startsWith(`${second.requestId}:`), lines[0]!.detail);
+  assert.ok(lines[0]!.detail.includes(`It replaces ${first.requestId}`), lines[0]!.detail);
+  // Confirming the request that was replaced fails cleanly and records nothing.
+  const decisions = record.decisions.length;
+  await assert.rejects(
+    service.confirmDecision({ campaignId: id, requestId: first.requestId, code: operator.codeFor(first.requestId), actor: EDITOR, rationale: "Late.", expected: await expectedFor(service, id, second.requestId) }),
+    (error: unknown) => error instanceof WorkflowError && error.code === "unknown-request",
+  );
+  assert.equal((await service.getCampaign(id)).decisions.length, decisions);
 });
 
 test("a request that cannot be delivered to the editor is withdrawn, not left open", async () => {

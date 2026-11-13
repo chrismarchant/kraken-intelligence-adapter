@@ -23,14 +23,18 @@ for (const [name, makeStore] of stores) {
     for (let round = 0; round < 10; round++) {
       const { service, operator, evaluated, decide, assemble } = makeService({ store: makeStore() });
       const id = await evaluated();
-      const [target, other] = (await service.getCampaign(id)).drafts.filter((d) => d.slot === 1);
+      const drafts = (await service.getCampaign(id)).drafts;
+      const target = drafts.find((d) => d.slot === 1);
+      // One decision on one subject is asked for once at a time, so the noise is six different decisions.
+      const noise = drafts.filter((d) => d.id !== target!.id).flatMap((d) => (["select", "reject"] as const).map((action) => ({ draftId: d.id, action }))).slice(0, 6);
+      assert.equal(noise.length, 6);
       await decide(id, { kind: "draft", id: target!.id }, "approve");
       const rejection = await service.requestDecision({ campaignId: id, subject: { kind: "draft", id: target!.id }, action: "reject", proposedRationale: "Withdraw.", requestedBy: "agent" });
 
       const results = await Promise.allSettled([
         service.confirmDecision({ campaignId: id, requestId: rejection.requestId, code: operator.codeFor(rejection.requestId), actor: EDITOR, rationale: "Not this one.", expected: await expectedFor(service, id, rejection.requestId) }),
-        ...Array.from({ length: 6 }, (_, i) =>
-          service.requestDecision({ campaignId: id, subject: { kind: "draft", id: other!.id }, action: "select", proposedRationale: `Noise ${i}.`, requestedBy: "agent" }),
+        ...noise.map(({ draftId, action }, i) =>
+          service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action, proposedRationale: `Noise ${i}.`, requestedBy: "agent" }),
         ),
         service.evaluateDrafts(id, { slots: [2] }),
       ]);

@@ -324,6 +324,13 @@ export class MistralGateway implements ModelGateway {
           throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
         }
       }
+      // A request that failed without saying what it cost is charged at its allowance, but
+      // never past what is left of the call's: an earlier answer that reported more than it
+      // was allowed has already been counted up to that line, and the reservation made for
+      // the call is MAX_TOKEN_FACTOR times the request's allowance and no more.
+      const chargeUnreported = (): void => {
+        cost.usage.completionTokens += Math.min(maxTokens, Math.max(0, MAX_TOKEN_FACTOR * request.maxTokens - cost.usage.completionTokens));
+      };
       const timeout = AbortSignal.timeout(this.timeoutMs);
       const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
       let response: Response;
@@ -339,7 +346,7 @@ export class MistralGateway implements ModelGateway {
       } catch (error) {
         // The provider may have generated up to the request's allowance before the connection
         // failed and reported nothing. It is charged as if it had.
-        cost.usage.completionTokens += maxTokens;
+        chargeUnreported();
         if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
         failure = new ModelCallError(`Model call for "${request.purpose}" failed: ${(error as Error).name}`, null, cost);
         continue;
@@ -349,7 +356,7 @@ export class MistralGateway implements ModelGateway {
           return await readCompletion(response);
         } catch (error) {
           // A stream that broke off reported no usage. Charged at the request's allowance.
-          cost.usage.completionTokens += maxTokens;
+          chargeUnreported();
           if (request.signal?.aborted) throw new ModelCallError(`Model call for "${request.purpose}" was cancelled.`, null, cost);
           failure = new ModelCallError(`Model call for "${request.purpose}" broke off mid-stream: ${(error as Error).name}`, null, cost);
           continue;
@@ -357,7 +364,7 @@ export class MistralGateway implements ModelGateway {
       }
       // The body may echo request content; report the status only.
       // A gateway error may follow generation that was never delivered; a refusal (4xx) does not.
-      if (response.status >= 500) cost.usage.completionTokens += maxTokens;
+      if (response.status >= 500) chargeUnreported();
       else allowance.left += maxTokens;
       failure = new ModelCallError(`Model call for "${request.purpose}" returned HTTP ${response.status}.`, response.status, cost);
       await response.body?.cancel().catch(() => undefined);

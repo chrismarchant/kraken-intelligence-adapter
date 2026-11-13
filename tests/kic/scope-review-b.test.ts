@@ -677,3 +677,72 @@ test("b4-5: the server keeps only as many previews as its limit says", async () 
   assert.equal(programmes.length, 1);
   assert.equal(readdirSync(join(exportRoot, programmes[0]!)).length, 2);
 });
+
+// ------------------------------------------------- follow-ups of the review of e30451c
+
+test("b5-1, b5-3: the audit trail names the request that stands and each outage, and does not grow by asking again", async () => {
+  const { service, evaluated, clock, operator } = makeService();
+  const id = await evaluated();
+  const draftId = (await service.getCampaign(id)).drafts[0]!.id;
+  const ask = () => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action: "reject", proposedRationale: "Proposed by the test.", revisionInstruction: null, requestedBy: "test" });
+  const lines = async (event: string) => (await service.getCampaign(id)).audit.filter((e) => e.event === event && e.detail.includes("req"));
+  const first = await ask();
+  const size = (await service.getCampaign(id)).audit.length;
+
+  // First outage, after the first request has expired: forty attempts, two lines.
+  const deliver = operator.deliver.bind(operator);
+  const down = async () => {
+    throw new Error("channel down");
+  };
+  operator.deliver = down;
+  clock.advance(31 * 60_000);
+  for (let i = 0; i < 40; i++) await assert.rejects(ask(), /could not be delivered/);
+  let record = await service.getCampaign(id);
+  assert.equal(record.audit.length, size + 1, "the request's line and the outage's line, in place of the first request's line");
+  const voided = record.decisionRequests.find((r) => r.action === "reject" && r.subject.id === draftId)!;
+  assert.equal(voided.state, "voided");
+  assert.ok((await lines("decision-undelivered"))[0]!.detail.startsWith(`${voided.id}:`));
+  assert.equal((await lines("decision-requested")).some((e) => e.detail.startsWith(`${first.requestId}:`)), false, "the line for the request that is gone is gone with it");
+
+  // The channel comes back. The request that stands is named, with what it replaced; the outage's line went with the request it was about.
+  operator.deliver = deliver;
+  const standing = await ask();
+  record = await service.getCampaign(id);
+  assert.equal(record.audit.length, size);
+  const requested = (await lines("decision-requested")).filter((e) => e.detail.includes(` reject draft ${draftId}`));
+  assert.equal(requested.length, 1);
+  assert.ok(requested[0]!.detail.startsWith(`${standing.requestId}:`) && requested[0]!.detail.includes(`It replaces ${voided.id}`), requested[0]!.detail);
+  assert.equal((await lines("decision-undelivered")).length, 0);
+
+  // A second outage, later, is recorded as well.
+  operator.deliver = down;
+  clock.advance(31 * 60_000);
+  await assert.rejects(ask(), /could not be delivered/);
+  const second = await lines("decision-undelivered");
+  assert.equal(second.length, 1);
+  assert.equal(second[0]!.detail.startsWith(`${voided.id}:`), false);
+  assert.equal((await service.getCampaign(id)).audit.length, size + 1);
+});
+
+test("b5-2: a request that fails after an answer that over-reported does not take the call past what it may use", async () => {
+  const answer = (content: string, finish: string, usage: unknown) => () =>
+    new Response(JSON.stringify({ model: "mistral-large-4", choices: [{ finish_reason: finish, message: { content } }], usage }), { status: 200, headers: { "content-type": "application/json" } });
+  const absurd = { prompt_tokens: 1, completion_tokens: 1e12 };
+  const gatewayError = () => new Response("upstream", { status: 502 });
+  const dropped = (): Response => {
+    throw new TypeError("fetch failed");
+  };
+  const brokenStream = () =>
+    new Response(new ReadableStream<Uint8Array>({ start: (controller) => controller.error(new Error("reset")) }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  const run = async (replies: Array<() => Response>) => {
+    const gateway = new MistralGateway({ fetch: (async () => (replies.shift() ?? gatewayError)()) as typeof fetch, backoffMs: 1, apiKey: "placeholder" });
+    return gateway.generateJson(request).then((result) => result.usage.completionTokens, (error: ModelCallError) => error.cost.usage.completionTokens);
+  };
+  // The request's allowance is 1,000, so the call may use 3,000, and its reservation is for that.
+  for (const failing of [gatewayError, dropped, brokenStream]) {
+    assert.equal(await run([answer("", "length", absurd), failing, failing]), 3000, failing.name);
+    assert.equal(await run([answer("not json", "stop", absurd), failing, failing]), 3000, failing.name);
+  }
+  // With truthful figures a failed request is still charged at its whole allowance.
+  assert.equal(await run([answer("not json", "stop", { prompt_tokens: 1, completion_tokens: 200 }), gatewayError, answer('{"theme":"t","score":1}', "stop", { prompt_tokens: 1, completion_tokens: 300 })]), 1500);
+});
