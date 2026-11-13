@@ -2131,6 +2131,99 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-b5-e30451c.md",
       "at": "2026-11-13T17:00:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-regression-7f1978a",
+      "gate": "KIC-01",
+      "commit": "7f1978a955c4ab849cc747da3ef5e7017114eccc",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-22",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff e30451c 7f1978a -- src tests",
+        "regression-only delta review; the completeness of the evaluator's rules against disguised text was out of scope"
+      ],
+      "skipped": [
+        {
+          "path": "everything unchanged since e30451c",
+          "reason": "delta review; relies on the reviews of e30451c"
+        },
+        {
+          "path": "the operator tool run with a key",
+          "reason": "forbidden to the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "high",
+          "summary": "The plain-number rule stops words made of stand-in symbols and digits from being read: drafts refused at e30451c are eligible",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "medium",
+          "summary": "Edge trimming backtracks: evaluation of long runs of punctuation takes seconds, worse than at e30451c",
+          "status": "open"
+        },
+        {
+          "id": "3",
+          "severity": "medium",
+          "summary": "Honest hashtags refused: short terms looked for at the start and end of each part of a tag",
+          "status": "open"
+        },
+        {
+          "id": "4",
+          "severity": "low",
+          "summary": "The letter-digit cut in a tag loses a short term of digits and a letter",
+          "status": "open"
+        },
+        {
+          "id": "5",
+          "severity": "info",
+          "summary": "A contraction joined by an underscore is still missed",
+          "status": "open"
+        },
+        {
+          "id": "6",
+          "severity": "low",
+          "summary": "An undelivered line can be written for a request that no longer exists and is never removed",
+          "status": "open"
+        },
+        {
+          "id": "7",
+          "severity": "low",
+          "summary": "Notices to the operator channel still reach 1,200 a day across 25 different decisions",
+          "status": "open"
+        },
+        {
+          "id": "8",
+          "severity": "low",
+          "summary": "A waiting revision request with a poor instruction blocks other revision requests on the draft for up to 30 minutes",
+          "status": "open"
+        },
+        {
+          "id": "9",
+          "severity": "low",
+          "summary": "The requester, time and outage of a replaced request are lost from the audit trail",
+          "status": "open"
+        },
+        {
+          "id": "10",
+          "severity": "info",
+          "summary": "Gateway charge follow-up closed",
+          "status": "accepted"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-regression-review-7f1978a.md",
+      "at": "2026-11-13T17:15:00Z"
     }
   ]
 }
