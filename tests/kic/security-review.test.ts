@@ -58,6 +58,11 @@ test("stored text cannot reach the first column of the editor's terminal, howeve
   assert.ok(fitToWidth("日本語日本語", 4).every((piece) => [...piece].length <= 2));
   // Padding is written out, and never stored by this program's own generation path.
   assert.equal(displaySafe("a    b"), "a \\u{20}\\u{20}\\u{20}b");
+  // Blanks that are not an ordinary space, and a space that opens a line, are written out too: none of
+  // them may stand in for the tool's margin or its continuation. (Review of 12a7626, finding F3.)
+  assert.equal(displaySafe("a\u00a0b\u2003c\u3000d"), "a\\u{a0}b\\u{2003}c\\u{3000}d");
+  assert.equal(displaySafe("one\n    two\n three", { multiline: true }), "one\n\\u{20}\\u{20}\\u{20}\\u{20}two\n\\u{20}three");
+  assert.doesNotMatch(displaySafe("x\n  |     fake continuation", { multiline: true }), /\n {2}\| {5}/);
   assert.equal(canonicalText("a    b  \n\n\n\nc\t\td "), "a b\n\nc d ");
 
   const { env, service, store } = await instance();

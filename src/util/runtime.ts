@@ -170,8 +170,11 @@ export function displaySafe(text: string, options: { multiline?: boolean } = {})
   return text
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u2800]/g, (character) => (character === "\n" && options.multiline ? character : visible(character)))
     .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : visible(character)))
-    // A run of spaces is written out too: padding is how text is pushed to the edge of a terminal.
-    .replace(/ {2,}/g, (run) => ` ${"\\u{20}".repeat(run.length - 1)}`);
+    // Every blank that is not an ordinary space is written out, and so is a run of spaces:
+    // padding is how text is pushed to the edge of a terminal or made to look like a margin.
+    .replace(/[^\S \n]|\p{Zs}(?<! )/gu, (character) => visible(character))
+    .replace(/ {2,}/g, (run) => ` ${"\\u{20}".repeat(run.length - 1)}`)
+    .replace(/^ /gm, "\\u{20}");
 }
 
 /**

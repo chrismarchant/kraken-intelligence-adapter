@@ -272,6 +272,8 @@ export function createShimServer(config: ShimConfig): http.Server {
     let reservedTokens = 0;
     let charged = false;
     let upstreamStatus = 0;
+    // A caller that stops reading must not hold its place for ever: an idle connection is closed.
+    req.socket.setTimeout(config.upstreamTimeoutMs > 0 ? config.upstreamTimeoutMs + 30_000 : 150_000, () => req.socket.destroy());
     res.on("close", () => {
       if (timer) clearTimeout(timer);
       if (!res.writableFinished) abort.abort(); // client went away
@@ -376,7 +378,12 @@ export function createShimServer(config: ShimConfig): http.Server {
           return;
         }
         reservedTokens = named.length > 0 ? Math.max(...(named as number[])) : perRequest;
-        if (named.length === 0) body = Buffer.from(JSON.stringify({ ...p, max_tokens: perRequest }), "utf8");
+        // What is sent is what was checked and reserved, never the caller's own bytes: the body is
+        // written out again from the parsed request, so that the provider cannot read it differently
+        // (a repeated key, say), and it always carries `max_tokens` set to the figure reserved. The
+        // other spelling of the limit is dropped, since a provider that ignored it would not be held to it.
+        const { max_completion_tokens: _dropped, ...rest } = p;
+        body = Buffer.from(JSON.stringify({ ...rest, max_tokens: reservedTokens }), "utf8");
         if (inFlight >= maxConcurrent) {
           res.setHeader("retry-after", "1");
           sendError(res, 429, "Too many requests in flight through this shim", "rate_limit_error");

@@ -36,9 +36,18 @@ test("key injection: a request may not ask for several answers or more tokens th
     // A request that names no limit is given the shim's; one within the limit goes as written.
     assert.equal((await post(shim.url, chatBody())).status, 200);
     assert.equal(JSON.parse(mock.requests[0]!.body).max_tokens, 4000);
-    const asWritten = chatBody({ max_tokens: 1500, n: 1 });
-    assert.equal((await post(shim.url, asWritten)).status, 200);
-    assert.equal(mock.requests[1]!.body, asWritten);
+    assert.equal((await post(shim.url, chatBody({ max_tokens: 1500, n: 1 }))).status, 200);
+    assert.deepEqual(JSON.parse(mock.requests[1]!.body), JSON.parse(chatBody({ max_tokens: 1500, n: 1 })));
+    // The other spelling of the limit is not passed on: what reaches the provider is `max_tokens`, at the figure reserved.
+    assert.equal((await post(shim.url, chatBody({ max_completion_tokens: 7 }))).status, 200);
+    const third = JSON.parse(mock.requests[2]!.body) as Record<string, unknown>;
+    assert.equal(third["max_tokens"], 7);
+    assert.equal("max_completion_tokens" in third, false);
+    // A body that repeats a key is sent on as it was read here, once, with the value that was checked.
+    const repeated = '{"model":"mistral-large-4","messages":[{"role":"user","content":"hi"}],"max_tokens":9000,"max_tokens":50}';
+    assert.equal((await post(shim.url, repeated)).status, 200);
+    assert.equal((mock.requests[3]!.body.match(/"max_tokens"/g) ?? []).length, 1);
+    assert.equal(JSON.parse(mock.requests[3]!.body).max_tokens, 50);
     assert.equal(mock.requests[1]!.headers.authorization, `Bearer ${KEY}`);
   } finally {
     await shim.close();

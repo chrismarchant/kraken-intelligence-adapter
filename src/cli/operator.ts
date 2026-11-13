@@ -60,8 +60,13 @@ const { positionals, values } = parseArgs({
   },
 });
 
-/** Terminal width to break lines at: the terminal's own when there is one, otherwise 80 columns. */
-const WIDTH = Math.max(40, Math.min(process.stdout.isTTY ? (process.stdout.columns ?? 80) : 80, 160)) - 1;
+/**
+ * Terminal width to break lines at: the terminal's own when there is one; otherwise
+ * KIC_OPERATOR_COLUMNS if it is set, and failing that 72, so that output piped to a pager
+ * still fits a narrow window.
+ */
+const DECLARED = /^[0-9]{2,3}$/.test(process.env.KIC_OPERATOR_COLUMNS ?? "") ? Number(process.env.KIC_OPERATOR_COLUMNS) : 72;
+const WIDTH = Math.max(40, Math.min(process.stdout.isTTY ? (process.stdout.columns ?? 80) : DECLARED, 160)) - 1;
 const LINE = "  | "; // where a line of stored text starts
 const REST = "  |     "; // where the rest of a line that was too long continues
 
@@ -86,8 +91,11 @@ const labelled = (label: string, text: string) => `${label}\n${stored(text)}`;
  */
 function everyValue(value: unknown, path = ""): string[] {
   if (value === undefined) return [];
-  if (value === null || typeof value !== "object") return [stored(String(value), { lead: `${path}: ` })];
-  if (Array.isArray(value)) return value.length === 0 ? [stored("(none)", { lead: `${path}: ` })] : value.flatMap((item, index) => everyValue(item, `${path}[${index + 1}]`));
+  // Text is introduced by a colon; anything that is not text (a number, yes or no, nothing, an
+  // empty list) by an equals sign, so that the text "null" and an absent value do not look alike.
+  if (typeof value === "string") return [stored(value, { lead: `${path}: ` })];
+  if (value === null || typeof value !== "object") return [stored(String(value), { lead: `${path} = ` })];
+  if (Array.isArray(value)) return value.length === 0 ? [stored("(empty)", { lead: `${path} = ` })] : value.flatMap((item, index) => everyValue(item, `${path}[${index + 1}]`));
   return Object.entries(value).flatMap(([key, item]) => everyValue(item, path ? `${path}.${displaySafe(key)}` : displaySafe(key)));
 }
 
@@ -174,7 +182,7 @@ async function main(): Promise<void> {
       // Releases are kept on the operator's side, beside the key, unless told otherwise, and never
       // where the agent runtime can write: checked before anything is read or signed.
       const releaseDir = process.env.KIC_RELEASE_DIR ? resolve(process.env.KIC_RELEASE_DIR) : join(dirname(resolve(keyFile)), "releases");
-      if (inside(config.dataDir, releaseDir) || inside(config.operatorDir, releaseDir)) {
+      if (inside(config.dataDir, releaseDir) || inside(config.operatorDir, releaseDir) || inside(releaseDir, config.dataDir)) {
         throw new Error("KIC_RELEASE_DIR must not be in the data directory or the operator channel: a release kept there could be altered. Nothing was released.");
       }
       // The decision log is checked against the operator's own ledger before anything is signed,
