@@ -2366,6 +2366,79 @@
       ],
       "reportPath": "docs/review/2026-11-13-regression-review-c83b0cb.md",
       "at": "2026-11-13T18:05:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-r2-delta-c83b0cb",
+      "gate": "KIC-01",
+      "commit": "c83b0cbd0134eb224552b73e52a43b7111cde721",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-25",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff e30451c c83b0cb -- src/workflow src/gateway src/limits.ts (72 lines: requestDecision 53, gateway failed-request charge 13, a comment 6)",
+        "R2 of the KIC-01 disposition; a distinct verdict for this delta only, independent of the evaluator"
+      ],
+      "skipped": [
+        {
+          "path": "src/evaluation/**",
+          "reason": "out of scope by instruction; reviewed separately"
+        },
+        {
+          "path": "everything unchanged since e30451c",
+          "reason": "delta review; relies on rev-2026-11-13-agent-b5-e30451c for it"
+        },
+        {
+          "path": "the operator tool run with a key",
+          "reason": "forbidden to the reviewer"
+        }
+      ],
+      "verdict": "approve-with-followups",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "low",
+          "summary": "One decision can be locked out for up to 30 minutes at a time by whoever asks first; the editor's way out is to decline or wait",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "info",
+          "summary": "The audit line for a replaced request can describe it wrongly, and other lines about it stay",
+          "status": "open"
+        },
+        {
+          "id": "3",
+          "severity": "info",
+          "summary": "The test r22-6 depends on timing",
+          "status": "open"
+        },
+        {
+          "id": "4",
+          "severity": "info",
+          "summary": "Replacement uses the agent process's clock; with clock skew a confirmable request can be replaced; fails safely",
+          "status": "open"
+        },
+        {
+          "id": "5",
+          "severity": "low",
+          "summary": "All 25 waiting places can be filled with different decisions and refilled at each expiry",
+          "status": "open"
+        },
+        {
+          "id": "6",
+          "severity": "info",
+          "summary": "The operator channel is bounded per stretch of time, not over a campaign's life",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-r2-delta-review-c83b0cb.md",
+      "at": "2026-11-13T21:30:00Z"
     }
   ]
 }
