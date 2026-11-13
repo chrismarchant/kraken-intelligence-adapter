@@ -1,0 +1,8 @@
+ℹ fail 4
+ℹ pass 63
+ℹ tests 67
+✖ b5-1, b5-3: the audit trail names the request that stands and each outage, and does not grow by asking again (181.884591ms)
+✖ b5-2: a request that fails after an answer that over-reported does not take the call past what it may use (1.496106ms)
+✖ failing tests:
+✖ one decision on one subject is asked for once at a time (73.240332ms)
+✖ r22-6: a delivery that fails after its request was replaced leaves no line for a request that is gone (67.447866ms)
