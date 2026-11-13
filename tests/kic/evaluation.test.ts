@@ -160,6 +160,10 @@ test("everyday terms that contain digits do not make a post ineligible, but figu
   for (const text of ["It cut errors by 2000 hours.", "We will ship by 2030 units.", "We made after 2020 hires.", "In 2026 customers joined.", "Since 2019 pallets were lost."]) {
     assert.deepEqual(rules(draft("year-shaped", text)), ["unlisted-statistic"], text);
   }
+  // Found by the fourth review: amounts after "by" and "from", a span that runs backwards, and made-up identifiers.
+  for (const text of ["We cut reconciliation hours by 1950.", "Errors fell from 2000 to 1900.", "Customers grew by 2000 and churn fell.", "Our ROI-300 plan worked.", "We hold SLA-99 across sites."]) {
+    assert.deepEqual([...new Set(rules(draft("fourth-review", text)))], ["unlisted-statistic"], text);
+  }
   // The exemption is narrow: a year used as a count, or a figure beside a term, is still a figure.
   assert.deepEqual(rules(draft("count", "We audited 2024 pallets.")), ["unlisted-statistic"]);
   assert.deepEqual(rules(draft("beside", "B2B teams save 40 hours.")), ["unlisted-statistic"]);

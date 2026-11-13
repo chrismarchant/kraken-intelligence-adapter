@@ -115,18 +115,26 @@ const NOT_A_FIGURE = [
   /\b[A-Z]2[A-Z]\b/g,
   /\bQ[1-4]\b/g,
   /\b24\/7\b/g,
-  /\b[A-Z]{2,}-\d{1,5}\b/g,
-  // A span of years ("2019 to 2024"). Checked before single years, which would otherwise take its first half.
-  /\b(?:19|20)\d{2}\s*(?:-|\u2013|to)\s*(?:19|20)\d{2}\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi,
-  // A year named as a date: after a date word, and followed by the end of the clause or by a
-  // word that cannot be the thing counted ("in 2026 we", not "in 2026 customers").
-  /\b(?:in|since|by|during|from|until|before|after|early|late|mid)[\s-]+(?:19|20)\d{2}\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|to|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi,
+  // Named standards and the like. A short fixed list: any other "WORD-123" is a figure.
+  /\b(?:ISO|IEC|SOC|RFC|COVID)[- ]\d{1,5}\b/g,
+  // A year named as a date: after a word that only introduces a date, and followed by the end
+  // of the clause or by a word that cannot be the thing counted ("in 2026 we", not "in 2026
+  // customers"). "by" and "from" are not such words: "cut hours by 1950" states a figure.
+  /\b(?:in|since|during|until|before|after|early|late|mid)[\s-]+(?:19|20)\d{2}\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi,
+  // "By 2027 this will ..." only where "By" opens a sentence; inside one, "by 1950" is an amount.
+  /(?:^|(?<=[.!?]\s)|(?<=\n))By\s+(?:19|20)\d{2}\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:we|the|it|this|that|our|there)\b)/g,
 ];
+
+/** "from 2019 to 2024": a span of years, read as dates only when it runs forward in time. */
+const YEAR_SPAN = /\b((?:from|between|during|over|since)\s+)((?:19|20)\d{2})(\s*(?:-|\u2013|to|and)\s*)((?:19|20)\d{2})\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi;
 
 /** The numbers written in digits in a text, without clock times and everyday terms, as plain digit strings. */
 function numbersIn(text: string, options: { everydayTerms: boolean } = { everydayTerms: true }): string[] {
   let scanned = text.replace(CLOCK_TIME, " ");
-  if (options.everydayTerms) for (const pattern of NOT_A_FIGURE) scanned = scanned.replace(pattern, " ");
+  if (options.everydayTerms) {
+    scanned = scanned.replace(YEAR_SPAN, (whole, _lead, first: string, _join, second: string) => (Number(second) > Number(first) ? " " : whole));
+    for (const pattern of NOT_A_FIGURE) scanned = scanned.replace(pattern, " ");
+  }
   const found = scanned.match(NUMBER) ?? [];
   return [...new Set(found.map((n) => n.replace(/,/g, "").replace(/\.$/, "")))];
 }
@@ -321,7 +329,8 @@ export function analyseDraft(
   }
   // Text that tries to slip past the rules above: invisible or compatibility characters,
   // control characters, and words that mix Latin letters with look-alike scripts.
-  const raw = `${draft.body}\n${draft.hashtags.join(" ")}`;
+  // Every part the editor is shown or the record keeps is checked, not only what is published.
+  const raw = [draft.body, draft.hashtags.join(" "), draft.hook, draft.callToAction, ...draft.claims.map((c) => c.text)].join("\n");
   const disguised = (raw.match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => (LATIN.test(word) && NON_LATIN_LETTER.test(word)) || ODD_LATIN.test(word));
   if (canonicalText(raw) !== raw) {
     failures.push({ rule: "suspicious-characters", detail: "Contains invisible or compatibility characters (for example zero-width spaces or full-width digits)" });

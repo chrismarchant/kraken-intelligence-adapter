@@ -4,10 +4,13 @@ import { createJevTransport } from "../evaluation/jev.ts";
 import { FixtureGateway } from "../gateway/fixture.ts";
 import type { ModelGateway } from "../gateway/gateway.ts";
 import { MistralGateway } from "../gateway/mistral.ts";
+import type { Limits } from "../limits.ts";
 import { DEFAULT_LIMITS } from "../limits.ts";
 import { FileCampaignStore } from "../store/store.ts";
 import { FileOperatorChannel } from "../workflow/operator.ts";
 import { CampaignService } from "../workflow/service.ts";
+import type { SpendLedger } from "../workflow/spend.ts";
+import { FileSpendLedger } from "../workflow/spend.ts";
 import { FileOperatorLedger } from "../workflow/ledger.ts";
 import type { DecisionSigner, DecisionVerifier, OperatorLedger } from "../workflow/signing.ts";
 import { signerFromPrivateKeyPem, verifierFromPublicKeyPem } from "../workflow/signing.ts";
@@ -22,6 +25,9 @@ export interface RuntimeConfig {
   reasoningEffort: "low" | "medium" | "high" | undefined;
   /** Path of the operator's public key, or null when unsigned decisions were explicitly allowed. */
   decisionPublicKeyFile: string | null;
+  /** The instance's own account of model spending. Outside the data and working directories. */
+  spendFile: string;
+  limits: Limits;
 }
 
 /**
@@ -78,7 +84,28 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env, cwd: str
     throw new Error("Set KIC_DECISION_PUBLIC_KEY_FILE to the operator's public key (or KIC_ALLOW_UNSIGNED_DECISIONS=1 for development only).");
   }
 
+  // The instance's own spend account. By default it sits in the operator directory, which the
+  // agent runtime must not be able to write; wherever it is put, the same holds.
+  const spendFile = resolve(cwd, env.KIC_SPEND_FILE ?? join(operatorDir, "server-spend.state"));
+  if (inside(dataDir, spendFile) || inside(cwd, spendFile)) {
+    throw new Error("KIC_SPEND_FILE must be outside the data directory and the working directory.");
+  }
+  const ceiling = (name: string, fallback: number) => {
+    const raw = env[name];
+    if (raw === undefined) return fallback;
+    if (!/^[1-9][0-9]{0,11}$/.test(raw)) throw new Error(`${name} must be a positive whole number.`);
+    return Number(raw);
+  };
+  const limits: Limits = {
+    ...DEFAULT_LIMITS,
+    maxCampaigns: ceiling("KIC_MAX_CAMPAIGNS", DEFAULT_LIMITS.maxCampaigns),
+    maxInstanceModelCalls: ceiling("KIC_MAX_INSTANCE_MODEL_CALLS", DEFAULT_LIMITS.maxInstanceModelCalls),
+    maxInstanceCompletionTokens: ceiling("KIC_MAX_INSTANCE_COMPLETION_TOKENS", DEFAULT_LIMITS.maxInstanceCompletionTokens),
+  };
+
   return {
+    spendFile,
+    limits,
     dataDir,
     operatorDir,
     exportDir: resolve(cwd, env.KIC_EXPORT_DIR ?? `${dataDir}/exports`),
@@ -90,7 +117,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env, cwd: str
   };
 }
 
-function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; verifier: DecisionVerifier | null; ledger?: OperatorLedger | null }) {
+function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; verifier: DecisionVerifier | null; ledger?: OperatorLedger | null; spend?: SpendLedger }) {
   const gateway: ModelGateway =
     config.modelMode === "fixture" ? new FixtureGateway(config.fixtureDir) : new MistralGateway({ reasoningEffort: config.reasoningEffort });
   const operator = new FileOperatorChannel(config.operatorDir);
@@ -98,8 +125,10 @@ function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; ver
     store: new FileCampaignStore(`${config.dataDir}/campaigns`),
     gateway,
     // Throws if anything other than the mock is asked for. There is no live JEV path.
-    evaluator: createJevTransport(config.evaluator, DEFAULT_LIMITS),
+    evaluator: createJevTransport(config.evaluator, config.limits),
     operator,
+    limits: config.limits,
+    spend: keys.spend,
     signer: keys.signer,
     verifier: keys.verifier,
     ledger: keys.ledger ?? null,
@@ -113,7 +142,8 @@ function build(config: RuntimeConfig, keys: { signer: DecisionSigner | null; ver
  */
 export function createRuntime(config: RuntimeConfig = loadRuntimeConfig()) {
   const verifier = config.decisionPublicKeyFile ? verifierFromPublicKeyPem(readFileSync(config.decisionPublicKeyFile, "utf8")) : null;
-  return build(config, { signer: null, verifier });
+  // The only runtime that calls a model, so the only one that keeps the spend account.
+  return build(config, { signer: null, verifier, spend: new FileSpendLedger(config.spendFile) });
 }
 
 /** The operator's runtime. It holds the private key and is the only place decisions are recorded. */

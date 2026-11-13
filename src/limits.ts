@@ -7,6 +7,12 @@ export interface Limits {
   maxConcurrency: number;
   /** Posts drafted by one drafting step when the caller does not name them. */
   maxSlotsPerDraftStep: number;
+  /** Campaigns one instance may hold. */
+  maxCampaigns: number;
+  /** Model calls allowed over the life of the instance, all campaigns together. */
+  maxInstanceModelCalls: number;
+  /** Completion tokens (including reasoning) allowed over the life of the instance. */
+  maxInstanceCompletionTokens: number;
   /** Model calls allowed over the life of one campaign. */
   maxModelCalls: number;
   /** Completion tokens (including reasoning) allowed over the life of one campaign. */
@@ -31,6 +37,10 @@ export const DEFAULT_LIMITS: Limits = Object.freeze({
   maxRevisionPasses: 2,
   maxConcurrency: 3,
   maxSlotsPerDraftStep: 6,
+  // Provisional instance ceilings, pending the owner's spend ceiling (OD-6).
+  maxCampaigns: 50,
+  maxInstanceModelCalls: 2000,
+  maxInstanceCompletionTokens: 10_000_000,
   maxModelCalls: 80,
   maxCompletionTokens: 400_000,
   modelCallTimeoutMs: 180_000,

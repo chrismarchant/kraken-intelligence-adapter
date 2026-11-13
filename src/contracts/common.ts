@@ -9,9 +9,13 @@ export type Id = z.infer<typeof Id>;
 
 export const IsoDateTime = z.iso.datetime({ offset: true });
 
-export const NonEmpty = z.string().trim().min(1);
-export const ShortText = z.string().trim().min(1).max(400);
-export const LongText = z.string().trim().min(1).max(6000);
+/** No control characters other than tab and line feed: stored text is shown to an editor on a terminal. */
+export const NO_CONTROL_CHARACTERS = /^[^\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]*$/;
+const plain = "must not contain control characters";
+
+export const NonEmpty = z.string().trim().min(1).regex(NO_CONTROL_CHARACTERS, plain);
+export const ShortText = z.string().trim().min(1).max(400).regex(NO_CONTROL_CHARACTERS, plain);
+export const LongText = z.string().trim().min(1).max(6000).regex(NO_CONTROL_CHARACTERS, plain);
 
 export const TokenUsage = z.strictObject({
   promptTokens: z.number().int().nonnegative(),

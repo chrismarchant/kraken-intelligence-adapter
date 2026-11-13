@@ -30,7 +30,7 @@ export function approvalOf(record: CampaignRecord, draft: PostDraft, verifier: D
   if (record.drafts.some((d) => d.revisionOf === draft.id)) return null;
   const latest = latestDecisionFor(record, { kind: "draft", id: draft.id }, verifier);
   if (!latest || latest.action !== "approve") return null;
-  return latest.subjectContentSha256 === draftContentHash(draft) ? latest : null;
+  return latest.subjectContentSha256 === draftContentHash(record, draft) ? latest : null;
 }
 
 export interface AssembleOptions {
@@ -138,6 +138,14 @@ export function assembleProgramme(record: CampaignRecord, options: AssembleOptio
 /** SHA-256 of a package's canonical JSON with its release block set aside. This is what a release signs. */
 export function packageDigest(pkg: ProgrammePackage): string {
   return sha256(canonicalJson({ ...pkg, release: null }));
+}
+
+/**
+ * What an editor confirms before releasing: a digest of everything in the package except
+ * the moment it was assembled, so that the package released is the one that was reviewed.
+ */
+export function releaseDigest(pkg: ProgrammePackage): string {
+  return sha256(canonicalJson({ ...pkg, release: null, assembledAt: null }));
 }
 
 export interface ReleaseInput {

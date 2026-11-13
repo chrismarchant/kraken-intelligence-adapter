@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GenerationMeta, Id, LongText, ShortText } from "./common.ts";
+import { GenerationMeta, Id, LongText, NO_CONTROL_CHARACTERS, ShortText } from "./common.ts";
 
 export const Narrative = z.strictObject({
   id: Id,
@@ -69,7 +69,7 @@ export const PostDraft = z.strictObject({
   /** The approach this variant takes, in the model's words. */
   approach: ShortText,
   hook: ShortText,
-  body: z.string().trim().min(1).max(8000),
+  body: z.string().trim().min(1).max(8000).regex(NO_CONTROL_CHARACTERS, "must not contain control characters"),
   callToAction: ShortText,
   hashtags: z.array(z.string().regex(/^#[A-Za-z0-9_]{1,60}$/)).max(8),
   claims: z.array(DraftClaim).max(12),

@@ -59,7 +59,7 @@ test("a forged, unsigned, mis-signed or transplanted decision invalidates the wh
     rationale: "Forged.",
     revisionInstruction: null,
     decidedAt: "2026-01-05T10:00:00.000Z",
-    subjectContentSha256: draftContentHash(draft),
+    subjectContentSha256: draftContentHash(before, draft),
   };
   const attacker = generateDecisionKeyPair();
   const forgeries: EditorialDecision[] = [
@@ -229,7 +229,7 @@ test("what the editor is shown comes from the campaign record, not from the requ
   assert.deepEqual(shown.subject, { kind: "draft", id: banned.id });
   assert.equal(shown.content.text, banned.body, "the full post text is shown");
   assert.deepEqual(shown.content.hashtags, banned.hashtags);
-  assert.equal(shown.contentSha256, draftContentHash(banned));
+  assert.equal(shown.contentSha256, draftContentHash(await service.getCampaign(id), banned));
   assert.equal(shown.unchanged, true);
   assert.match(shown.content.eligibilityFailures.join(" "), /must-avoid-term/);
   assert.match(shown.content.evaluation ?? "", /Ranked 2 of 2/);
@@ -312,7 +312,7 @@ test("content swapped for a look-alike after the editor read it is not signed, e
     stored.hook = `${stored.hook}!`; // a part the editor might not look at closely
     stored.body = stored.body.replace("delays decisions", "delays every decision");
     // The attacker also rewrites the request so that it matches the new content.
-    record.decisionRequests.find((r) => r.id === request.requestId)!.subjectContentSha256 = draftContentHash(stored);
+    record.decisionRequests.find((r) => r.id === request.requestId)!.subjectContentSha256 = draftContentHash(record, stored);
   });
   await assert.rejects(
     service.confirmDecision({ campaignId: id, requestId: request.requestId, code: operator.codeFor(request.requestId), actor: EDITOR, rationale: "Approve.", expected: read }),

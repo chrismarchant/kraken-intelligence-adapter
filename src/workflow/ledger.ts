@@ -47,7 +47,9 @@ export class FileOperatorLedger implements OperatorLedger {
   }
 
   async get(campaignId: string): Promise<LogHead | null> {
-    return (await this.read())[campaignId] ?? null;
+    const heads = await this.read();
+    // Own entries only: a campaign id such as "constructor" must not find something inherited.
+    return Object.hasOwn(heads, campaignId) ? (heads[campaignId] ?? null) : null;
   }
 
   async set(campaignId: string, head: LogHead): Promise<void> {
@@ -69,7 +71,7 @@ export class FileOperatorLedger implements OperatorLedger {
     }
     try {
       const heads = await this.read();
-      const current = heads[campaignId];
+      const current = Object.hasOwn(heads, campaignId) ? heads[campaignId] : undefined;
       // The ledger only ever moves forward.
       if (current && current.sequence >= head.sequence) return;
       heads[campaignId] = head;

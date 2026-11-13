@@ -160,14 +160,14 @@ test("the operator tool creates a key, shows the content, signs a confirmation a
   assert.match((await operator(["list"], withKey)).out, /No decisions are waiting/);
 
   // Release: refused while nothing is approved; refused if the store has lost a decision the ledger knows of.
-  const early = await operator(["release", "--campaign", campaign.id, "--id", "editor-1", "--name", "Test Editor", "--reason", "Go."], withKey);
+  const early = await operator(["release", "--campaign", campaign.id, "--digest", "0".repeat(64), "--id", "editor-1", "--name", "Test Editor", "--reason", "Go."], withKey);
   assert.notEqual(early.code, 0);
   const store = new FileCampaignStore(join(env.KIC_DATA_DIR, "campaigns"));
   await store.update(campaign.id, (r) => {
     r.decisions.pop();
     r.narratives[0]!.status = "candidate";
   });
-  const rolledBack = await operator(["release", "--campaign", campaign.id, "--id", "editor-1", "--name", "Test Editor", "--reason", "Go."], withKey);
+  const rolledBack = await operator(["release", "--campaign", campaign.id, "--digest", "0".repeat(64), "--id", "editor-1", "--name", "Test Editor", "--reason", "Go."], withKey);
   assert.notEqual(rolledBack.code, 0);
   assert.match(rolledBack.out, /rolled back or altered/);
 
@@ -222,11 +222,60 @@ test("the operator tool releases a fully approved programme, signed, and only fr
     await decideWithTool((await agent.requestDecision({ campaignId: campaign.id, subject: { kind: "draft", id: pick }, action: "approve", proposedRationale: "Top.", requestedBy: "agent" })).requestId);
   }
 
-  const released = await operator(["release", "--campaign", campaign.id, "--id", "editor-1", "--name", "Test Editor", "--reason", "Ready for the client."], env);
+  // The editor reviews the whole programme first, and releases by the digest of what was reviewed.
+  const releaseArgs = ["--id", "editor-1", "--name", "Test Editor", "--reason", "Ready for the client."];
+  const noDigest = await operator(["release", "--campaign", campaign.id, ...releaseArgs], env);
+  assert.notEqual(noDigest.code, 0);
+  assert.match(noDigest.out, /release needs --digest/);
+  const review = await operator(["review", "--campaign", campaign.id], env);
+  assert.equal(review.code, 0, review.out);
+  const brief = syntheticBrief();
+  for (const term of brief.constraints.mustAvoid) assert.ok(review.out.includes(term), `the review shows that the brief rules out "${term}"`);
+  for (const reference of brief.references) assert.ok(review.out.includes(reference.id), `the review shows reference ${reference.id}`);
+  for (const evaluation of evaluations) {
+    const body = drafts.find((d) => d.id === evaluation.ranking[0])!.body;
+    assert.ok(review.out.includes(body.split("\n")[0]!), "the review shows each approved post");
+  }
+  const releaseDigest = /Release digest: ([0-9a-f]{64})/.exec(review.out)![1]!;
+  const wrong = await operator(["release", "--campaign", campaign.id, "--digest", "1".repeat(64), ...releaseArgs], env);
+  assert.notEqual(wrong.code, 0);
+  assert.match(wrong.out, /not the one whose digest you gave/);
+
+  // A plan changed between the review and the release is not what was reviewed.
+  const store = new FileCampaignStore(join(env.KIC_DATA_DIR, "campaigns"));
+  const theme = (await store.get(campaign.id)).plan!.slots[3]!.theme;
+  await store.update(campaign.id, (r) => {
+    r.plan!.slots[3]!.theme = "A theme nobody reviewed";
+  });
+  const changed = await operator(["release", "--campaign", campaign.id, "--digest", releaseDigest, ...releaseArgs], env);
+  assert.notEqual(changed.code, 0, changed.out);
+  await store.update(campaign.id, (r) => {
+    r.plan!.slots[3]!.theme = theme;
+  });
+
+  const released = await operator(["release", "--campaign", campaign.id, "--digest", releaseDigest, ...releaseArgs], env);
   assert.equal(released.code, 0, released.out);
   assert.match(released.out, /Released prog-.* \(complete\): 4 approved post\(s\), on 5 recorded decision\(s\)/);
   const packagePath = /(\S+programme\.json)/.exec(released.out)![1]!;
-  assert.ok(packagePath.startsWith(config.exportDir));
+  assert.ok(packagePath.startsWith(join(base, "editor-home", "releases")), "a release is kept on the operator's side, not in the campaign data directory");
+  assert.ok(!packagePath.startsWith(config.dataDir));
+
+  // The operator tool can check a released package later, and notices a commands file that was edited.
+  const verified = await operator(["verify", "--package", packagePath], env);
+  assert.equal(verified.code, 0, verified.out);
+  assert.match(verified.out, /signature valid, content unchanged/);
+  assert.match(verified.out, /commands file beside it matches: 4 NON-EXECUTABLE/);
+  const commandsPath = join(packagePath, "..", "provisional-commands.NON-EXECUTABLE.json");
+  const original = readFileSync(commandsPath, "utf8");
+  (await import("node:fs")).chmodSync(commandsPath, 0o600);
+  (await import("node:fs")).writeFileSync(commandsPath, original.replace("NON-EXECUTABLE. Provisional", "Provisional").replace(/"slot": 1\b/, '"slot": 9'));
+  const edited = await operator(["verify", "--package", packagePath], env);
+  assert.notEqual(edited.code, 0, edited.out);
+  assert.match(edited.out, /does not match the released package/);
+  (await import("node:fs")).writeFileSync(commandsPath, original);
+  const tampered = join(base, "tampered.json");
+  (await import("node:fs")).writeFileSync(tampered, readFileSync(packagePath, "utf8").replace("Test Editor", "Someone Else"));
+  assert.notEqual((await operator(["verify", "--package", tampered], env)).code, 0);
   const pkg = ProgrammePackage.parse(JSON.parse(readFileSync(packagePath, "utf8")));
   const verifier = verifierFromPublicKeyPem(readFileSync(`${keyFile}.pub`, "utf8"));
   assert.equal(releaseIsValid(pkg, verifier), true);
@@ -301,7 +350,7 @@ test("a missing ledger stops the operator tool instead of silently trusting the 
 
   // The ledger disappears: deleted, or the key was moved to a new machine without it.
   fs.unlinkSync(`${keyFile}.ledger.json`);
-  for (const args of [["list"], ["show", "--request", request.requestId], ["release", "--campaign", campaign.id, "--id", "e", "--name", "E", "--reason", "r"]]) {
+  for (const args of [["list"], ["show", "--request", request.requestId], ["release", "--campaign", campaign.id, "--digest", "0".repeat(64), "--id", "e", "--name", "E", "--reason", "r"]]) {
     const out = await operator(args, env);
     if (args[0] === "show") continue; // show reads the record only; it signs nothing
     assert.notEqual(out.code, 0, args.join(" "));

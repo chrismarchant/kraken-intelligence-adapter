@@ -50,6 +50,8 @@ import type { CampaignStore } from "../store/store.ts";
 import type { Clock, CodeSource, IdSource } from "../util/runtime.ts";
 import { canonicalJson, canonicalText, mapLimitSettled, randomCodes, randomIds, sha256, systemClock } from "../util/runtime.ts";
 import type { OperatorChannel } from "./operator.ts";
+import type { SpendLedger } from "./spend.ts";
+import { MemorySpendLedger } from "./spend.ts";
 import type { DecisionSigner, DecisionVerifier, LogHead, OperatorLedger, UnsignedDecision } from "./signing.ts";
 import { GENESIS_SHA256, decisionDigest, decisionPayload, logContainsHead, verifyDecisionLog } from "./signing.ts";
 
@@ -76,6 +78,11 @@ export interface ServiceDeps {
   ids?: IdSource;
   codes?: CodeSource;
   limits?: Limits;
+  /**
+   * The instance's own account of model spending, kept outside the campaign store. Without
+   * one, an account that lives only as long as this service is used.
+   */
+  spend?: SpendLedger;
   /**
    * The operator's signing key. Present only in the operator's own process. A service
    * without it cannot record a decision when a verifier is configured.
@@ -163,6 +170,13 @@ export interface RequestDescription {
     /** Mandatory constraints the content fails. A draft with any cannot be approved. */
     eligibilityFailures: string[];
     evaluation: string | null;
+    /**
+     * What the decision also rests on and its hash also covers, read from the record: the
+     * planned post, the claims the draft makes and what each cites, and the parts of the
+     * brief the mandatory constraints were checked against. Shown so that the editor can
+     * see a brief or a plan that is not the one they expect.
+     */
+    basis: Array<{ label: string; lines: string[] }>;
   };
   /** SHA-256 of the content as it is now. */
   contentSha256: string;
@@ -181,12 +195,29 @@ export interface DecisionRequestView {
   expiresAt: string;
 }
 
-export function draftContentHash(draft: Pick<PostDraft, "hook" | "body" | "callToAction" | "hashtags">): string {
-  return sha256(canonicalJson({ hook: draft.hook, body: draft.body, callToAction: draft.callToAction, hashtags: draft.hashtags }));
+/** The brief exactly as stored. Every decision is made against one brief; a changed brief voids it. */
+export function briefHash(brief: CampaignBrief): string {
+  return sha256(canonicalJson(brief));
 }
 
-export function narrativeContentHash(narrative: Pick<Narrative, "title" | "angle" | "coreMessage">): string {
-  return sha256(canonicalJson({ title: narrative.title, angle: narrative.angle, coreMessage: narrative.coreMessage }));
+type HashContext = Pick<CampaignRecord, "brief" | "plan">;
+
+/**
+ * What a decision about a draft is a decision about: every stored field of the draft except
+ * its status and how it was generated (its text, its claims and what they cite, which post
+ * it is for), the planned post it belongs to, and the brief it was checked against. If any
+ * of these is changed after the editor decided, the decision no longer applies.
+ */
+export function draftContentHash(record: HashContext, draft: PostDraft): string {
+  const { status: _status, generation: _generation, ...content } = draft;
+  const slot = record.plan?.slots.find((s) => s.slot === draft.slot) ?? null;
+  return sha256(canonicalJson({ kind: "draft", brief: briefHash(record.brief), slot, content }));
+}
+
+/** As for a draft: every stored field of the narrative except its status and provenance, and the brief. */
+export function narrativeContentHash(record: HashContext, narrative: Narrative): string {
+  const { status: _status, generation: _generation, ...content } = narrative;
+  return sha256(canonicalJson({ kind: "narrative", brief: briefHash(record.brief), content }));
 }
 
 function codesMatch(expectedHash: string, code: string): boolean {
@@ -240,6 +271,7 @@ export class CampaignService {
   private readonly codes: CodeSource;
   private readonly signer: DecisionSigner | null;
   private readonly ledger: OperatorLedger | null;
+  private readonly spend: SpendLedger;
   readonly verifier: DecisionVerifier | null;
   readonly limits: Limits;
 
@@ -255,6 +287,7 @@ export class CampaignService {
     this.signer = deps.signer ?? null;
     this.verifier = deps.verifier ?? null;
     this.ledger = deps.ledger ?? null;
+    this.spend = deps.spend ?? new MemorySpendLedger();
     if (this.signer && this.verifier && this.signer.keyId !== this.verifier.keyId) {
       throw new Error("The decision signing key and the verification key do not belong together.");
     }
@@ -385,7 +418,7 @@ export class CampaignService {
     prepare: (record: CampaignRecord) => { context: C; requests: ModelRequest<T>[] };
     commit: (record: CampaignRecord, results: GenerateResult<T>[], context: C) => O;
   }): Promise<O> {
-    const { context, requests, reservationId } = await this.mutate(spec.campaignId, (record) => {
+    const { context, requests, reservationId, worstCase } = await this.mutate(spec.campaignId, (record) => {
       this.expireReservations(record);
       const prepared = spec.prepare(record);
       // Each call may use up to MAX_TOKEN_FACTOR times its allowance once retries are counted.
@@ -394,8 +427,22 @@ export class CampaignService {
       record.budget.modelCalls += prepared.requests.length;
       const id = this.ids.next("res");
       record.budget.reservations.push({ id, step: spec.name, calls: prepared.requests.length, completionTokens: worstCase, reservedAt: this.now() });
-      return { ...prepared, reservationId: id };
+      return { ...prepared, reservationId: id, worstCase };
     });
+
+    // The same charge in the instance's own account, which the campaign store cannot reset.
+    // If it refuses, the reservation in the record is withdrawn and nothing is called.
+    const reserved = { calls: requests.length, tokens: worstCase };
+    try {
+      await this.spend.reserve(spec.campaignId, reserved.calls, reserved.tokens, this.limits);
+    } catch (error) {
+      await this.mutate(spec.campaignId, (record) => {
+        if (!record.budget.reservations.some((r) => r.id === reservationId)) return;
+        record.budget.reservations = record.budget.reservations.filter((r) => r.id !== reservationId);
+        record.budget.modelCalls = Math.max(0, record.budget.modelCalls - reserved.calls);
+      });
+      throw error;
+    }
 
     const cancelAll = new AbortController();
     const settled = await mapLimitSettled(requests, this.limits.maxConcurrency, (request) => this.callModel(request, cancelAll.signal), () => cancelAll.abort());
@@ -415,13 +462,17 @@ export class CampaignService {
       }
     }
 
+    // Correct the instance's account to what was used. If that fails, the worst case stays charged.
+    const usedTokens = costs.reduce((sum, c) => sum + c.usage.completionTokens, 0);
+    await this.spend.settle(spec.campaignId, reserved, { calls: requests.length - neverStarted, tokens: usedTokens }).catch(() => undefined);
+
     type Outcome = { ok: true; value: O } | { ok: false; error: unknown };
     const outcome = await this.mutate(spec.campaignId, (record): Outcome => {
-      const reserved = record.budget.reservations.some((r) => r.id === reservationId);
+      const stillReserved = record.budget.reservations.some((r) => r.id === reservationId);
       record.budget.reservations = record.budget.reservations.filter((r) => r.id !== reservationId);
       // If the reservation had already expired, its full allowance was charged then; only
       // the request count is added now, so tokens are not counted twice.
-      this.addCosts(record, reserved ? costs : costs.map((c) => ({ ...c, usage: { promptTokens: c.usage.promptTokens, completionTokens: 0, reasoningTokens: 0 } })));
+      this.addCosts(record, stillReserved ? costs : costs.map((c) => ({ ...c, usage: { promptTokens: c.usage.promptTokens, completionTokens: 0, reasoningTokens: 0 } })));
       // Calls that were reserved but never sent are given back.
       record.budget.modelCalls -= neverStarted;
       if (failure !== null) {
@@ -484,6 +535,8 @@ export class CampaignService {
       budget: { modelCalls: 0, providerRequests: 0, usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 }, reservations: [] },
       audit: [{ at, event: "campaign-created", detail: `Brief accepted (${slots} posts planned, synthetic: ${brief.synthetic}).` }],
     };
+    // Counted in the instance's own account first: campaigns are limited, so that a new one is not a new allowance.
+    await this.spend.registerCampaign(record.id, this.limits);
     await this.store.create(record);
     return record;
   }
@@ -579,14 +632,14 @@ export class CampaignService {
         const narrative = selected(record);
         const slotCount = record.brief.cadence.postsPerWeek * record.brief.cadence.weeks;
         return {
-          context: { narrativeId: narrative.id, narrativeHash: narrativeContentHash(narrative), slotCount },
+          context: { narrativeId: narrative.id, narrativeHash: narrativeContentHash(record, narrative), slotCount },
           requests: [{ purpose: "programme-plan", user: planPrompt(record.brief, narrative, slotCount), schema: PlanOutput, schemaName: "programme_plan", maxTokens: 10000 }],
         };
       },
       commit: (record, [result], context) => {
         // The editor's selection must still stand, on the same text, when the plan is stored.
         const narrative = selected(record);
-        if (narrative.id !== context.narrativeId || narrativeContentHash(narrative) !== context.narrativeHash) {
+        if (narrative.id !== context.narrativeId || narrativeContentHash(record, narrative) !== context.narrativeHash) {
           throw new WorkflowError("selection-changed", "The selected narrative changed while the programme was being planned.");
         }
         if (!result || result.value.slots.length !== context.slotCount) {
@@ -749,7 +802,7 @@ export class CampaignService {
       if (draft.status === "superseded" || draft.status === "rejected") {
         throw new WorkflowError("draft-not-revisable", `Draft ${draftId} is ${draft.status}.`);
       }
-      const hash = draftContentHash(draft);
+      const hash = draftContentHash(record, draft);
       // The latest decision about the draft must be the editor's request to revise this exact text.
       const latest = latestDecisionFor(record, { kind: "draft", id: draftId }, this.verifier);
       const instruction = latest?.action === "request-revision" && latest.subjectContentSha256 === hash ? latest : undefined;
@@ -851,7 +904,7 @@ export class CampaignService {
       }
       if (record.plan) throw new WorkflowError("plan-exists", "The programme is already planned; the narrative can no longer change.");
       if (narrative.status === "rejected") throw new WorkflowError("narrative-rejected", `Narrative ${subject.id} was rejected.`);
-      return narrativeContentHash(narrative);
+      return narrativeContentHash(record, narrative);
     }
 
     const draft = record.drafts.find((d) => d.id === subject.id);
@@ -873,17 +926,29 @@ export class CampaignService {
         );
       }
     }
-    return draftContentHash(draft);
+    return draftContentHash(record, draft);
   }
 
   /** What the editor is shown: the content itself, read from the record, not the requester's description of it. */
   private contentOf(record: CampaignRecord, subject: DecisionSubject): RequestDescription["content"] {
     if (subject.kind === "narrative") {
       const narrative = record.narratives.find((n) => n.id === subject.id) as Narrative;
-      return { title: narrative.title, text: `${narrative.angle}\n\nCore message: ${narrative.coreMessage}`, hashtags: [], unpublished: [], eligibilityFailures: [], evaluation: null };
+      return {
+        title: narrative.title,
+        text: `${narrative.angle}\n\nCore message: ${narrative.coreMessage}`,
+        hashtags: [],
+        unpublished: [
+          { label: "Audience fit", text: narrative.audienceFit },
+          { label: "Supporting themes", text: narrative.supportingThemes.join("; ") },
+        ],
+        eligibilityFailures: [],
+        evaluation: null,
+        basis: this.briefBasis(record),
+      };
     }
     const draft = record.drafts.find((d) => d.id === subject.id) as PostDraft;
-    const failures = analyseDraft(record.brief, this.slotOf(record, draft.slot), draft, this.limits).failures;
+    const slot = this.slotOf(record, draft.slot);
+    const failures = analyseDraft(record.brief, slot, draft, this.limits).failures;
     const evaluation = this.latestEvaluationFor(record, draft.id);
     const candidate = evaluation?.candidates.find((c) => c.draftId === draft.id);
     return {
@@ -897,18 +962,39 @@ export class CampaignService {
       eligibilityFailures: failures.map((f) => `${f.rule}: ${f.detail}`),
       evaluation:
         evaluation && candidate
-          ? `Ranked ${evaluation.ranking.indexOf(draft.id) + 1} of ${evaluation.ranking.length} by ${evaluation.evaluator.kind} (total ${Math.round(candidate.weightedTotal * 100)}/100).`
+          ? `Ranked ${evaluation.ranking.indexOf(draft.id) + 1} of ${evaluation.ranking.length} by ${evaluation.evaluator.kind} (total ${Math.round(candidate.weightedTotal * 100)}/100). Advice only: the ranking is not signed and not covered by the digest.`
           : null,
+      basis: [
+        {
+          label: `Planned post ${slot.slot} (week ${slot.week}, number ${slot.orderInWeek} in the week)`,
+          lines: [`Theme: ${slot.theme}`, `Purpose: ${slot.intent}`, `Planned call to action: ${slot.callToAction}`],
+        },
+        {
+          label: "Claims the draft records",
+          lines: draft.claims.length ? draft.claims.map((c) => `${c.text} [${c.evidenceRef ? `cites ${c.evidenceRef}` : "cites nothing"}]`) : ["none"],
+        },
+        ...this.briefBasis(record),
+      ],
     };
+  }
+
+  /** The parts of the brief that the mandatory constraints are checked against. */
+  private briefBasis(record: CampaignRecord): Array<{ label: string; lines: string[] }> {
+    const brief = record.brief;
+    return [
+      { label: `Brief for ${brief.client.name} (sha256 ${briefHash(brief)})`, lines: [`Evidence policy: ${brief.constraints.evidencePolicy}`] },
+      { label: "The brief rules out", lines: brief.constraints.mustAvoid.length ? brief.constraints.mustAvoid : ["nothing"] },
+      { label: "References a figure may be backed by", lines: brief.references.length ? brief.references.map((r) => `${r.id}: ${r.title}. ${r.summary}`) : ["none"] },
+    ];
   }
 
   private contentHashOf(record: CampaignRecord, subject: DecisionSubject): string | null {
     if (subject.kind === "narrative") {
       const narrative = record.narratives.find((n) => n.id === subject.id);
-      return narrative ? narrativeContentHash(narrative) : null;
+      return narrative ? narrativeContentHash(record, narrative) : null;
     }
     const draft = record.drafts.find((d) => d.id === subject.id);
-    return draft ? draftContentHash(draft) : null;
+    return draft ? draftContentHash(record, draft) : null;
   }
 
   /**
@@ -968,8 +1054,8 @@ export class CampaignService {
         id: this.ids.next("req"),
         subject: input.subject,
         action: input.action,
-        proposedRationale: rationale.data,
-        revisionInstruction,
+        proposedRationale: canonicalText(rationale.data),
+        revisionInstruction: revisionInstruction === null ? null : canonicalText(revisionInstruction),
         requestedBy: short(input.requestedBy || "unknown"),
         requestedAt,
         expiresAt,
@@ -1245,7 +1331,7 @@ export function selectedNarrativeOf(record: CampaignRecord, verifier: DecisionVe
   for (const narrative of record.narratives) {
     if (narrative.status !== "selected") continue;
     const decision = latestDecisionFor(record, { kind: "narrative", id: narrative.id }, verifier);
-    if (decision?.action === "select" && decision.subjectContentSha256 === narrativeContentHash(narrative)) return narrative;
+    if (decision?.action === "select" && decision.subjectContentSha256 === narrativeContentHash(record, narrative)) return narrative;
   }
   return null;
 }

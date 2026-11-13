@@ -117,16 +117,52 @@ export async function mapLimit<T, R>(
   return settled.map((s) => (s as { status: "fulfilled"; value: R }).value);
 }
 
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu;
+/** Control characters other than tab and line feed, and the line and paragraph separators. */
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
+const EMOJI_BEFORE = /\p{Extended_Pictographic}\uFE0F?[\u{1F3FB}-\u{1F3FF}]?$/u;
+const EMOJI_AFTER = /^\p{Extended_Pictographic}/u;
+
 /**
- * Bring text to one canonical form before any rule looks at it: compatibility characters
- * are folded (full-width digits and signs become ordinary ones) and characters that take
- * no space are removed: zero-width spaces and joiners, soft hyphens, direction marks,
- * variation selectors, filler characters and the blank braille pattern. The one exception
- * is inside an emoji sequence, where a joiner or variation selector is part of the emoji.
+ * Whether an invisible character is part of an emoji, judged by both neighbours: a
+ * variation selector directly after a pictograph or inside a keycap, or a joiner directly
+ * between two pictographs. Everything else that takes no space is not part of the text.
+ */
+function partOfEmoji(character: string, offset: number, whole: string): boolean {
+  const before = whole.slice(Math.max(0, offset - 8), offset);
+  const after = whole.slice(offset + character.length, offset + character.length + 4);
+  if (character === "\uFE0F") return /\p{Extended_Pictographic}$/u.test(before) || (/[0-9#*]$/.test(before) && after.startsWith("\u20E3"));
+  if (character === "\u200D") return EMOJI_BEFORE.test(before) && EMOJI_AFTER.test(after);
+  return false;
+}
+
+/**
+ * Bring text to one canonical form before any rule looks at it. Compatibility characters
+ * are folded (full-width digits and signs become ordinary ones). Characters that take no
+ * space are removed: zero-width spaces and joiners, soft hyphens, direction marks and
+ * overrides, variation selectors, tag characters, fillers and the blank braille pattern.
+ * Control characters other than tab and line feed are removed too. The one exception is a
+ * joiner or variation selector that is part of an emoji, judged by what stands on both
+ * sides of it.
  */
 export function canonicalText(text: string): string {
   return text
     .normalize("NFKC")
-    .replace(/(?<![\p{Extended_Pictographic}\u200D\uFE0F])[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(CONTROL, "")
+    .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : ""))
     .replace(/\u2800/g, "");
+}
+
+/**
+ * Text made safe to print on a terminal: every control, invisible or direction character
+ * is written out as a visible code (\u{1b}), so that nothing stored in a record can move
+ * the cursor, erase a line, reorder what is displayed or hide inside it. A line feed is
+ * kept only where several lines are expected.
+ */
+export function displaySafe(text: string, options: { multiline?: boolean } = {}): string {
+  const visible = (character: string) => `\\u{${(character.codePointAt(0) as number).toString(16)}}`;
+  return text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u2800]/g, (character) => (character === "\n" && options.multiline ? character : visible(character)))
+    .replace(INVISIBLE, (character, offset: number, whole: string) => (partOfEmoji(character, offset, whole) ? character : visible(character)));
 }

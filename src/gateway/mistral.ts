@@ -163,7 +163,9 @@ export class MistralGateway implements ModelGateway {
       if (maxTokens > allowance.left) break;
       const completion = await this.call(request, correction, maxTokens, cost, allowance);
       cost.usage.promptTokens += completion.usage?.prompt_tokens ?? 0;
-      cost.usage.completionTokens += completion.usage?.completion_tokens ?? 0;
+      // An answer that does not say what it cost is charged at its whole allowance, never at nothing.
+      const reported = completion.usage?.completion_tokens;
+      cost.usage.completionTokens += typeof reported === "number" && Number.isFinite(reported) && reported >= 0 ? reported : maxTokens;
       cost.usage.reasoningTokens += completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
 
       const choice = completion.choices?.[0];
