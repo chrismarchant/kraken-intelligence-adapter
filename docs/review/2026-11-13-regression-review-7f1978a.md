@@ -38,3 +38,22 @@
 ## Not verified by the reviewer
 
 The `e30451c` figure for a delivery that hangs past expiry; real processes on the file store for the concurrent-request check; timing on other hardware; whether the acute accent is an accepted character; that the rules against disguised text are complete (out of scope).
+
+## What was done about each finding (added by the orchestrator)
+
+Fixed in `184f687f18a9158516c2b3927b2ec95fad7b2aa8`, with tests named `r22-…` in `tests/kic/scope-review-a.test.ts` and `tests/kic/scope-review-b.test.ts`, and the reviewer's own comparison probes run again by the orchestrator against the new code (80,000 random disguises and 30,000 random tags: none caught at `e30451c` and missed now; 48 honest tags: none newly refused).
+
+| # | Outcome |
+|---|---|
+| 1 | **Fixed.** A plain number is only digits, the separators between them, a closing "%" or "+", and the punctuation of a sentence around it. A word with any other mark beside its digits is read as a word again, and a digit set apart among single letters is read as a letter. **Left as the intended trade-off and recorded for the owner**: a word written in digits alone, the way a number is written, is not read as letters ("8357", "4.1", "5413") |
+| 2 | **Fixed.** The marks at the edges of a word are taken off in one pass from each end. The timing test now covers fifteen shapes, among them the reviewer's |
+| 3 | **Fixed.** In a hashtag a short term is looked for at the start and end of the tag, and as a run of capitals inside it; not at the edges of every word of the tag |
+| 4 | **Fixed.** A tag is also read without the cut between a letter and a digit |
+| 5 | Not changed. Recorded with the open findings of the review of `e30451c` |
+| 6 | **Fixed.** A delivery that fails after its request was replaced writes no line |
+| 7 | Not changed; as before this work. Recorded in the threat model |
+| 8 | Not changed. Recorded in the threat model: a waiting request holds its place until it is answered or expires |
+| 9 | **Partly.** The line for a request that replaces another now says who asked for the one replaced, when, and whether it reached the editor. Earlier ones are still not kept |
+| 10 | Nothing to do |
+
+These fixes are covered by a further regression review, of `e30451c..184f687`; see the gate ledger for its outcome.
