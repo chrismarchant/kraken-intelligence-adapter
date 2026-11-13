@@ -12,6 +12,7 @@ import { FileSpendLedger } from "../../src/workflow/spend.ts";
 // Fake credentials built by concatenation; none is a real secret.
 const TOKEN = "client-" + "x".repeat(32);
 const KEY = "provider-" + "k".repeat(20);
+const OWN = "callers-own-" + "0".repeat(12); // a stand-in for a caller's own key in pass-through mode
 const injection = { apiKey: KEY, clientToken: TOKEN };
 const post = (base: string, body: string, token = TOKEN): Promise<Response> =>
   fetch(`${base}/v1/chat/completions`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body });
@@ -50,7 +51,7 @@ test("pass-through mode: the caller spends its own key, and the shim does not li
   const shim = await startShim(mock.url);
   try {
     const body = chatBody({ n: 3, max_tokens: 500_000 });
-    const response = await fetch(`${shim.url}/v1/chat/completions`, { method: "POST", headers: { authorization: "Bearer callers-own-key-0000000000", "content-type": "application/json" }, body });
+    const response = await fetch(`${shim.url}/v1/chat/completions`, { method: "POST", headers: { authorization: `Bearer ${OWN}`, "content-type": "application/json" }, body });
     assert.equal(response.status, 200);
     assert.equal(mock.requests[0]!.body, body);
   } finally {
