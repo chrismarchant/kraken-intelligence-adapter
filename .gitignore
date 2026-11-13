@@ -6,3 +6,5 @@ data/
 .env.*
 !.env.example
 harness/state/GLOBAL_STOP
+.claude/worktrees/
+scratch/
