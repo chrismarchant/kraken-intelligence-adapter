@@ -22,7 +22,7 @@ Mediation KIC-ARCH-MED-01. A plan; no phase starts without the decisions it name
 |---|---|
 | Purpose | The tests the owner requires of the selected release: runtime, model streaming, persistence, tool execution and confinement |
 | Work | D7 steps 0a to 0d, 3, 4 and 6, on OpenBot `v1.0.2`, team edition, **with no Bot computer**. The one existing assistant; one grant of the KIC tools; one sandbox tool server kept in scratch space; one team rule. One synthetic campaign driven from OpenBot's interface, decisions through the operator tool |
-| Depends on | Phase 0; OD-7 (an Intelligence project key; an environment where OpenBot's migrations can create the `vector` extension, which needs Docker or a Postgres image that ships it); an identity provider, which the team edition needs; OD-6; OD-11 (a further review of the approval path, before its signed approvals are relied on in a proof) |
+| Depends on | Phase 0; OD-7 (an Intelligence project key; an environment where OpenBot's migrations can create the `vector` extension, which needs Docker or a Postgres image that ships it); an identity provider, which the team edition needs; OD-6; OD-11 (when this was written: a further review of the approval path, before its signed approvals are relied on in a proof. Since then agent reviews have approved `2537386`, and the owner has restated OD-11 as an external assessment required before real-client use; whether it must also precede this synthetic proof is the owner's to say) |
 | Decisions needed | Authorisation of Phase 1, which covers the grant, the sandbox tool and the team rule named in D7 and nothing in `tenant-package/` or `src/`; OD-9 (where the editor confirms) at least provisionally |
 | Acceptance | Each of D7's steps 0a to 0d, 3, 4 and 6 passes by its own criterion, recorded with commands and outputs. In particular: the confinement test passes because of the control under test, not because of a network refusal. OpenBot's source tree is unmodified. Spend stayed under both ceilings. An independent review of the evidence is recorded against the commit |
 | Risks | The KIC MCP server cannot be attached to an unmodified `v1.0.2`. OpenBot's built-in agent may not tolerate the model through the shim at this release (proven only outside OpenBot). The team edition cannot be stood up without an identity provider. With a managed Intelligence key, conversations are presumably stored by the vendor: synthetic data only. Upstream may release again between pin and proof |
@@ -67,7 +67,7 @@ flowchart LR
   L --> P2
   E["Environment, key, identity provider (OD-7)"] --> P1
   S["Spend figures (OD-6)"] --> P1
-  R["Further review of approvals (OD-11)"] --> P1
+  R["External assessment of approvals (OD-11): before real-client use; before this proof if the owner says so"] --> P1
   K["Kraken contract and receipt"] --> P3
 ```
 

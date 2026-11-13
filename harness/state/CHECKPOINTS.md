@@ -15,12 +15,22 @@ COMPLETED:
   Delta review of 2537386 (independent-review-agent-10): approved; five fixes closed; no regression.
   Evidence at 2537386: CI run 23 (43428556880) success; clean worktree npm run check exit 0 (202 product,
      83 harness tests); secret scan clean; check-reviews --gate KIC-01 ok. Later commits change records only.
-  Live shim check (tests/shim/live.ts, pass-through mode) on identical code: passed.
+  Live shim check (tests/shim/live.ts, pass-through mode), run 2026-11-13 on code identical to 2537386: all six
+     cases passed. Output kept: docs/gates/evidence/shim-live-2026-11-13.txt. Key-holding mode: never run live.
+  Independent audit of the acceptance package: accurate on commit, counts and checks; overstated on review
+     coverage, C2, key handling and accepted weaknesses. Corrected (second version of the package; ledger table
+     A1-A26). Record: docs/review/2026-11-13-audit-of-acceptance-package.md.
+  Scope-completing reviews A and B commissioned at 2537386 for the parts the approving reviews did not cover.
+     OUTCOME: see GATE_STATE.md, "Scope-completing reviews". If that section still says "not returned", they
+     were lost with the session and must be commissioned again before the package's review claims are complete.
   Ledger: GATE_STATE.md "Review requirement for KIC-01: met at 2537386", with accepted findings A1-A11.
   REV-1 done; its gate stop replaced by OD-11 (kept OPEN by the owner: external approval-path security
      assessment before real-client use).
   Acceptance package: docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md (options A accept in part, B hold, C ask for more).
-OPEN: the owner's decision on KIC-01. OD-11 (external assessment). OD-2..OD-10 as before, OD-15..OD-17,
+LOCAL ONLY, NOT PART OF THE WORK: four branches worktree-agent-* with worktrees under .claude/worktrees/ hold
+  early delegated commits (shim, harness) that were integrated by hand. They are not pushed and not reviewed.
+OPEN: the owner's decision on KIC-01. Two questions for the owner: has the KIC-01 session authorisation lapsed
+  (harness/config/gates.json still says "authorised" unless a gate stop is on); does OD-1 settle KIC-00. OD-11 (external assessment). OD-2..OD-10 as before, OD-15..OD-17,
   OD-19, OD-20. C1 (local stop: OpenBot never run), C3 (licence, owner).
 NEXT_ACTION: WAIT FOR THE OWNER. Do not treat silence as acceptance. Nothing is queued that does not need an
   owner decision except keeping CI green. Do NOT merge, deploy, run OpenBot, handle a signing key, contact

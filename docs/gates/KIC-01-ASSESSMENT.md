@@ -1,5 +1,7 @@
 # KIC-01 — Full OpenBot feasibility assessment (OD-1 reopened)
 
+**A dated assessment. Later evidence: streaming through the shim, marked not verified below, was verified live afterwards, outside OpenBot (`docs/gates/KIC-01-EVIDENCE.md`). OD-1 was decided provisionally by the owner on 2026-11-13.**
+
 Date: 2026-11-13. Status: **bounded assessment presented; foundation decision not accepted; no implementation started.**
 
 Basis: owner clarification of 2026-11-13 — a client-owned OpenBot deployment may run under a CopilotKit Intelligence licence held by that client, so Intelligence is to be reused, not removed. This supersedes the recommendation in `KIC-00-REPORT.md` §C.

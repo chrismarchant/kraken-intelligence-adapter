@@ -43,6 +43,7 @@ These are the deployment requirements in `docs/architecture/kic-companion.md`, s
 | 16 | The KIC MCP endpoint is reachable by OpenBot. **At `v1.0.2` OpenBot accepts a custom MCP server only over https at a hostname, not at a loopback or private address, with one stored credential used by every Bot.** This conflicts with check 4 above as written and is unresolved | D7 step 0a |
 | 17 | Routines, if used, are fired by a second process or a cron job, as upstream requires; anything that must not be missed has its own check, because a firing more than ten minutes late is skipped | A routine fires after a restart |
 | 18 | Conversations hold nothing that the client has not agreed may be stored by the Intelligence service in use | Policy, and the licence answer (OD-8) |
+| 19 | The KIC server's export directory (`KIC_EXPORT_DIR`) is outside the data directory and not writable by any agent process. The default puts it inside the data directory, which is not acceptable for an instance | The directory's owner and mode; an attempt to write to it as the agent's user fails |
 
 ## Configuration that belongs to the client
 
@@ -72,4 +73,4 @@ Kept outside the template's source, in the instance:
 
 ## Not decided
 
-Where instances run, who operates them, how the editor is authenticated beyond holding the key (OD-9), and whether OpenBot is the workspace (OD-1).
+Where instances run, who operates them, how the editor is authenticated beyond holding the key (OD-9), and whether OpenBot is the workspace (OD-1: decided provisionally, conditional on licensing, runtime verification and confinement).

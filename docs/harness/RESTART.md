@@ -40,6 +40,9 @@ The order of authority is: owner decisions, verified source, GitHub evidence, ch
 - Resume: take a task from `aeh next` (runnable only). Set it `in_progress`, work inside its gate's paths (`check-gates --base <ref>` before committing).
 - Re-stop a task that cannot proceed: `aeh stop --level local --task ID --reason "..."`. Re-stop a gate: `aeh stop --level gate --gate ID --reason "..."`. Anything endangering safety, credentials or scope: `aeh stop --level global --reason "..." --by <name>`.
 - Before an unattended window: `aeh readiness --hours N --max-spend X`. Do not start it unless it reports READY.
+- If `aeh next` lists nothing runnable, the state is waiting for the owner. Stop and say so; do not invent work, and do not treat silence as approval.
+- Reviews are bound to exact commits. Any change under a gate's paths that requires review (`src/`, `tests/`, `fixtures/`, `tenant-package/` for KIC-01) makes a new commit that needs its own independent review before it can stand in for a reviewed one. Check with the full 40-character SHA: `aeh check-reviews --commit <sha> --gate KIC-01`. Record a review with `aeh review add --entry-file <json>`.
+- A gate that has been presented to the owner carries a gate stop. Clearing it is the owner's.
 
 ## 6. Before ending a session
 

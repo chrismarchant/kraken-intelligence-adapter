@@ -1,5 +1,7 @@
 # D1 — Current architecture baseline
 
+**A dated snapshot. Superseded on the review state: `2537386` has since been approved by two agent review rounds; see `harness/state/GATE_STATE.md`.**
+
 Mediation KIC-ARCH-MED-01. State of this repository at commit `dfa7458` on branch `claude/adoring-edison-4wlees`, 2026-11-13. Every statement was checked against the code or a ledger in this session; where something is design intent only, it says so.
 
 ## In one paragraph

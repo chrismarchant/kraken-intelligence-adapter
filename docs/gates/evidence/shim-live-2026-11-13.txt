@@ -1,0 +1,24 @@
+# tests/shim/live.ts, run 2026-11-13T13:30:25Z from the branch checkout at 630fcb94a5c757cfd4eedb7578b1c4e6f783c89e
+# src/ and tests/ identical to 2537386: yes
+# command: NODE_USE_ENV_PROXY=1 node tests/shim/live.ts   (pass-through mode: the session proxy supplies the provider key; the shim holds none)
+(node:9010) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS a raw fetch non-stream: content is string: Hello there, how are you?
+PASS b raw fetch stream: all deltas strings, usage chunk=true, text: Hello, how are you today?
+PASS c raw fetch tool call: tool_calls preserved, no thinking blocks (non-stream and stream)
+PASS d generateText + tool via shim: steps=2 toolExecuted=1 text="DONE"
+PASS e streamText plain via shim: text="High-quality data is accurate, complete, and consistent, forming the reliable foundation for trustworthy insights and decisions."
+PASS f streamText + tool exec + final answer via shim: steps=2 toolExecuted=1 text="DONE"
+FAIL control d WITHOUT shim (expected FAIL): failed as expected: Invalid JSON response
+
+runtime: node v22.23.4; shim request log lines: 9
+  shim: POST /v1/chat/completions 200 3943ms auth=none model=mistral-large-4 tokens=21/326/347
+  shim: POST /v1/chat/completions 200 10348ms auth=none model=mistral-large-4 tokens=21/1061/1082
+  shim: POST /v1/chat/completions 200 17255ms auth=none model=mistral-large-4 tokens=85/207/292
+  shim: POST /v1/chat/completions 200 2046ms auth=none model=mistral-large-4 tokens=85/122/207
+  shim: POST /v1/chat/completions 200 6615ms auth=none model=mistral-large-4 tokens=90/213/303
+  shim: POST /v1/chat/completions 200 2517ms auth=none model=mistral-large-4 tokens=137/48/185
+  shim: POST /v1/chat/completions 200 1737ms auth=none model=mistral-large-4 tokens=24/90/114
+  shim: POST /v1/chat/completions 200 3200ms auth=none model=mistral-large-4 tokens=90/180/270
+  shim: POST /v1/chat/completions 200 2360ms auth=none model=mistral-large-4 tokens=132/62/194
+# exit: 0

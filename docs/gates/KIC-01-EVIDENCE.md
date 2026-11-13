@@ -10,8 +10,8 @@ Every result below came from a command run in the session. Where something was n
 |---|---|---|
 | **C1** Full OpenBot boots on a licensed Intelligence project and completes a conversation with a tool call and a recalled memory | **Not demonstrated. Blocked.** | No Intelligence project key exists in the environment (obtaining one needs a personal account sign-in). OpenBot's schema needs pgvector, which is unavailable: no Docker daemon, package not in the repositories, source build refused by the session's permission layer. Recorded once as a local stop on task `KIC-01-C1`; not retried. |
 | **C2** Mistral Large 4 works through a shim, streaming, with tools | **Demonstrated outside OpenBot. Not demonstrated inside it.** | See "Model shim" and "Agent runs". |
-| **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing new. The four questions are in `KIC-01-ASSESSMENT.md` §8. |
-| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked by ten independent reviews. The first eight each requested changes; each finding of medium or above was closed and given a regression test. The ninth (`55a66f2`) approved, and a delta review of the follow-up commit `2537386` confirmed the approval. Not shown: a person using the operator tool; an assessment by anyone outside this programme's sessions (OD-11).** | See "Approval enforcement" and "Independent review". |
+| **C3** Written licence confirmation from CopilotKit | **Open. Owner action.** | Nothing sent. The questions, drafted for the owner, are in `docs/decisions/LICENCE-QUESTIONS-COPILOTKIT.md` (an earlier set is in `KIC-01-ASSESSMENT.md` §8). |
+| **C4** Human editorial approval enforced in code | **Demonstrated in tests, and attacked in ten agent review rounds and one Mistral review. Eight agent rounds and the Mistral review requested changes; every high finding and all but one medium (mitigated) were closed and given a regression test. The ninth (`55a66f2`) approved, and a delta review of the follow-up commit `2537386` confirmed the approval. Not shown: a person using the operator tool; an assessment by anyone outside this programme's sessions (OD-11).** | See "Approval enforcement" and "Independent review". |
 
 ## What was built
 
@@ -23,13 +23,13 @@ Every result below came from a command run in the session. Where something was n
 | Evaluator: deterministic draft analysis, JEV-shaped adapter, deterministic mock, redaction | `src/evaluation/` | Implemented, tested. **No live JEV transport exists.** |
 | Campaign workflow: bounded generation, editorial decisions, assembly, export | `src/workflow/` | Implemented, tested |
 | MCP server (stdio and HTTP), 12 tools, none that publishes or records a decision | `src/mcp/` | Implemented, tested; driven live by an agent |
-| Operator tool: key creation, list, show, confirm, decline, release | `src/cli/operator.ts` | Implemented; tested as real child processes (`tests/kic/processes.test.ts`) |
+| Operator tool: key creation, list, show, confirm, decline, review, release, verify, new-ledger | `src/cli/operator.ts` | Implemented; tested as real child processes (`tests/kic/processes.test.ts`) |
 | Creator ranking: typed evidence, transparent weighted score, mandatory eligibility | `src/creators/` | Implemented on labelled synthetic fixtures only. No creator source is connected. |
 | Skills catalogue (6 implemented, 3 deferred) | `src/skills/catalogue.ts` | Implemented, served by `kic_list_skills` |
 | Tenant package for an OpenBot-derived instance | `tenant-package/` | Written; accepted by upstream's validator. **Not run inside OpenBot.** |
 | Harness: task ledger, gates, three stop levels, commit-bound reviews, secret scan, CI, hook, guardians | `harness/`, `.github/`, `.claude/agents/` | Implemented, tested; CI verified on GitHub. The global-stop hook is installed in `.claude/settings.json` and was verified in live nested sessions. |
 
-Size: about 6,400 lines of product source and 3,600 lines of product tests.
+Size at `2537386`: about 7,500 lines of product source and 5,300 lines of product tests.
 
 ## Tests
 
@@ -65,7 +65,7 @@ Model cost of the recorded run (8 model steps): 13,045 prompt tokens and 38,742 
 
 ## Model shim
 
-`tests/shim/live.ts`, run once at commit `3306759` under Node 22, model `mistral-large-4`:
+`tests/shim/live.ts`, first run at commit `3306759` under Node 22, model `mistral-large-4`:
 
 | Case | Result |
 |---|---|
@@ -77,7 +77,7 @@ Model cost of the recorded run (8 model steps): 13,045 prompt tokens and 38,742 
 
 The script was run again at `aad2196` against the hardened shim, with the same results.
 
-Run again on 2026-11-13 on code identical to the approved commit `2537386`, in pass-through mode: nine requests through the shim, all answered 200 (687 prompt and 2,807 completion tokens in total); text generation with a tool, plain streaming, and streaming with a tool executed passed, and the control without the shim failed as expected. The output lines for the three raw-request cases were not kept. **The shim's key-injection mode, with its spend limits, has never been run against the provider**: the session holds no provider key to give it. It is tested against a loopback stand-in only.
+Run twice more on 2026-11-13 on code identical to the approved commit `2537386`, in pass-through mode. The first run's output was not kept. The second is kept in full: `docs/gates/evidence/shim-live-2026-11-13.txt`. All six cases passed and the control without the shim failed as expected; nine requests, all answered 200. The client library is the one resolved by OpenBot's main-branch checkout (`804aa69`), not by `v1.0.2`. **The shim's key-injection mode, with its spend limits, has never been run against the provider**: the session holds no provider key to give it. It is tested against a loopback stand-in only.
 
 ## Agent runs: CopilotKit agent + shim + Mistral + KIC MCP server + operator tool
 
@@ -161,7 +161,7 @@ Result: both drafts ignored all of it, cited the survey reference for their one 
 | `b8e0170` | Sixth independent agent, Opus tier | changes-requested (1 high: a store writer could bring back an approval the editor had replaced) | `docs/review/2026-11-13-sixth-review-b8e0170.md` |
 | `177a8c4` | Approval-path security review commissioned by the owner; seventh independent agent, Opus tier | changes-requested (2 high: the same defect, for drafts and for narratives; 2 medium: unlimited revisions on one instruction; no spend ceiling on the model shim) | `docs/review/2026-11-13-approval-path-security-review-177a8c4.md` |
 | `12a7626` | Eighth independent agent, Opus tier: the new review of the resulting commit, as the owner directed | changes-requested (1 medium, in the model shim; no defect found in the approval path) | `docs/review/2026-11-13-review-12a7626.md` |
-| `55a66f2` | Ninth independent agent, Opus tier, full review | **approved**, with follow-ups (1 medium availability regression, 4 low, 3 informational) | `docs/review/2026-11-13-review-55a66f2.md` |
+| `55a66f2` | Ninth independent agent, Opus tier; the whole commit against four claims, with stated exclusions | **approved**, with follow-ups (1 medium availability regression, 4 low, 3 informational) | `docs/review/2026-11-13-review-55a66f2.md` |
 | `2537386` | Tenth independent agent, Opus tier, delta review of `55a66f2..2537386` | **approved** (five fixes closed; no regression; 3 informational notes) | `docs/review/2026-11-13-delta-review-2537386.md` |
 
 Eight rounds requested changes, and each found real defects in the round before. The sixth and seventh, working independently, found the same one: withdrawal of an approval was recorded in a status field and not in the signed log. The eighth found nothing in the approval path and one defect in the shim. The ninth approved; the tenth confirmed the approval on the follow-up commit. The honest reading: the approval controls have now survived two reviews unbroken, after eight that broke something. All reviewers were agents commissioned inside this programme's sessions; none was a person or an outside party. Each review is recorded against its exact commit in `harness/state/reviews.json`.

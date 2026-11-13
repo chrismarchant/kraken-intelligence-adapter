@@ -111,7 +111,7 @@ One owner per responsibility. Where two components could each claim it, the tabl
 | Tenant package | One assistant, six skills; validated, never loaded | May define further Bots and their skills. It cannot grant tools or define routines: those are done by a person in each instance and belong in the instance runbook. |
 | Instance configuration | A proposal document only | New content: which tools each Bot is granted; which kinds of action are closed; no saved logins or connected publishing apps; learned-skill approval off; telemetry off; a ceiling on the Bots' model spend. |
 | KIC MCP server | Built, tested | No change to its role. **To be attached to OpenBot `v1.0.2` it needs TLS and a hostname**: that release accepts a custom MCP server only over https at a name, not at a loopback or private address (A1). Unresolved; the first step of the proof. |
-| Operator tool | Built, tested, unreviewed at its last commit | Unchanged authority. Where the editor uses it is OD-9. |
+| Operator tool | Built, tested; reviewed and approved at `2537386` by agents inside this programme (after this document was written) | Unchanged authority. Where the editor uses it is OD-9. |
 | Model shim | Built, live outside OpenBot. Since `12a7626` it limits spend in key-injection mode | The ceiling's figure, set per instance. |
 | Channels | Not present | Deferred by the owner. Read-only assessment in A1. |
 | Kraken hand-off | Provisional, non-executable command | Unchanged until Kraken accepts a contract. Then a translator, on this side, from the released package. |
@@ -225,4 +225,4 @@ For a single-editor pilot this is cheaper and safer, and it is what exists. Opti
 - That specialist Bots improve output.
 - That the licence permits a client-owned production instance on the terms assumed.
 - That channels through OpenTag work or can be self-hosted.
-- That the approval path is free of defects. Five reviews found defects; the last fixes are unreviewed.
+- That the approval path is free of defects. Eight review rounds found defects; the ninth and tenth, after this document was written, approved `2537386`. No one outside this programme has assessed it (OD-11).

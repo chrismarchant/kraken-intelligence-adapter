@@ -126,7 +126,7 @@
         "harness/**",
         ".github/workflows/ci.yml",
         "CI runs 43343870467, 43346469381, 43350445685: success",
-        "harness/tests/** (82 tests)"
+        "harness/tests/** (82 tests when recorded; 83 at 2537386)"
       ]
     },
     {
@@ -258,7 +258,8 @@
       "deps": [],
       "status": "done",
       "evidence": [
-        "docs/gates/KIC-01-EVIDENCE.md: agent runs repeated at 075b358 with confirm-by-hash and operator release"
+        "docs/gates/KIC-01-EVIDENCE.md: agent runs repeated at 075b358 with confirm-by-hash and operator release",
+        "Note 2026-11-13: the operator tool has changed since 075b358 (whole-digest confirmation, review, release, verify). The current tool has not been run live or by a person; it is covered by tests that run it as a child process"
       ]
     },
     {

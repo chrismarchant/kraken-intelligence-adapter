@@ -20,7 +20,7 @@ Stored verbatim: `docs/spec/directives/KIC-OWNER-DIRECTION-POST-ARCH-MED-01-2026
 
 | Item | State |
 |---|---|
-| Recommendation of the mediation | **Provisionally accepted**, subject to independent review of the corrected package. That review: approved with corrections (`docs/review/2026-11-13-mediation-re-review-177a8c4.md`); corrections applied; the version with them is not itself re-reviewed |
+| Recommendation of the mediation (not a gate) | **Provisionally accepted** by the owner, in the owner's words, subject to independent review of the corrected package. That review: approved with corrections (`docs/review/2026-11-13-mediation-re-review-177a8c4.md`); corrections applied; the version with them is not itself re-reviewed |
 | OpenBot | Preferred, unmodified workspace candidate, **conditional on licensing, runtime verification and confinement**. Production adoption not authorised until the selected release (`v1.0.2`) passes runtime, model streaming, persistence, tool-execution and confinement tests. **None of those tests has been run**: local stop on KIC-01-C1 |
 | KIC MCP service | The authoritative campaign-preparation boundary |
 | Kraken | Sole authority for external commercial execution |
@@ -42,9 +42,9 @@ Independent review of the package at `ee303a2`: **approved with corrections** (`
 | Condition | State |
 |---|---|
 | C1 Full OpenBot boots on a licensed Intelligence project | **Blocked.** No Intelligence project key; no Docker daemon and no Postgres with the `vector` extension in the session environment. OD-7. |
-| C2 Mistral Large 4 through a shim, streaming, with tools | Demonstrated with OpenBot's model client and with the CopilotKit agent class. **Not demonstrated inside OpenBot.** |
+| C2 Mistral Large 4 works through the shim with streaming inside OpenBot | **Not met as defined.** Demonstrated outside OpenBot only: with the model client library OpenBot's main branch resolves and with the CopilotKit agent class, live, most recently on 2026-11-13 on code identical to `2537386` (`docs/gates/evidence/shim-live-2026-11-13.txt`). OpenBot's own client rejects Large 4's raw response, which is why the shim exists. |
 | C3 Licence confirmation from CopilotKit | **Open.** OD-8. |
-| C4 Human editorial approval enforced in code | Demonstrated in tests and independently reviewed. Eight reviews each requested changes; all high and medium findings were fixed and given regression tests. The ninth (`55a66f2`) approved; the delta review of `2537386` confirmed the approval. Not shown: a person using the operator tool; an assessment by someone outside this programme's sessions (OD-11). |
+| C4 Human editorial approval enforced in code | Demonstrated in tests and independently reviewed. Eight agent rounds and a Mistral review each requested changes; every high finding and all but one medium (A12, mitigated) were fixed and given regression tests. The ninth agent round (`55a66f2`) approved; the delta review of `2537386` confirmed the approval. The approving rounds' scope is the approval path, not the whole code (see below). Not shown: a person using the operator tool; an assessment by someone outside this programme's sessions (OD-11). |
 
 ## Independent review of KIC-01 work
 
@@ -62,7 +62,7 @@ Reviews are bound to exact commits in `harness/state/reviews.json`. The review c
 | `b8e0170` | Sixth independent agent (Opus tier) | changes-requested: 1 high |
 | `177a8c4` | Approval-path security review commissioned by the owner; seventh independent agent (Opus tier) | changes-requested: 2 high, 2 medium |
 | `12a7626` | Eighth independent agent (Opus tier): the new review of the resulting exact commit, as the owner directed | changes-requested: 1 medium, in the model shim. No defect found in the approval path |
-| `55a66f2` | Ninth independent agent (Opus tier), full review | **approved**, with follow-ups (1 medium availability regression, 4 low, 3 informational) |
+| `55a66f2` | Ninth independent agent (Opus tier); the whole commit against four claims, with stated exclusions | **approved**, with follow-ups (1 medium availability regression, 4 low, 3 informational) |
 | `2537386` | Tenth independent agent (Opus tier), delta review of `55a66f2..2537386` | **approved**: all five follow-up fixes closed; no regression; 3 informational notes |
 
 ## Review requirement for KIC-01: met at `2537386`
@@ -72,11 +72,23 @@ Recorded on 2026-11-13 under the owner's gate-closure instruction (`docs/spec/di
 | | |
 |---|---|
 | Approved commit | `2537386bf807ebc62f8e89839d1b9dbda2e6769e` |
-| How it is approved | A full review of its parent, `55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b`: approved with follow-ups. Then a delta review of everything that changed between the two: approved. The delta review is scoped to the diff; it is not a second full review |
+| How it is approved | A review of `55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b` against four claims, with a stated scope and stated exclusions: approved with follow-ups. `55a66f2` is two commits before `2537386`; the commit between changes records only. Then a delta review of everything that changed in code between the two: approved |
+| What the approving reviews did not cover | The evaluator, the contracts, the gateway's budget path, the MCP tool surface, the shim's normaliser, the stores under real concurrency, the operator tool run as a child process, creator ranking, the skills catalogue and the harness. Earlier rounds covered some of this; some has changed since (the evaluator's figure rules in `dfa7458`, the MCP server in `5e4ee5d`); some was never in a review's scope. **The review check passes on the ledger's rule (an approving independent review bound to the commit, none blocking); that rule does not measure coverage.** Scope-completing reviews of these parts at `2537386` were commissioned on 2026-11-13; see "Scope-completing reviews" below |
 | Reviewer of `55a66f2` | `independent-review-agent-9`: an agent, Opus tier, no part in writing the code, had not seen it before. Entry `rev-2026-11-13-agent-55a66f2`; record `docs/review/2026-11-13-review-55a66f2.md` |
 | Reviewer of `2537386` | `independent-review-agent-10`: an agent, Opus tier, no part in writing the code, not the reviewer of `55a66f2`. Entry `rev-2026-11-13-agent-delta-2537386`; record `docs/review/2026-11-13-delta-review-2537386.md` |
 | Verdicts | `55a66f2`: "I found no defect in commit 55a66f2 that breaks claims (a) to (d) for the attacker described." `2537386`: "The approval of 55a66f2 still stands with commit 2537386 applied. All five fixes close what they claim. I found no regression against claims (a) to (d) and no broken honest flow." |
 | What the reviewers are | Agents commissioned inside this programme's sessions. Reviewer identity in the review ledger is self-declared by the orchestrator. **No person and no party outside these sessions has reviewed the approval path** (OD-11, open) |
+
+### Scope-completing reviews at `2537386`
+
+Commissioned on 2026-11-13 after the audit, at the same commit, from two further independent agents:
+
+| Review | Scope | Outcome |
+|---|---|---|
+| A | The evaluator, the contracts, creator ranking, the skills catalogue, the shim's normaliser, and their tests | Not returned when this was written |
+| B | The MCP tool surface, the gateway and its usage accounting, the stores and lock under real concurrent processes, the budget path, and their tests | Not returned when this was written |
+
+A blocking verdict from either is bound to `2537386` and makes the review check for that commit fail, as it should.
 
 ### Evidence against the exact commit
 
@@ -91,23 +103,47 @@ Recorded on 2026-11-13 under the owner's gate-closure instruction (`docs/spec/di
 
 Without `--gate`, the review check for the commit reports KIC-05 and KIC-06 as having no review. Neither gate is authorised and nothing under their paths exists.
 
-### Non-blocking findings accepted as they stand
+### Findings accepted as they stand
 
-Accepted by the orchestrator as not blocking the review requirement, and listed so the owner can disagree. None was rated above low by the reviewer who raised it.
+Every finding, residual or stated limit from the review rounds that was not fixed, as far as the records show. Accepted by the orchestrator as not blocking the review requirement, and listed so the owner can disagree. The first version of this table held eleven rows and said none was rated above low; an independent audit (`docs/review/2026-11-13-audit-of-acceptance-package.md`) showed that to be wrong and found the rows from A12 on. "Rating" is the rating of the reviewer who raised it; "none" means the reviewer gave none.
 
-| # | Finding | Source | Why it does not block |
-|---|---|---|---|
-| A1 | A store writer who deletes a revision can have one more generated on the same instruction | Security review; review of `12a7626` (F5, low) | Bounded by the campaign budget; the result still needs the editor's signed approval |
-| A2 | Prompt (input) tokens are not limited; only completion tokens and calls are | Fifth review; security review; review of `12a7626` | Prompts are built by code from fields of bounded size. A figure belongs with OD-6 |
-| A3 | A request's expiry and attempt count are not covered by a signature | Security review | They limit how long and how often the editor is asked; they grant nothing |
-| A4 | The programme plan is shown in full at release but is not itself a signed editor decision | Fifth review | Owner decision OD-19 |
-| A5 | Right-to-left letters in stored text are shown as written; only direction controls are written out | Fifth review | The editor sees every character; reordering by a terminal was not tested |
-| A6 | A pager narrower than the tool's width can wrap a stored line; the tool's wrapping can split an escape across lines | Reviews of `55a66f2` and `2537386` | Readability only; the margin cannot be imitated by stored text |
-| A7 | Writing the request body out again can enlarge it and lose precision in very large integers | Review of `55a66f2` | Cannot increase what a request spends |
-| A8 | Whether the provider counts reasoning tokens in reported completion tokens, bounds them by `max_tokens`, or bills after a disconnect | Review of `55a66f2` | Cannot be checked offline; goes with the first live run under a ceiling |
-| A9 | A caller that leaves after the reservation check is charged the whole reservation; a half-closed connection was not probed | Delta review | Errs on the side of charging too much |
-| A10 | Between the export's path check and its write there is a window, if the export root is writable by an agent process | Review of `12a7626` | A deployment requirement: the export root is not agent-writable (instance template) |
-| A11 | The operator tool's output has not been looked at on a real terminal, nor used by a person | Every review | Listed under "not demonstrated"; part of OD-9 and OD-11 |
+| # | Finding | Source | Rating | Why it was left |
+|---|---|---|---|---|
+| A1 | A store writer who deletes a revision can have one more generated on the same instruction | Review of `12a7626`, F5 | low | Bounded by the campaign budget; the result still needs the editor's signed approval |
+| A2 | Prompt (input) tokens are not limited; only calls and completion tokens are. For KIC's own generation the prompt is built by code from fields of bounded size. **Through the shim the caller writes the prompt**: the only bounds are the 2 MiB body limit and the request ceiling, and the Bots' own conversation is the prompt-heavy side (100,316 prompt against 2,288 completion tokens in the recorded agent runs) | Fifth review, N4; security review; review of `12a7626`, F7 | info | A figure for it belongs with OD-6. Not closed |
+| A3 | A request's expiry and attempt count are not covered by a signature | Security review | none | They limit how long and how often the editor is asked; confirming still needs the channel code and the editor's digest |
+| A4 | The programme plan is not itself a signed editor decision | What remains of the fifth review's N1, which was rated **high**: the plan was bound to nothing and mostly not shown | none for what remains | Since fixed: the plan is shown in full at release and each approval is bound to its planned post. A signature on the plan is owner decision OD-19 |
+| A5 | Right-to-left letters in stored text are shown as written; only direction controls are written out | Fifth review, N4 | info | The editor sees every character; reordering by a terminal was not tested |
+| A6 | A pager or viewer narrower than the width the tool breaks at (72 columns when piped) can wrap a stored line **into the first column**, the position the margin is meant to keep stored text out of. The tool's own wrapping can split an escape across lines | Review of `12a7626`, F4 (low, unproven); reviews of `55a66f2` (F7) and `2537386` (N3) | low; info | The fix moved the assumed width to 72 and lets the operator set it. A wrapped piece carries no margin, which is the cue; not closed for narrow viewers |
+| A7 | Writing the request body out again can enlarge it, loses precision in very large integers and replaces invalid UTF-8 | Review of `55a66f2`, F4 | info | Cannot increase what a request spends |
+| A8 | Whether the provider counts reasoning tokens in reported completion tokens, bounds them by `max_tokens`, ignores the other spelling of the limit, or bills after a disconnect. The shim's concurrency limit counts connections, not generation at the provider | Reviews of `12a7626` and `55a66f2` (F8) | info | Cannot be checked offline; goes with the first live run under a ceiling |
+| A9 | A caller that leaves after the reservation check is charged the whole reservation (errs towards charging). **What happens when a caller only half-closes its connection is unknown: not probed** | Delta review, N1 and N2 | info | The first is conservative; the second is unverified |
+| A10 | Between the export's path check and its write there is a window, if the export root is writable by an agent process. **The server's default export root is inside the data directory, which the assumed attacker can write** | Review of `12a7626` | none | Exposure: preview files written somewhere else the server's user can write. Releases are written by the operator tool to a directory that may not be inside the data directory. The instance template now asks for the export root to be outside agent-writable space (requirement 19); it did not when the first version of this table said so |
+| A11 | The operator tool's output has not been looked at on a real terminal, nor used by a person | Stated as not covered in reviews 4 to 9 | none | Listed under "not demonstrated"; part of OD-9 and OD-11 |
+| A12 | Guesses at a confirmation code are not limited across requests | Mistral review, finding 3 | **medium** | Mitigated, not fixed, and without a test: codes are 128 bits, at most 25 requests can be pending, and a correct code signs nothing without the operator's key |
+| A13 | Evaluator work is outside the budget | Mistral review, finding 8 | low | The evaluator is deterministic local code today. A requirement for any live evaluator |
+| A14 | Clearing a stop, the owner reference given for it, the owner's sign-off and reviewer identity are attestations, not authentication | First review, 17; second review | info; none | The real control is a human merge through branch protection, which is not configured (OD-4) |
+| A15 | In the readable summary, a bare URL becomes a link and a leading list marker in one-line text renders as a list | Second review | none | Display of an export; the package JSON is what is signed |
+| A16 | In stdio mode the data directory and the operator channel belong to the agent's own user, and the default spend account sits with them. Unsigned mode exists for development. There is no cap on the provider's side | Second review, residual risks | none | Deployment requirements in the instance template; unsigned mode must be asked for and marks the package UNSIGNED |
+| A17 | Limits of the figure rules: "ISO-9001 percent", "several-fold" and "vast majority" pass; a year after "in" or "since" is read as a date. Constraints are pattern rules and can be evaded by rephrasing | Third and fourth reviews | none | Stated in the threat model; the editor is shown the full text |
+| A18 | Lock recovery: a theoretical three-writer window (not reproduced); a crash between the two renames in `init` leaves a public key alone (fails closed); no test for a late settle. Races between real concurrent processes were outside every review's scope | Third review; all | none | Not reproduced. Under review now (scope-completing review B) |
+| A19 | The agent-facing server can present a preview from a decision log whose tail was removed | Third and fourth reviews | none | It is marked a preview and cannot be released: the operator's ledger catches the missing tail |
+| A20 | Evaluations shown to the editor can be changed by a store writer and are unsigned | Fourth review, F8 | info | Labelled as advice and outside the digest; eligibility is recomputed by code at assembly |
+| A21 | The spend account and releases are plain files, as safe as their directories. The ceilings and the account's path come from the server's environment. The instance ceilings have no reset | Fourth and fifth reviews | none | Deployment requirements; figures pending OD-6 |
+| A22 | The readable summary beside a release is not checked by `verify` | Fifth review | none | `verify` checks the package and the commands file |
+| A23 | A campaign creation that fails still uses one of the instance's campaign slots | Fifth review, N4 | info | Errs towards the limit |
+| A24 | A `select` decision on a draft does not affect what holds a post. A plan rebuilt with identical posts keeps earlier approvals, which is visible at review. A long listing can scroll material off the screen | Review of `12a7626`, F7 | info | The first two are by design; the third goes with A11 |
+| A25 | The shim's ceiling can be waived with `SHIM_ALLOW_UNLIMITED=1`. The model endpoint is configurable | Threat model (no reviewer raised them) | — | Each must be set deliberately; the instance template requires a ceiling and an https endpoint |
+| A26 | Fixes with no regression test in the repository: the 72-column break, the shim's idle cut-off, and the colon-and-equals listing (from the review of `12a7626`); the departed-caller charge (from the review of `55a66f2`). The idle cut-off has never been tested in real time by anyone | Reviews of `12a7626`, `55a66f2`, `2537386` | — | Checked by reviewers' probes only |
+
+### Known inaccuracies in the review ledger
+
+`harness/state/reviews.json` is append-only and was not rewritten. The audit found these in it:
+
+- Its `at` fields are the times the orchestrator recorded each entry, typed by hand, not measured. Three are later than the commit that remediates the review they record.
+- Some `status` fields say "fixed" where the review records say otherwise: the fourth review's F8 (accepted, A20); the review of `12a7626`, F7 (accepted, A24); and two findings of the first review marked fixed at `aad2196`, which the second review found not fixed or fixed with limits at that commit (they were closed later).
+- "All high and medium findings were fixed with a regression test" was written in several records. One medium was not: A12.
+- Counting: eight agent rounds and the Mistral review requested changes, nine in all. Seven of the agent rounds broke the approval path; the eighth found a defect in the shim only.
 
 ### What stays open after this
 

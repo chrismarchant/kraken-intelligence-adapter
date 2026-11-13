@@ -1,6 +1,6 @@
 # Mistral response-normalisation shim
 
-Status: implemented on a branch, not yet reviewed or accepted. Verified 2026-11-13 against `mistral-large-4` (see Evidence).
+Status: implemented on a branch; not accepted. The server and its spend limits were in the scope of the reviews that approved `2537386`; the normaliser was read by the first review only (see `harness/state/GATE_STATE.md`). Verified 2026-11-13 against `mistral-large-4` (see Evidence).
 
 ## What it does
 
@@ -117,7 +117,7 @@ Offline (deterministic; mock upstream replays the fixtures):
 
 ```
 npm run typecheck   # passes
-npm test            # whole suite: 98 tests, 98 pass, 0 fail (shim: normalize.test.ts, server.test.ts, security.test.ts)
+npm test            # whole product suite: 202 tests at 2537386 (98 when this was first written) (shim: normalize.test.ts, server.test.ts, security.test.ts)
 ```
 
 Cases covered: non-stream plain and tool call; stream plain and tool call (1, 3, 7, 13, 64-byte slices, which split UTF-8 characters and `data:` lines); string content passthrough; unknown block type; reasoning option; allowlist; body limit; upstream 4xx/5xx passthrough; redirect refused; timeout; client disconnect aborts upstream; client Authorization forwarded and env key override; no secret in log lines; routing (`/healthz`, 404, `/v1/models` passthrough). `security.test.ts` (finding F8, offline): batch/files/fine-tune/delete never reach the mock upstream in either mode; 405 on wrong method; 401 for missing or wrong token with upstream untouched; correct token forwarded as the injected key with the client token absent upstream and from logs; pass-through still forwards the client header; startup refusals; foreign `Host` and any `Origin` get 403.

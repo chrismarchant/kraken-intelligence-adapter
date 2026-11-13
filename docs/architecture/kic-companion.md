@@ -88,7 +88,7 @@ Operator tool: the same data and operator directories, plus `KIC_OPERATOR_KEY_FI
 
 ## With OpenBot
 
-Intended shape, **not yet run**: OpenBot unmodified; `tenant-package/` selected with `TENANT_PACKAGE_DIR`; the KIC MCP server added by URL with id `kic` and granted to the Campaign Assistant; `OPENAI_BASE_URL` pointing at the shim and `COPILOTKIT_OPENAI_API=chat`. The editor confirms decisions with the operator tool. Whether OpenBot should carry an operator-facing confirmation surface is an open owner decision (OD-9).
+Intended shape, **not yet run**: OpenBot unmodified; `tenant-package/` selected with `TENANT_PACKAGE_DIR`; the KIC MCP server added by URL with id `kic` and granted to the Campaign Assistant by an admin (at `v1.0.2` OpenBot accepts a custom server only over https at a hostname: OD-20); `OPENAI_BASE_URL` pointing at the shim and `COPILOTKIT_OPENAI_API=chat`. The editor confirms decisions with the operator tool. Whether OpenBot should carry an operator-facing confirmation surface is an open owner decision (OD-9).
 
 Automatic approval of learned skills must stay off, and nothing learned or remembered by Intelligence is authoritative for contracts, permissions or approved skills.
 
