@@ -68,3 +68,17 @@ test('stop active and input unparseable: denies (cannot tell which tool)', () =>
   assert.equal(r.status, 0);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
 });
+
+test('the repository wires the hook for every tool in .claude/settings.json', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const repo = path.resolve(path.dirname(HOOK), '../..');
+  const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude/settings.json'), 'utf8'));
+  const entries = settings.hooks?.PreToolUse ?? [];
+  const wired = entries.filter((e) => e.matcher === '*' &&
+    (e.hooks ?? []).some((h) => h.type === 'command' && h.command.includes('harness/hooks/pre-tool-use.mjs')));
+  assert.equal(wired.length, 1);
+  // Nothing in the project settings may pre-approve tools or weaken permissions.
+  assert.deepEqual(Object.keys(settings), ['hooks']);
+  assert.deepEqual(Object.keys(settings.hooks), ['PreToolUse']);
+});

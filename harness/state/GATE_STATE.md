@@ -62,10 +62,9 @@ The Mistral Code Review Bot is not operational (its block-content defect is unfi
 | X6 | Founding directive not stored verbatim in `docs/spec/directives/`; the session authorisation is stored as a summary | owner supplies the files |
 | X9 | Full OpenBot boot not proven | OD-7 |
 | X11 | Licence for a client-owned derived deployment not confirmed | OD-8 |
-| X12 | Global-stop hook written and tested but not installed in `.claude/settings.json` | task AEH-3 |
 | X13 | The editor's surface is a command-line tool; no real editor has used it | OD-9 |
 | X14 | No approving independent review exists for any commit of the KIC-01 work | OD-11 |
 
-Closed since the last ledger: X7 (licence inventory of installed packages done, `LICENSES/third-party.md`), X8 (sub-agent tiers and GitHub Actions exercised), X10 (shim proven with streaming and tools, live).
+Closed since the last ledger: X7 (licence inventory of installed packages done, `LICENSES/third-party.md`), X8 (sub-agent tiers and GitHub Actions exercised), X10 (shim proven with streaming and tools, live), X12 (global-stop hook installed in `.claude/settings.json` and verified in live nested sessions).
 
 Owner decisions: `docs/decisions/OWNER_DECISIONS.md`.

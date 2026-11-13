@@ -248,8 +248,12 @@
       "gate": "AEH",
       "owner": "orchestrator",
       "deps": [],
-      "status": "todo",
-      "evidence": []
+      "status": "done",
+      "evidence": [
+        ".claude/settings.json",
+        "harness/tests/hook.test.mjs (wiring test)",
+        "docs/harness/AEH.md (live verification in nested sessions, 2026-11-13)"
+      ]
     },
     {
       "id": "KIC-D7",
