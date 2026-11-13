@@ -1,0 +1,63 @@
+{
+  "purpose": "programme-plan",
+  "schemaName": "programme_plan",
+  "requestSha256": "255bf949f384c1f6e84a8dcdeace7f4d2ecf7e58eeae9198cea43e3ed63e3157",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T01:28:41.019Z",
+  "usage": {
+    "promptTokens": 1480,
+    "completionTokens": 3767,
+    "reasoningTokens": 3083
+  },
+  "value": {
+    "campaignObjective": "Establish data quality as an operations problem rather than an IT problem, and prompt operations leaders to start a conversation about their own weekly reporting.",
+    "coreNarrative": "When a weekly report needs a hand-check before anyone acts on it, the data quality problem is sitting in operations, not in the IT department, and it shows up as hours spent reconciling inventory against order records.",
+    "supportingThemes": [
+      "The hidden hours spent reconciling inventory against order records by hand",
+      "Why mismatches between systems end up on the operations leader's desk",
+      "What happens to decisions when weekly figures have to be verified first",
+      "What a trustworthy warehouse report looks like without a dedicated data team"
+    ],
+    "intendedAudience": "Operations leaders at mid-sized logistics, warehousing and distribution companies who are accountable for weekly performance reporting and do not have a dedicated data team.",
+    "slots": [
+      {
+        "theme": "The weekly report that needs a hand-check before anyone acts on it",
+        "intent": "problem-framing",
+        "sequencingRationale": "Opens the programme by naming the specific frustration of doubting inventory figures in weekly reports so readers recognise their own situation before any solution is discussed.",
+        "callToAction": "Ask readers to think about the last report they had to verify by hand before sending it out.",
+        "evidenceRequirements": [
+          "Any figure about how many leaders distrust their weekly reports must cite ref-survey"
+        ]
+      },
+      {
+        "theme": "Data quality as an operations problem, not an IT problem",
+        "intent": "point-of-view",
+        "sequencingRationale": "Follows the problem by offering the central view that these mismatches land on the operations desk, positioning readers to see the cause in their own workflow.",
+        "callToAction": "Invite readers to consider who in their organisation currently owns the checking work.",
+        "evidenceRequirements": [
+          "No external statistics required for this reflective framing"
+        ]
+      },
+      {
+        "theme": "Cutting the hours spent on manual reconciliation",
+        "intent": "proof",
+        "sequencingRationale": "Comes after the view is established to ground it in a concrete result, showing what changes when scheduled checks replace hand reconciliation.",
+        "callToAction": "Suggest readers estimate how many hours their team spends on manual reconciliation each week.",
+        "evidenceRequirements": [
+          "The 31% reduction in manual reconciliation time across 14 warehouses must cite ref-benchmark",
+          "Descriptions of how scheduled checks flag mismatches must cite ref-product"
+        ]
+      },
+      {
+        "theme": "What would you change if you trusted your weekly numbers?",
+        "intent": "invitation",
+        "sequencingRationale": "Closes the sequence by inviting readers to apply the operations framing to their own reporting and continue the conversation in the comments.",
+        "callToAction": "Ask readers to share what they would change about their weekly report if the figures needed no hand-checking.",
+        "evidenceRequirements": [
+          "Any claims about decision delays must remain general or cite ref-survey; no customer names or quotations"
+        ]
+      }
+    ]
+  }
+}

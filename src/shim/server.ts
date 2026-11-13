@@ -132,7 +132,7 @@ export function createShimServer(config: ShimConfig): http.Server {
 
     let url: URL;
     try {
-      url = new URL(req.url ?? "/", "http://shim.local");
+      url = new URL(req.url ?? "/", "http://localhost") // base for parsing only; never contacted;
     } catch {
       sendError(res, 400, "Bad request URL", "invalid_request_error");
       return;

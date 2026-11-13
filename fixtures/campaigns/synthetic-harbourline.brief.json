@@ -1,0 +1,54 @@
+{
+  "schema": "kic.campaign-brief/v1",
+  "synthetic": true,
+  "client": {
+    "name": "Harbourline Analytics (fictional)",
+    "brandContext": "SYNTHETIC TEST DATA. Harbourline Analytics is an invented company used only to exercise this software. It is described as a small software firm that helps mid-sized logistics operators keep their operational data trustworthy. Its voice is practical and plain-spoken, written by people who have run warehouses.",
+    "productsOrServices": [
+      "Data quality monitoring for warehouse and transport systems",
+      "Automated reconciliation checks between inventory and order records"
+    ]
+  },
+  "audience": {
+    "icp": "Operations leaders at mid-sized logistics and distribution companies who are accountable for weekly performance reporting and do not have a dedicated data team.",
+    "roles": ["Head of Operations", "Operations Director", "Supply Chain Manager"],
+    "industries": ["Logistics", "Warehousing", "Distribution"],
+    "painPoints": [
+      "Inventory figures in weekly reports that nobody trusts",
+      "Hours spent on manual reconciliation between systems",
+      "Decisions delayed because numbers have to be checked by hand"
+    ]
+  },
+  "objectives": [
+    "Establish a clear point of view on data quality as an operations problem rather than an IT problem",
+    "Prompt operations leaders to start a conversation about their own reporting"
+  ],
+  "tone": {
+    "voice": "Practical, plain-spoken and specific. Sounds like an experienced operations person, not a marketer.",
+    "do": ["Use concrete warehouse and reporting situations", "Keep sentences short"],
+    "dont": ["Jargon", "Fear-mongering"]
+  },
+  "references": [
+    {
+      "id": "ref-benchmark",
+      "title": "Synthetic pilot benchmark (invented for testing)",
+      "summary": "INVENTED FIGURE FOR TESTING. In a pilot across 14 warehouses, teams using automated data checks cut the time spent on manual reconciliation by 31%."
+    },
+    {
+      "id": "ref-survey",
+      "title": "Synthetic operations survey (invented for testing)",
+      "summary": "INVENTED FIGURE FOR TESTING. In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report."
+    },
+    {
+      "id": "ref-product",
+      "title": "Product description (invented for testing)",
+      "summary": "The product runs scheduled checks that compare inventory records with order and shipment records and flags mismatches for a person to review. It does not change any records itself."
+    }
+  ],
+  "constraints": {
+    "mustInclude": ["data quality", "operations"],
+    "mustAvoid": ["guarantee", "revolutionary", "AI-powered", "game-changing"],
+    "evidencePolicy": "Any figure, result or comparison must cite one of the references above. No customer names or quotations."
+  },
+  "cadence": { "postsPerWeek": 2, "weeks": 2 }
+}

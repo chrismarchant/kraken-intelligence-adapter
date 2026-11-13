@@ -1,0 +1,43 @@
+{
+  "purpose": "linkedin-draft.slot-2",
+  "schemaName": "post_drafts",
+  "requestSha256": "c00b2acd675d72e09943058fe6bfce35593d3d217409f0f1882b25ca20b03e4b",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T01:29:18.146Z",
+  "usage": {
+    "promptTokens": 1623,
+    "completionTokens": 6412,
+    "reasoningTokens": 5843
+  },
+  "value": {
+    "variants": [
+      {
+        "variant": "direct",
+        "approach": "States the point of view plainly and walks through where the checking work actually sits, using short operational sentences.",
+        "hook": "Data quality is not an IT ticket. It lands on your desk every Monday.",
+        "body": "Data quality is not an IT ticket. It lands on your desk every Monday.\n\nWhen the weekly numbers do not match, the first person who feels it is the one holding the report. Operations.\n\nNot because the systems are broken. Because someone has to reconcile inventory against order records before anyone acts. That checking work sits in operations, not in a server room.\n\nWe built Harbourline Analytics because we kept watching good operations teams spend hours on manual checks. The mismatch is a data quality issue, but the cost is operational. Hours. Delayed decisions. Reports nobody trusts until they are hand-checked.\n\nIf the checking happens on your floor, the problem is yours to solve. Not because IT does not care. Because the workflow belongs to you.\n\nWho in your organisation currently owns that checking work?",
+        "callToAction": "Who in your organisation currently owns that checking work?",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#Logistics"
+        ],
+        "claims": []
+      },
+      {
+        "variant": "story-led",
+        "approach": "Opens with a concrete scene of a mismatched weekly report to make the ownership point tangible before naming the theme.",
+        "hook": "Tuesday, 8:40. The weekly report is open and the inventory column does not match.",
+        "body": "Tuesday, 8:40. The weekly report is open and the inventory column does not match.\n\nYou know the feeling. Before anyone acts, someone has to check the numbers by hand. That someone is in operations.\n\nThe systems are talking to each other. The mismatch is a data quality problem, but it lands on the operations desk. Hours spent reconciling inventory against order records. Decisions held back until the figures are verified.\n\nThis is not an IT failure. It is an operations workflow that has not been fixed yet. The report is only as trustworthy as the checking behind it.\n\nIf your team is doing that checking every week, the problem sits with you, not in a server room.\n\nWho in your organisation currently owns that checking work?",
+        "callToAction": "Who in your organisation currently owns that checking work?",
+        "hashtags": [
+          "#DataQuality",
+          "#Operations",
+          "#WarehouseManagement"
+        ],
+        "claims": []
+      }
+    ]
+  }
+}

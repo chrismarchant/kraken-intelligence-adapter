@@ -1,0 +1,83 @@
+{
+  "purpose": "narrative-fanout",
+  "schemaName": "narrative_alternatives",
+  "requestSha256": "136849d1c26f5bd98ea35e34721e6b213bd8dd3766d9dde0882a606cbdd93488",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T01:28:07.021Z",
+  "usage": {
+    "promptTokens": 1844,
+    "completionTokens": 3828,
+    "reasoningTokens": 2832
+  },
+  "value": {
+    "narratives": [
+      {
+        "title": "The Weekly Report Nobody Trusts",
+        "angle": "Lead with the specific frustration of preparing weekly performance reports where inventory figures are doubted, and the hours lost to manual checks between systems.",
+        "coreMessage": "When your weekly report needs a hand-check before anyone acts on it, the data quality problem is sitting in your operations, not your IT department.",
+        "supportingThemes": [
+          "The hidden hours spent reconciling inventory against order records by hand",
+          "Why mismatches between systems end up on the operations leader's desk",
+          "What happens to decisions when weekly figures have to be verified first",
+          "What a trustworthy warehouse report looks like without a dedicated data team"
+        ],
+        "audienceFit": "These leaders are personally accountable for weekly reporting and lack data teams, so they feel the daily cost of untrusted numbers and manual reconciliation.",
+        "evidenceRequirements": [
+          "ref-survey to support claims about trust in weekly inventory figures",
+          "ref-benchmark to support claims about time spent on manual reconciliation",
+          "ref-product to describe how scheduled checks flag mismatches for human review"
+        ],
+        "risks": [
+          "Could drift into fear-mongering about data chaos, violating the no fear-mongering rule",
+          "Might imply the product fixes records automatically when it only flags them [ref-product]",
+          "Must avoid prohibited words like 'guarantee' when describing report reliability"
+        ]
+      },
+      {
+        "title": "Data Quality is an Operations Problem",
+        "angle": "Argue that data quality shows up in the weekly report and delays real warehouse decisions, not in server logs, repositioning it as an operations issue.",
+        "coreMessage": "Data quality is an operations problem because it appears in your weekly report and slows down real decisions, not just in the server room.",
+        "supportingThemes": [
+          "Why the weekly performance report is where data quality becomes visible",
+          "The difference between system uptime and trustworthy operational numbers",
+          "How flagging mismatches for a person to review keeps warehouse records under human control",
+          "Starting a conversation about which numbers you actually trust in your current reporting"
+        ],
+        "audienceFit": "Operations leaders without IT teams need to own this issue directly; framing it as operations rather than IT matches their accountability for weekly results.",
+        "evidenceRequirements": [
+          "ref-survey to evidence that 62% of operations leaders distrust their weekly figures",
+          "ref-product to explain the scheduled check and human review process",
+          "Must include the terms 'data quality' and 'operations' per constraints"
+        ],
+        "risks": [
+          "Could sound preachy or abstract if not tied to concrete warehouse reporting situations",
+          "Risk of using marketing jargon instead of plain-spoken operations language",
+          "Must not imply the product changes records—it only flags mismatches [ref-product]"
+        ]
+      },
+      {
+        "title": "What 14 Warehouses and 120 Leaders Showed",
+        "angle": "Lead with the specific survey and pilot figures to demonstrate this is a measurable problem with a practical solution, then connect to the product approach.",
+        "coreMessage": "In a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report [ref-survey], and in a pilot across 14 warehouses, teams using automated checks cut time spent on manual reconciliation by 31% [ref-benchmark]—showing data quality is a measurable operations issue.",
+        "supportingThemes": [
+          "What the 62% figure means for how weekly reports get used in operations",
+          "How the 14-warehouse pilot actually ran: scheduled checks comparing records",
+          "Comparing hours spent on manual reconciliation before and after automated flags",
+          "Why mismatches get flagged for a person to review rather than changed automatically"
+        ],
+        "audienceFit": "Gives busy operations leaders concrete, specific numbers they can compare against their own reporting and reconciliation time.",
+        "evidenceRequirements": [
+          "ref-survey for the 62% statistic about trust in inventory figures",
+          "ref-benchmark for the 31% reduction in manual reconciliation time across 14 warehouses",
+          "ref-product for the description of scheduled checks and human review"
+        ],
+        "risks": [
+          "Figures could be misread as universal guarantees rather than specific pilot and survey results",
+          "Must frame statistics as 'in a survey' and 'in a pilot' to avoid implying guaranteed outcomes",
+          "Cannot introduce any other numbers or comparisons not covered by the references"
+        ]
+      }
+    ]
+  }
+}

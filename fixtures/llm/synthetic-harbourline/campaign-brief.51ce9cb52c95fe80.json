@@ -1,0 +1,38 @@
+{
+  "purpose": "campaign-brief",
+  "schemaName": "brief_interpretation",
+  "requestSha256": "51ce9cb52c95fe80d6187b719a1845c4f1e7f9fa7d8d752d3725f27e29069ed3",
+  "provider": "mistral",
+  "model": "mistral-large-4",
+  "recordedAt": "2026-11-13T01:27:40.351Z",
+  "usage": {
+    "promptTokens": 1122,
+    "completionTokens": 3968,
+    "reasoningTokens": 3360
+  },
+  "value": {
+    "objectiveSummary": "The campaign must reposition data quality as an operations problem rather than an IT problem, speaking directly to leaders who own weekly reporting without a dedicated data team. It should prompt those leaders to examine and talk about the trustworthiness of their own current reports. The messaging must stay practical and grounded in real warehouse and reporting situations.",
+    "audienceSummary": "The campaign targets Heads of Operations, Operations Directors and Supply Chain Managers at mid-sized logistics, warehousing and distribution companies. These leaders are accountable for weekly performance reporting but lack dedicated data teams, so they care about trustworthy inventory figures, cutting hours spent on manual reconciliation, and making decisions without hand-checking numbers.",
+    "keyMessages": [
+      "Data quality is an operations problem, not an IT problem—it shows up in the weekly report, not just the server room.",
+      "Trust in weekly numbers is a live issue: in a survey of 120 operations leaders, 62% said they did not fully trust the inventory figures in their weekly report [ref-survey].",
+      "Manual reconciliation eats time that operations teams do not have; in a pilot across 14 warehouses, teams using automated data checks cut time spent on manual reconciliation by 31% [ref-benchmark].",
+      "Harbourline runs scheduled checks that compare inventory records with order and shipment records and flags mismatches for a person to review; it does not change any records itself [ref-product].",
+      "Operations leaders should be able to act on reported numbers without hand-checking every figure first."
+    ],
+    "risks": [
+      "Presenting the pilot or survey figures as universal guarantees rather than specific cited results, which could mislead readers.",
+      "Slipping into marketing jargon or fear-mongering, which violates the plain-spoken operations voice.",
+      "Using prohibited words such as 'guarantee', 'revolutionary', 'AI-powered' or 'game-changing'.",
+      "Overstating the product's capabilities—for example, implying it fixes data automatically when it only flags mismatches for human review.",
+      "Failing to include the mandatory terms 'data quality' and 'operations' in the final copy."
+    ],
+    "openQuestions": [
+      "Are the pilot benchmark and survey figures backed by verifiable underlying data, or are they placeholders that must be replaced with client-approved statistics before publication?",
+      "What specific call-to-action should each post include—e.g., invite a comment, send a DM, or click a link—to prompt the conversation about reporting?",
+      "Should the posts name specific product features, or keep the focus on the operations point of view with the product mentioned only as the solution?",
+      "What LinkedIn format is preferred for these posts—text-only, single image, or carousel?",
+      "Are there any legal or compliance review steps required before publishing claims about time savings or trust percentages?"
+    ]
+  }
+}
