@@ -1516,6 +1516,106 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-b2-1d8bafe.md",
       "at": "2026-11-13T14:35:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-a3-a1affd2",
+      "gate": "KIC-01",
+      "commit": "a1affd2c4e9677baa8d15a60fe330ceec13e3c08",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-15",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/evaluation/**",
+        "src/contracts/**",
+        "src/creators/**",
+        "src/shim/normalize.ts",
+        "src/shim/server.ts (normalisation paths)",
+        "clip in src/workflow/service.ts",
+        "tests for those",
+        "closure of the two earlier reviews of this area",
+        "claims (e)-(j)"
+      ],
+      "skipped": [
+        {
+          "path": "tests/kic/evaluation.test.ts, tests/shim/normalize.test.ts, tests/kic/creators.test.ts beyond the diff; mock evaluator scoring",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "src/store/**, src/mcp/**, src/gateway/**",
+          "reason": "the other reviewer's scope"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "high",
+          "summary": "Non-letter characters that read as letters are neither refused nor read as letters; a ruled-out term written with them passes",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "medium",
+          "summary": "Plain look-alikes and spacing: lower-case L for capital I, rn for m, spaced letters, a symbol at the start of a word",
+          "status": "open"
+        },
+        {
+          "id": "3",
+          "severity": "medium",
+          "summary": "Regression: the apostrophe kept for contractions shields a ruled-out word split before its ending",
+          "status": "open"
+        },
+        {
+          "id": "4",
+          "severity": "medium",
+          "summary": "Evaluator evidence and failure strings can exceed the contract's lengths; evaluation then fails and nothing can be approved",
+          "status": "open"
+        },
+        {
+          "id": "5",
+          "severity": "low",
+          "summary": "Regression: Romanian, Vietnamese and pinyin letters are refused",
+          "status": "open"
+        },
+        {
+          "id": "6",
+          "severity": "low",
+          "summary": "Regression: short ruled-out terms over-match (US/used, fun/fund, car/card)",
+          "status": "open"
+        },
+        {
+          "id": "7",
+          "severity": "low",
+          "summary": "An event-stream response with no data line is passed on unnormalised",
+          "status": "open"
+        },
+        {
+          "id": "8",
+          "severity": "low",
+          "summary": "Spec-legal events (empty data, non-JSON data) end the stream",
+          "status": "open"
+        },
+        {
+          "id": "9",
+          "severity": "low",
+          "summary": "clip collapses text that is not canonically stable to one character",
+          "status": "open"
+        },
+        {
+          "id": "10",
+          "severity": "info",
+          "summary": "Re-serialising changes integers above 2^53 and number spellings",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-a3-a1affd2.md",
+      "at": "2026-11-13T14:50:00Z"
     }
   ]
 }
