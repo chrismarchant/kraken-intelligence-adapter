@@ -852,6 +852,92 @@
       ],
       "reportPath": "docs/review/2026-11-13-approval-path-security-review-177a8c4.md",
       "at": "2026-11-13T12:20:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-12a7626",
+      "gate": "KIC-01",
+      "commit": "12a76260073fc8dce4fffa1267900ad40d585aa8",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-8",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff 177a8c4 12a7626: src/**, tests/**",
+        "src/workflow/assemble.ts",
+        "src/cli/operator.ts",
+        "src/shim/server.ts",
+        "src/workflow/spend.ts",
+        "src/store/lock.ts",
+        "src/workflow/ledger.ts",
+        "src/workflow/signing.ts (verification)",
+        "src/workflow/service.ts (hashing, decisions, revision, settledByLog, spend)",
+        "src/mcp/runtime.ts"
+      ],
+      "skipped": [
+        {
+          "path": "the real provider's behaviour; real terminal rendering; MCP tool surface beyond the approval path; gateway streaming usage",
+          "reason": "not covered by the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "medium",
+          "summary": "Shim forwarded a request naming only max_completion_tokens as written; a provider ignoring the field would exceed the ceiling",
+          "status": "fixed",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        },
+        {
+          "id": "F2",
+          "severity": "low",
+          "summary": "Caller's bytes forwarded: a repeated JSON key could be read differently by shim and provider",
+          "status": "fixed",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        },
+        {
+          "id": "F3",
+          "severity": "low",
+          "summary": "Blanks other than ordinary spaces were not written out; a stored line could imitate the continuation margin",
+          "status": "fixed",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        },
+        {
+          "id": "F4",
+          "severity": "low",
+          "summary": "Piped output assumed 80 columns",
+          "status": "fixed",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        },
+        {
+          "id": "F5",
+          "severity": "low",
+          "summary": "A store writer who deletes a revision can obtain another on the same request",
+          "status": "accepted",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        },
+        {
+          "id": "F6",
+          "severity": "low",
+          "summary": "No idle timeout: a caller could hold a concurrency place",
+          "status": "fixed",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        },
+        {
+          "id": "F7",
+          "severity": "info",
+          "summary": "Listing ambiguity between text and non-text values (fixed); prompt tokens outside the shim ceiling, select on a draft, long listings (accepted)",
+          "status": "fixed",
+          "remediationCommit": "55a66f26a2d0b1447278dd22e5ea2d2db6d95c5b"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-12a7626.md",
+      "at": "2026-11-13T12:40:00Z"
     }
   ]
 }
