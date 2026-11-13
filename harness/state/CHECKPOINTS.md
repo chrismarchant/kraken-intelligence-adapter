@@ -2,6 +2,47 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (four remediation rounds; approval path and store approved at 1f159a2; reviews of e30451c in progress)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees (no base branch exists; no pull request possible; OD-4)
+CURRENT_GATE: none accepted. KIC-01 is NOT ready for an owner decision.
+REVIEWED STATE, by area (each review is bound to an exact commit in harness/state/reviews.json):
+  Approval path (editorial decisions, what the editor sees, release, budget): approved at 2537386 (reviews 9, 10)
+     and again at 1f159a2 by a delta review (agent 19).
+  Store, lock, gateway, MCP: changes-requested at 2537386 and 1d8bafe; approved with follow-ups at a1affd2
+     (agent 16) and at 1f159a2 (agent 18). Lock volume tests by three reviewers: about 4,600 kills, nothing lost.
+  Evaluator's mandatory constraints (the rules that look for disguised text) and the shim's normaliser:
+     changes-requested at 2537386, 1d8bafe, a1affd2 and 1f159a2 (agents 11, 13, 15, 17). Each round closed
+     what the one before found and found another way round. The normaliser, contracts and creator ranking held
+     in the last two.
+  Remediation of the last round: e30451c. 274 product + 83 harness tests; secret scan clean.
+  Reviews of e30451c commissioned: agent 20 (evaluator, normaliser) and agent 21 (store, gateway,
+     decision-request change, and its effect on the approval path).
+     OUTCOME: see harness/state/reviews.json and GATE_STATE.md. If no entry for e30451c exists there, the reviews
+     were lost with the session and must be commissioned again.
+NEXT_ACTION:
+  1. Record each review of e30451c.
+  2. If the store/approval delta review requests changes: remediate, re-review that area.
+  3. If the evaluator review approves (with or without follow-ups) and the other does too: bring GATE_STATE.md,
+     KIC-01-EVIDENCE.md, CONFINEMENT-TEST-MATRIX.md and THREAT-MODEL.md up to the commit; reissue
+     docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md against it, saying which review covers which code; raise a gate
+     stop on KIC-01 ("presented for owner acceptance"); checkpoint; push; STOP AT THE OWNER ACCEPTANCE BOUNDARY.
+  4. If the evaluator review AGAIN finds a new way to disguise a ruled-out term: do NOT start a sixth round
+     unasked. Fix regressions and plain defects only, record the rest, and put the question to the owner:
+     are the disguise rules to be made complete (and by what means), or stated as pattern rules behind an
+     editor who reads every word? Reissue the package with that question open, and stop.
+  Do NOT merge, deploy, run OpenBot, handle a signing key, contact CopilotKit, change tenant-package/, or touch
+  Kraken or JEV. Silence is not acceptance.
+OPEN: OD-11 (external approval-path assessment before real-client use; kept open by the owner). OD-2..OD-10,
+  OD-15..OD-17, OD-19, OD-20. C1 (OpenBot never run), C2 (not met as defined), C3 (licence, owner).
+  Product questions for the owner raised by the remediation: drafts may contain only 694 named characters
+  (no other scripts, a fixed list of emoji, no flags or skin tones); previews are pruned to 50 a programme.
+REFERENCES: harness/state/GATE_STATE.md ("Scope-completing reviews"), docs/review/ (all records of 2026-11-13),
+  docs/security/THREAT-MODEL.md (accepted limits), src/evaluation/characters.ts, src/evaluation/terms.ts
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (review requirement withdrawn; two remediation rounds; reviews of a1affd2 in progress)
 
 ```
