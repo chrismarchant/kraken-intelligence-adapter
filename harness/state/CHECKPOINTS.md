@@ -2,6 +2,26 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (ORCH)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees
+CURRENT_GATE: KIC-01 BLOCKED / NOT READY at code commit c83b0cbd0134eb224552b73e52a43b7111cde721. NOT accepted. Gate stop raised on KIC-01; local stop on REV-1. Stopped at the owner-decision boundary under docs/spec/directives/KIC-01-FINAL-REVIEW-CLOSURE-INSTRUCTION-2026-11-13.md.
+COMPLETED: Final regression review of the term matching at c83b0cb against e30451c recorded: agent 24, approve-with-followups, for that question only (docs/review/2026-11-13-regression-review-c83b0cb.md; probes kept in docs/gates/evidence/review-24-c83b0cb/).
+  Evidence verified in a detached worktree at c83b0cb: 289 product and 83 harness tests pass; secret scan clean; CI run 58 success.
+  Review coverage reconciled by area; acceptance package reissued (fourth version); gate ledger, evidence, confinement matrix, threat model, task ledger updated.
+  Earlier in the session: six rounds of remediation after 2537386 (1d8bafe, a1affd2, efe9415+1f159a2, e30451c, dfe9ead+7f1978a, 184f687+c83b0cb) and fourteen reviews (agents 11 to 24).
+OPEN: R1: the evaluator's rules against disguised words and figures have no approving review; E1 to E11 open in GATE_STATE.md; owner decision OD-21.
+  R2: 72 lines changed after the last approving verdict (requestDecision, the gateway's failed-request charge, a comment) have no approving verdict bound to them; reviewers 22 and 23 examined them and said the approvals stand.
+  R3: C1 never run, C2 not met inside OpenBot, C3 open (OD-7, OD-8, OD-15, OD-20).
+  OD-11 open: external approval-path assessment before real-client use. OD-4: no base branch, so no pull request.
+NEXT_ACTION: WAIT FOR THE OWNER. Do not change src/, tests/, fixtures/, tenant-package/ or the contracts; do not remediate R1 or R2; do not start KIC-02, run OpenBot, merge or deploy; do not handle a signing key.
+  On an owner instruction only: a ruling on OD-21, then one review of the evaluator at c83b0cb against the restated requirement; or one delta review of git diff e30451c c83b0cb -- src/workflow src/gateway src/limits.ts for R2.
+  Only the owner clears the gate stop on KIC-01.
+REFERENCES: docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md, harness/state/GATE_STATE.md (Disposition of KIC-01; State by area at c83b0cb), docs/decisions/OWNER_DECISIONS.md, harness/state/reviews.json, docs/harness/RESTART.md
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (four remediation rounds; approval path and store approved at 1f159a2; reviews of e30451c in progress)
 
 ```

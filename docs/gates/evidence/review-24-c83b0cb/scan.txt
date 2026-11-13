@@ -1,0 +1,2 @@
+secret-scan: clean
+exit 0

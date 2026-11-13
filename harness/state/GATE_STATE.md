@@ -5,7 +5,7 @@ No gate has been accepted by the Human Owner. Evidence is presented; acceptance 
 | Gate | Status | Evidence |
 |---|---|---|
 | KIC-00 Foundation and feasibility | **Report presented. Awaiting owner approval.** | `docs/gates/KIC-00-REPORT.md` |
-| KIC-01 Runtime proof | **Implementation authorised for the 2026-11-13 session only** (workstreams A–D). **Presented for owner acceptance at `c83b0cb`. Not accepted.** By area: the approval path, and the store, gateway, spend and MCP code, are approved by independent review (with follow-ups). **The evaluator's rules against disguised text are not approved**: five reviews in a row requested changes, and the question is put to the owner as OD-21. C1 blocked, C2 demonstrated outside OpenBot only, C3 open, C4 demonstrated in tests and independently reviewed. A gate stop is on KIC-01 until the owner decides. | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
+| KIC-01 Runtime proof | **BLOCKED / NOT READY** at code commit `c83b0cb` (disposition of 2026-11-13 under the owner's final review closure instruction; see "Disposition of KIC-01"). **Not accepted.** Three reasons: the evaluator's rules against disguised text have no approving review (OD-21); 72 lines changed after the last approving verdict in three areas have no approving verdict bound to them; the runtime proof, C1 to C3, was never run. The approval path, the store, the gateway, spend control and the MCP tools are approved by independent review with those qualifications. C4 demonstrated in tests and independently reviewed. A gate stop is on KIC-01; no remediation without a new owner instruction. Implementation had been authorised for the 2026-11-13 session only (workstreams A–D). | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
 | KIC-02 Model and skills integration | Not authorised as a gate. Parts were built under the session authorisation: gateway, skills, bounded execution. | `docs/gates/KIC-01-EVIDENCE.md` |
 | KIC-03 Comparative intelligence | Not authorised as a gate. Built under the session authorisation with the deterministic mock evaluator. | same |
 | KIC-04 Commercial campaign preparation | Not authorised as a gate. Demonstrated through API and command-line tests only. **No user interface.** | same |
@@ -135,19 +135,44 @@ Remediated in `e30451c517bae16982ad75599d3f62cc4534ff13`: every character a draf
 |---|---|
 | `e30451c..7f1978a` (`independent-review-agent-22`), `docs/review/2026-11-13-regression-review-7f1978a.md` | **changes-requested.** The approvals of the approval path and of the store, gateway and MCP code still stand. The fix to the term matching had brought in regressions: a rule for plain numbers that hid words written with symbols and digits (high), slower evaluation (medium), honest hashtags refused. Fixed in `184f687` |
 | `e30451c..184f687` (`independent-review-agent-23`), `docs/review/2026-11-13-regression-review-184f687.md` | **changes-requested.** The same approvals still stand. Two regressions against `e30451c` remained in the term matching (medium; low to medium), one of them from `dfe9ead` and missed by the pass before. Fixed in `c83b0cbd0134eb224552b73e52a43b7111cde721`, which changes `src/evaluation/terms.ts` and its test file and nothing else |
-| The term matching at `c83b0cb` against `e30451c` (`independent-review-agent-24`) | Commissioned on 2026-11-13; **not yet reported.** Until it is recorded here, the last change to the term matching (`184f687..c83b0cb`, 42 lines of one file) is tested by its authors and by the earlier reviewers' probes run again, and not independently reviewed |
+| The term matching at `c83b0cb` against `e30451c` (`independent-review-agent-24`), `docs/review/2026-11-13-regression-review-c83b0cb.md` | **approved, with follow-ups** (APPROVED WITH FINDINGS), **for that question only**: 2 low, 1 low to info, 3 info. The two regressions found at `184f687` are closed. With the two intended classes set aside, nothing caught at `e30451c` is missed in 240,000 random disguises, 1.64 million targeted constructions and 75,000 hashtags. It records a further class in which `c83b0cb` reads less than `e30451c`: a word that reads as a contraction is read only as that contraction (E10). No honest sentence is newly refused. **It is not a review of the rules themselves and does not approve the evaluator** |
 
-**No further change to the code will be made by the orchestrator before the owner decides, whatever the last review says.** `c83b0cb` is the commit presented.
+**No change to the code was made after `c83b0cb`, and none will be without a new owner instruction** (`docs/spec/directives/KIC-01-FINAL-REVIEW-CLOSURE-INSTRUCTION-2026-11-13.md`). `c83b0cb` is the code assessed.
+
+### Disposition of KIC-01
+
+**BLOCKED / NOT READY.** Recorded on 2026-11-13 under the owner's final review closure instruction, whose rule is: a required review that requests changes, incomplete coverage, or missing material evidence blocks the gate. Each of these is sufficient.
+
+| # | Reason | Minimum remediation (not undertaken) |
+|---|---|---|
+| R1 | The evaluator's rules against disguised words and figures have no approving review. Five full reviews requested changes; two findings rated high and three medium are open at `c83b0cb` (E1 to E5). The approving verdict of reviewer 24 covers regression against `e30451c` only | An owner ruling on OD-21 restating what the rules are required to do, then one review of the evaluator at `c83b0cb` against that; or further work under a new instruction and a full review that approves |
+| R2 | 72 lines outside the evaluator changed after the last review with an approving verdict (`e30451c`): `requestDecision` (53), the gateway's charge for a failed request (13), a comment (6). Reviewers 22 and 23 examined them and stated that the approvals stand, but the verdict each recorded is changes-requested, for the evaluator | One delta review of `git diff e30451c c83b0cb -- src/workflow src/gateway src/limits.ts` with its own verdict; or an owner ruling that the recorded statements suffice |
+| R3 | The runtime proof was never run: C1 not met, C2 not met as defined, C3 not met | An Intelligence key, an environment, an identity provider, the licence answer and a way to attach the MCP server (OD-7, OD-8, OD-15, OD-20) |
+
+`aeh check-reviews --commit c83b0cb… --gate KIC-01` prints **ok**, because an approving review is now bound to that commit and no blocking one is. **That is the ledger's rule and nothing more**: the check does not measure coverage and does not carry the open findings of `e30451c` forward. The gate stop on KIC-01 is what makes the harness refuse work under the gate's paths.
+
+### Evidence against `c83b0cb`
+
+| Check | Result | How it was obtained |
+|---|---|---|
+| Product tests | 289 of 289 pass, none skipped | `npm run check`, exit 0, in a detached worktree at `c83b0cb`, by the orchestrator after the commit; the same counts independently by reviewer 24 in its own worktree |
+| Harness tests | 83 of 83 pass | The same runs |
+| CI | Workflow `ci`, run 58 (id 43475174844): success, head SHA `c83b0cb…` | Read from GitHub Actions |
+| Secret scan | clean, exit 0 | The repository's own scan, same worktree; and by reviewer 24. GitHub's secret scanning was not consulted |
+| Record check | `aeh check-records`: ok | Same worktree |
+| Later commits | Records only: `git diff --stat c83b0cb HEAD` over `src`, `tests`, `fixtures`, `tenant-package`, `harness/scripts`, `harness/hooks`, `.github`, `.claude` and the package files is empty. `harness/config/gates.json` was changed by the harness's `stop` command when the gate stop was raised: KIC-01 from "authorised" to "blocked", the stop and the previous status recorded, the file re-indented; paths and review requirement unchanged | Run at the branch head |
+| Reviewers' probes | Reviewers 22 and 23's comparison scripts, run again by the orchestrator on the `c83b0cb` code: nothing lost against `e30451c` outside the intended class in 60,000 random disguises and 15,000 random tags. Reviewer 24's own probes: `docs/gates/evidence/review-24-c83b0cb/` | The first are the orchestrator's runs, not independent evidence |
+| Live check | `tests/shim/live.ts`, six of six, on the code of `7f1978a`; the shim and gateway are unchanged since | `docs/gates/evidence/shim-live-2026-11-13-final.txt` |
 
 ### State by area at `c83b0cb`
 
 | Area | State | Basis |
 |---|---|---|
-| Approval path: claims (a) to (d) | **Approved** | Approved at `55a66f2` and `2537386` (agents 9, 10); delta-approved at `1f159a2` (agent 19); found to stand at `e30451c`, `7f1978a` and `184f687` (agents 21, 22, 23). Nothing outside the evaluator's term matching changed between `184f687` and `c83b0cb`. The operator tool, signing, the ledger and the decision contract are byte-identical to `2537386` |
-| Store, locking, gateway, spend, MCP tools, HTTP transport: claims (k) to (p) | **Approved, with follow-ups** | Changes requested at `2537386` and `1d8bafe` (agents 12, 14); approved with follow-ups at `a1affd2`, `1f159a2`, `e30451c` (agents 16, 18, 21); found to stand at `7f1978a` and `184f687` (agents 22, 23). Open follow-ups: B1 to B4 below |
+| Approval path: claims (a) to (d) | **Approved, with the coverage qualification R2** | Approved at `55a66f2` and `2537386` (agents 9, 10); delta-approved at `1f159a2` (agent 19); found to stand at `e30451c`, `7f1978a` and `184f687` (agents 21, 22, 23). Nothing outside the evaluator's term matching changed between `184f687` and `c83b0cb`. The operator tool, signing, the ledger and the decision contract are byte-identical to `2537386` |
+| Store, locking, gateway, spend, MCP tools, HTTP transport: claims (k) to (p) | **Approved, with follow-ups; the gateway with the coverage qualification R2** | Changes requested at `2537386` and `1d8bafe` (agents 12, 14); approved with follow-ups at `a1affd2`, `1f159a2`, `e30451c` (agents 16, 18, 21); found to stand at `7f1978a` and `184f687` (agents 22, 23). Open follow-ups: B1 to B4 below |
 | Contracts and commands (h); creator ranking (i) | Held when last reviewed | Agent 17 at `1f159a2`, in a review that requested changes elsewhere. Unchanged since |
 | No path to a live JEV (g); the stream normaliser (j); the list of characters a draft may contain | Held when last reviewed | Agent 20 at `e30451c`, likewise. Unchanged since |
-| **The evaluator's rules against disguised words and figures: claims (e), (f)** | **Not approved** | Changes requested at `2537386`, `1d8bafe`, `a1affd2`, `1f159a2`, `e30451c` (agents 11, 13, 15, 17, 20). Open findings E1 to E9 below. Owner decision OD-21 |
+| **The evaluator's rules against disguised words and figures: claims (e), (f)** | **Not approved** | Changes requested at `2537386`, `1d8bafe`, `a1affd2`, `1f159a2`, `e30451c` (agents 11, 13, 15, 17, 20). Regression against `e30451c`: approved with follow-ups at `c83b0cb` (agent 24), which is not an approval of the rules. Open findings E1 to E11 below. Owner decision OD-21 |
 | Skills catalogue; demonstration; harness | Tested by their authors | Harness: rounds 1 and 2 only |
 
 ### Open at `c83b0cb`: the evaluator (for OD-21)
@@ -164,6 +189,8 @@ Not accepted by the orchestrator. Listed for the owner's decision.
 | E6 | **A word written the way a number is written is not read as letters**: "8357" (best), "4.1" (AI), "101" (lol). A trade-off made in `dfe9ead` and narrowed in `184f687` and `c83b0cb`, so that "Room 101" is not refused; about 125 in 20,000 random disguises. `e30451c` read these. The figure rule still applies to each | Regression reviews of `7f1978a` and `184f687` | recorded as intended; widens E5 |
 | E7 | Three-letter terms ending in "e" miss some endings ("used"); a term looked for as written is missed when spaced ("C ++"); a contraction joined by an underscore | F8, F12; regression review of `7f1978a`, 5 | low |
 | E8 | In a hashtag a run of capitals can span two words: "#SaaSOfPR" is refused for "so". One in 15,000 random honest tags | Regression review of `184f687`, 3 | low; errs towards refusing |
+| E10 | **A word that reads as a listed contraction is read only as that contraction**: "he'\|\|" for "hell", "w3'll" for "well", "it's-free" for "it". A consequence of the contraction fix in `dfe9ead`; `e30451c` read these. 8,245 of 20,080 contraction-shaped probes | Regression review of `c83b0cb`, 1 | low; the reviewer recommends recording it as a second intended class |
+| E11 | A three-letter term followed by "-es" after a letter that is not a hissing sound ("feees" for "fee"). A consequence of the fix that stopped "wines" being refused for "win" | Regression review of `c83b0cb`, 2 | info |
 | E9 | The first-place medal and the calendar show a figure on most devices; the chequered flag is a flag. All three are in the list of pictures | Review of `e30451c`, noted | noted |
 
 ### Open at `c83b0cb`: follow-ups of the approved areas
@@ -175,7 +202,7 @@ Accepted by the orchestrator as not blocking those approvals, as the reviewers r
 | B1 | Across 25 different decisions, notices to the operator channel can reach about 1,200 a day | Regression review of `7f1978a`, 7 | low; as before this work |
 | B2 | A waiting request holds its place for up to 30 minutes: a poor revision instruction cannot be corrected until the editor declines it or it expires, and whoever holds it can ask again the moment it is declined | Regression review of `7f1978a`, 8 | low |
 | B3 | The audit trail keeps the requester, time and outage of a replaced request for one replacement only | Regression reviews of `7f1978a` (9) and `184f687` (5) | info |
-| B4 | Ordinary drafts evaluate a constant factor slower than at `e30451c` (more readings); the slowest shape found stays under a second, and scaling is linear | Regression review of `184f687`, 4 | info |
+| B4 | Ordinary drafts evaluate about 2.9 times slower than at `e30451c` (62 ms to 180 ms at 8,000 characters and 40 long terms); the slowest shape found takes under half a second unloaded; scaling is linear. The timing test bounds each shape at 1,500 ms and its margin under load is about 30% | Regression reviews of `184f687` (4) and `c83b0cb` (6) | low to info |
 
 The entries for reviews A and B in the append-only review ledger show their findings as "open", as they were when recorded.
 

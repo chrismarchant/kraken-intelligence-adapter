@@ -1,6 +1,6 @@
 # KIC-01 — evidence from the autonomous session of 2026-11-13
 
-Status: **evidence presented; no gate accepted.** The summary for the owner's decision is `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`. Authorised by `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`.
+Status: **evidence presented; no gate accepted. KIC-01 is BLOCKED / NOT READY at code commit `c83b0cb`** (disposition and reasons: `harness/state/GATE_STATE.md`, "Disposition of KIC-01"). The summary for the owner's decision is `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`. Authorised by `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`.
 
 Every result below came from a command run in the session. Where something was not run, it says so.
 

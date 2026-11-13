@@ -2293,6 +2293,79 @@
       ],
       "reportPath": "docs/review/2026-11-13-regression-review-184f687.md",
       "at": "2026-11-13T17:40:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-regression-c83b0cb",
+      "gate": "KIC-01",
+      "commit": "c83b0cbd0134eb224552b73e52a43b7111cde721",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-24",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/evaluation/terms.ts and tests/kic/scope-review-a.test.ts at c83b0cb, compared with e30451c",
+        "REGRESSION ONLY: not a review of whether the evaluator's rules against disguised text are complete; the changes-requested review of e30451c (rev-2026-11-13-agent-a5-e30451c) stands and its open findings are true of c83b0cb"
+      ],
+      "skipped": [
+        {
+          "path": "everything outside src/evaluation/terms.ts and its test file",
+          "reason": "out of scope; unchanged between 184f687 and c83b0cb"
+        },
+        {
+          "path": "src/workflow/service.ts, src/gateway/mistral.ts, src/limits.ts as changed since e30451c",
+          "reason": "out of scope; examined by the reviews of 7f1978a and 184f687, whose verdicts were changes-requested"
+        },
+        {
+          "path": "completeness of the evaluator's rules against disguised text",
+          "reason": "out of scope by instruction"
+        }
+      ],
+      "verdict": "approve-with-followups",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "low",
+          "summary": "A word that reads as a listed contraction is read only as that contraction: run-together words and stems caught at e30451c are missed",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "info",
+          "summary": "A three-letter term followed by -es after a non-hissing letter is no longer matched; the recorded fix for a5 F7",
+          "status": "accepted"
+        },
+        {
+          "id": "3",
+          "severity": "info",
+          "summary": "The intended plain-number class: a word written as a number is not read as letters",
+          "status": "accepted"
+        },
+        {
+          "id": "4",
+          "severity": "low",
+          "summary": "Hashtag false positives from runs of capitals that span two words",
+          "status": "open"
+        },
+        {
+          "id": "5",
+          "severity": "info",
+          "summary": "No new refusal of honest body text",
+          "status": "accepted"
+        },
+        {
+          "id": "6",
+          "severity": "low",
+          "summary": "Ordinary prose evaluates about 2.9 times slower than at e30451c; the timing test's margin under load is about 30%",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-regression-review-c83b0cb.md",
+      "at": "2026-11-13T18:05:00Z"
     }
   ]
 }

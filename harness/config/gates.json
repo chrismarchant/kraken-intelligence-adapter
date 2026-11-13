@@ -1,5 +1,10 @@
 {
-  "alwaysAllowed": ["docs/**", "*.md", "LICENSES/**", ".gitignore"],
+  "alwaysAllowed": [
+    "docs/**",
+    "*.md",
+    "LICENSES/**",
+    ".gitignore"
+  ],
   "gates": [
     {
       "id": "KIC-00",
@@ -11,29 +16,55 @@
     {
       "id": "KIC-01",
       "title": "Runtime proof",
-      "status": "authorised",
-      "paths": ["src/**", "tests/**", "fixtures/**", "tenant-package/**", "skills/**", "package.json", "package-lock.json", "tsconfig.json"],
-      "reviewRequired": true
+      "status": "blocked",
+      "paths": [
+        "src/**",
+        "tests/**",
+        "fixtures/**",
+        "tenant-package/**",
+        "skills/**",
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json"
+      ],
+      "reviewRequired": true,
+      "stop": {
+        "reason": "BLOCKED / NOT READY at code commit c83b0cb; presented to the owner for a decision on 2026-11-13. Reasons R1 to R3 in GATE_STATE.md, Disposition of KIC-01. Clearing this stop is the owner's.",
+        "since": "2026-11-13",
+        "previousStatus": "authorised"
+      }
     },
     {
       "id": "AEH",
       "title": "Autonomous Engineering Harness",
       "status": "authorised",
-      "paths": ["harness/**", ".github/**", ".claude/**", "docs/harness/**"],
+      "paths": [
+        "harness/**",
+        ".github/**",
+        ".claude/**",
+        "docs/harness/**"
+      ],
       "reviewRequired": false
     },
     {
       "id": "KIC-05",
       "title": "Template deployment proof",
       "status": "blocked",
-      "paths": ["deploy/**", "infra/**", "Dockerfile", "docker-compose*.yml"],
+      "paths": [
+        "deploy/**",
+        "infra/**",
+        "Dockerfile",
+        "docker-compose*.yml"
+      ],
       "reviewRequired": true
     },
     {
       "id": "KIC-06",
       "title": "Kraken integration",
       "status": "deferred",
-      "paths": ["src/adapters/kraken/**"],
+      "paths": [
+        "src/adapters/kraken/**"
+      ],
       "reviewRequired": true
     }
   ]

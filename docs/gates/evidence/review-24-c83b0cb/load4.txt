@@ -1,0 +1,28 @@
+8000	long	"I "	787
+8000	long	"aIII"	78
+8000	long	"III"	79
+8000	long	"l I "	424
+8000	long	"a "	342
+8000	long	"A.I. "	377
+8000	long	"a...b"	58
+8000	long	"a)))b"	58
+8000	long	"!!!a"	62
+8000	long	"a!!!"	45
+8000	long	"1..."	65
+8000	long	"---"	29
+8000	long	"a-"	303
+8000	long	"1 "	508
+8000	short	"I "	479
+8000	short	"aIII"	37
+8000	short	"III"	44
+8000	short	"l I "	584
+8000	short	"a "	563
+8000	short	"A.I. "	224
+8000	short	"a...b"	18
+8000	short	"a)))b"	31
+8000	short	"!!!a"	109
+8000	short	"a!!!"	32
+8000	short	"1..."	24
+8000	short	"---"	37
+8000	short	"a-"	287
+8000	short	"1 "	310
