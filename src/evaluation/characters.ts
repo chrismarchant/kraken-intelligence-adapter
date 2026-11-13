@@ -3,15 +3,17 @@
  *
  * A ruled-out word can be written so that a reader sees it and a rule does not: with a letter
  * from another alphabet, with a symbol that is drawn as a letter, with an emoji of a letter in
- * a square, with a small letter printed above another one. Several reviews each found a kind
- * that the lists of look-alikes then in use had missed, and no such list is ever complete.
- * So the rule is turned round: this file says what a draft MAY contain, and everything else
- * is refused. What is allowed is small enough to go through one character at a time, and for
- * each character that can stand in for a letter, signals.ts reads it as that letter too.
+ * a square, a flag made of two letters, a small letter printed above another one. Several
+ * reviews each found a kind that the lists of look-alikes then in use had missed, and no such
+ * list is ever complete. So the rule is turned round: this file says what a draft MAY contain,
+ * character by character, and everything else is refused. Nothing is allowed by category:
+ * every emoji and every symbol here is named. What is allowed is small enough to go through
+ * one character at a time, and for each character that can stand in for a letter, signals.ts
+ * reads it as that letter too.
  *
  * The cost is stated in the threat model. A draft cannot quote a word in another script,
- * cannot use a symbol that is not listed here, and must put a space between an emoji and a
- * word.
+ * cannot use a symbol or an emoji that is not listed here (no flags, no skin tones, no
+ * emoji joined into one), and must set an emoji or a picture symbol apart from words.
  */
 
 /**
@@ -25,45 +27,49 @@ const LETTER =
 const KEYBOARD_MARK = /[!-/:-@[-`{-~]/;
 
 /**
- * Typographic marks in everyday use: quotation marks, dashes, bullets, currency signs, a few
- * arrows, ticks and stars, and the commonest signs of arithmetic. Those that can stand in for
- * a letter are read as that letter in signals.ts (SYMBOL_READING there must cover this list).
+ * Typographic marks that are written against words and figures: quotation marks, dashes,
+ * a bullet, currency signs and the signs of arithmetic. Those that can stand in for a letter
+ * are read as that letter in signals.ts (SYMBOL_READING there must cover this list).
  */
 const TYPOGRAPHIC = new Set(
   [
-    "\u2018", "\u2019", "\u201A", "\u201C", "\u201D", "\u201E", "\u2013", "\u2014", "\u2022", "\u00B7", "\u00AB", "\u00BB", "\u2039", "\u203A",
-    "\u00A1", "\u00BF", "\u00A7", "\u00B6", "\u2020", "\u2021", "\u00A9", "\u00AE", "\u00B0", "\u00B1", "\u00D7", "\u00F7", "\u20AC", "\u00A3",
-    "\u00A5", "\u00A2", "\u2190", "\u2192", "\u2191", "\u2193", "\u2194", "\u21D2", "\u2713", "\u2714", "\u2717", "\u2718", "\u2605", "\u2606",
-    "\u2212", "\u2032", "\u2030", "\u2248", "\u2260", "\u2264", "\u2265", "\u221E", "\u25AA", "\u25A0", "\u25A1", "\u25B6", "\u25BA", "\u25C6",
-    "\u25CF",
-  ].join(""),
+    0x2018, 0x2019, 0x201a, 0x201c, 0x201d, 0x201e, 0x2013, 0x2014, 0x2022, 0x00b7, 0x00ab, 0x00bb, 0x2039, 0x203a, 0x00a1, 0x00bf, 0x00a7, 0x00b6,
+    0x2020, 0x2021, 0x00a9, 0x00ae, 0x00b0, 0x00b1, 0x00d7, 0x00f7, 0x20ac, 0x00a3, 0x00a5, 0x00a2, 0x2212, 0x2032, 0x2030, 0x2248, 0x2260, 0x2264,
+    0x2265, 0x221e,
+  ].map((code) => String.fromCodePoint(code)),
 );
 
 /**
- * Emoji that are drawn as letters, words or ideographs: the information sign, the circled M,
- * the part alternation mark, the circled ideographs, and the whole block of squared and
- * circled letters and regional indicators' neighbours (U+1F100 to U+1F2FF).
+ * Pictures: arrows, ticks, stars and shapes, and a fixed list of emoji. Each is a picture of a
+ * thing, a face or a gesture. None is a picture of a letter, a word or a figure, and none is
+ * a flag. A picture must stand apart from words: see characterProblems.
  */
-const LETTER_EMOJI = /[\u2139\u24C2\u303D\u3297\u3299\u{1F100}-\u{1F2FF}]/u;
-const PICTURE = /\p{Extended_Pictographic}/u;
-const SKIN_TONE = /[\u{1F3FB}-\u{1F3FF}]/u;
-const REGIONAL_INDICATOR = /\p{Regional_Indicator}/u;
+const PICTURE = new Set(
+  [
+    // Arrows, ticks, stars and shapes.
+    0x2190, 0x2192, 0x2191, 0x2193, 0x2194, 0x21d2, 0x2713, 0x2714, 0x2717, 0x2718, 0x2605, 0x2606, 0x25aa, 0x25a0, 0x25a1, 0x25b6, 0x25ba, 0x25c6,
+    0x25cf, 0x27a1, 0x2b07, 0x2b06,
+    // Emoji.
+    0x1f680, 0x2705, 0x1f449, 0x1f447, 0x1f446, 0x1f448, 0x1f4a1, 0x1f4c8, 0x1f4c9, 0x1f4ca, 0x1f3af, 0x1f525, 0x1f44f, 0x1f64c, 0x2728, 0x1f91d,
+    0x1f4ac, 0x1f4cc, 0x23f0, 0x1f4c5, 0x1f517, 0x2b50, 0x1f31f, 0x1f4aa, 0x1f64f, 0x1f44d, 0x1f440, 0x1f389, 0x1f3c6, 0x1f4e3, 0x1f4e2, 0x1f50d,
+    0x1f511, 0x1f9e0, 0x26a1, 0x1f4dd, 0x1f4da, 0x1f914, 0x1f600, 0x1f60a, 0x1f642, 0x1f609, 0x1f393, 0x1f4bc, 0x1f30d, 0x1f331, 0x23f3, 0x1f6e0,
+    0x2699, 0x1f4e6, 0x1f9e9, 0x1f514, 0x2764, 0x1f499, 0x1f49a, 0x1f9ed, 0x1f4cd, 0x1f916, 0x1f6a8, 0x26a0, 0x1f512, 0x1f9ea, 0x1f4f1, 0x1f4bb,
+    0x2615, 0x1f3c1, 0x1f947, 0x1f44b, 0x1f4b0, 0x1f4b8, 0x1f4de, 0x1f4e7, 0x2709, 0x1f4c4, 0x1f4c1, 0x1f465, 0x1f464, 0x1f3e2, 0x1f3ed, 0x1f69a,
+    0x2708, 0x1f33f, 0x1f4a5, 0x1f44c, 0x1f91e, 0x1f64b, 0x1f381,
+  ].map((code) => String.fromCodePoint(code)),
+);
 
+/** Asks for the emoji drawing of the picture before it. Allowed there and nowhere else. */
 const VARIATION = "\uFE0F";
-const JOINER = "\u200D";
-const KEYCAP = "\u20E3";
 
 export const isAllowedLetter = (character: string): boolean => LETTER.test(character);
-
-function isPicture(character: string | undefined): boolean {
-  return character !== undefined && !TYPOGRAPHIC.has(character) && !LETTER_EMOJI.test(character) && PICTURE.test(character);
-}
+export const isPicture = (character: string): boolean => PICTURE.has(character);
 
 export interface CharacterProblems {
   /** Characters a draft may not contain, each once, in order of first appearance. */
   outside: string[];
-  /** Emoji written directly against a letter or a digit. */
-  attachedEmoji: number;
+  /** Pictures written in the same word as a letter or a digit. */
+  attachedPictures: number;
 }
 
 /**
@@ -72,50 +78,25 @@ export interface CharacterProblems {
  * would change is refused before this is asked.
  */
 export function characterProblems(text: string): CharacterProblems {
-  const characters = [...text];
   const outside = new Set<string>();
-  let attachedEmoji = 0;
-  /** What kind of thing sits at each position: a letter or digit, part of an emoji, or neither. */
-  const kind: Array<"word" | "emoji" | "other"> = [];
-
-  for (let i = 0; i < characters.length; i++) {
-    const c = characters[i] as string;
-    const previous = characters[i - 1];
-    const next = characters[i + 1];
-    if (LETTER.test(c) || /[0-9]/.test(c)) {
-      kind.push("word");
-    } else if (c === " " || c === "\n" || c === "\t" || KEYBOARD_MARK.test(c) || TYPOGRAPHIC.has(c)) {
-      kind.push("other");
-    } else if (isPicture(c) || SKIN_TONE.test(c)) {
-      kind.push("emoji");
-    } else if (REGIONAL_INDICATOR.test(c)) {
-      // A flag is two of these. One on its own is drawn as a letter in a box.
-      let start = i;
-      while (start > 0 && REGIONAL_INDICATOR.test(characters[start - 1] as string)) start--;
-      let end = i;
-      while (end + 1 < characters.length && REGIONAL_INDICATOR.test(characters[end + 1] as string)) end++;
-      if ((end - start + 1) % 2 !== 0) outside.add(c);
-      kind.push("emoji");
-    } else if (c === VARIATION && previous !== undefined && (kind[i - 1] === "emoji" || TYPOGRAPHIC.has(previous) || (/[0-9#*]/.test(previous) && next === KEYCAP))) {
-      // Asks for the emoji drawing of what precedes it.
-      kind.push(kind[i - 1] === "emoji" ? "emoji" : "other");
-    } else if (c === JOINER && kind[i - 1] === "emoji" && isPicture(next)) {
-      kind.push("emoji");
-    } else if (c === KEYCAP && previous !== undefined && (/[0-9#*]/.test(previous) || (previous === VARIATION && /[0-9#*]/.test(characters[i - 2] ?? "")))) {
-      // A digit in a keycap. The digit itself is still a digit, and a figure.
-      kind.push("other");
-    } else {
-      outside.add(c);
-      kind.push("other");
+  let attachedPictures = 0;
+  // A word here is whatever stands between two blanks. A picture in the same word as a letter
+  // or a digit can stand in for a letter of it, with or without a mark between them
+  // ("b-O-x" with a circle for the O). A picture with only marks beside it is fine ("done!").
+  for (const word of text.split(/[ \n\t]+/)) {
+    const characters = [...word];
+    let pictures = 0;
+    let lettersOrDigits = 0;
+    for (let i = 0; i < characters.length; i++) {
+      const c = characters[i] as string;
+      if (LETTER.test(c) || /[0-9]/.test(c)) lettersOrDigits += 1;
+      else if (PICTURE.has(c)) pictures += 1;
+      else if (c === VARIATION && i > 0 && PICTURE.has(characters[i - 1] as string)) continue;
+      else if (!KEYBOARD_MARK.test(c) && !TYPOGRAPHIC.has(c)) outside.add(c);
     }
+    if (pictures > 0 && lettersOrDigits > 0) attachedPictures += pictures;
   }
-
-  // An emoji against a word can stand in for a letter of it. Emoji are written apart.
-  for (let i = 0; i < characters.length; i++) {
-    if (kind[i] !== "emoji") continue;
-    if (kind[i - 1] === "word" || kind[i + 1] === "word") attachedEmoji += 1;
-  }
-  return { outside: [...outside], attachedEmoji };
+  return { outside: [...outside], attachedPictures };
 }
 
 /** A character named so that it cannot itself mislead: "U+1F170". */

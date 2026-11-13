@@ -473,7 +473,7 @@ test("1: when a post's drafts go back to an earlier set, the evaluation of that 
   assert.equal((await service.getCampaign(id)).revision, revision);
 });
 
-test("2: a named pipe at the lock's path, or in place of a record, does not hold a caller for ever", async (t) => {
+test("2: a named pipe at the lock's path, or in place of a record, does not hold a caller for ever", { timeout: 20_000 }, async (t) => {
   const made = spawnSync("mkfifo", [join(scratch("probe"), "p")]);
   if (made.status !== 0) return t.skip("needs mkfifo");
   const dir = scratch("pipe");
@@ -494,22 +494,60 @@ test("2: a named pipe at the lock's path, or in place of a record, does not hold
   assert.ok(Date.now() - reading < 2000);
 });
 
-test("4: the decision requests a campaign may have over its life are limited", async () => {
-  const { service, evaluated, clock } = makeService({ limits: { maxDecisionRequests: 30 } });
+test("4: asking again for a decision that came to nothing replaces the old request; it does not add one", async () => {
+  const { service, evaluated, clock, operator } = makeService();
   const id = await evaluated();
   const draftId = (await service.getCampaign(id)).drafts[0]!.id;
-  // The campaign has had one request already: the choice of narrative.
-  const already = (await service.getCampaign(id)).decisionRequests.length;
-  const ask = () => service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action: "approve", proposedRationale: "Proposed by the test.", revisionInstruction: null, requestedBy: "test" });
-  let made = 0;
-  let refusedBy = "";
-  for (let i = 0; i < 60 && refusedBy === ""; i++) {
-    // Each batch of requests is left to expire, so the limit on those waiting at once never applies.
-    if (i % 20 === 0 && i > 0) clock.advance(31 * 60_000);
-    await ask().then(() => (made += 1), (error: Error) => (refusedBy = error.message));
+  const ask = (action: "approve" | "reject" = "approve") =>
+    service.requestDecision({ campaignId: id, subject: { kind: "draft", id: draftId }, action, proposedRationale: "Proposed by the test.", revisionInstruction: null, requestedBy: "test" });
+  await ask();
+  const before = await service.getCampaign(id);
+
+  // The editor is away: the request expires and the agent asks again, sixty times over.
+  for (let i = 0; i < 60; i++) {
+    clock.advance(31 * 60_000);
+    await ask();
   }
-  assert.equal(made, 30 - already);
-  assert.match(refusedBy, /30 decision requests; the limit is 30/);
+  let record = await service.getCampaign(id);
+  assert.equal(record.decisionRequests.length, before.decisionRequests.length, "one request for the decision, however often it was asked for");
+  assert.equal(record.audit.length, before.audit.length, "and no more lines in the audit trail");
+  // The request that stands is the last one made, and it can still be confirmed.
+  const standing = record.decisionRequests.filter((r) => r.state === "pending" && r.subject.id === draftId);
+  assert.equal(standing.length, 1);
+
+  // The operator channel is down: every attempt is refused, and nothing piles up.
+  const deliver = operator.deliver.bind(operator);
+  operator.deliver = async () => {
+    throw new Error("channel down");
+  };
+  clock.advance(31 * 60_000);
+  for (let i = 0; i < 40; i++) await assert.rejects(ask("reject"), /could not be delivered/);
+  record = await service.getCampaign(id);
+  assert.equal(record.decisionRequests.filter((r) => r.action === "reject").length, 1);
+  assert.ok(record.audit.length <= before.audit.length + 2, `audit grew by ${record.audit.length - before.audit.length}`);
+  // The channel comes back: the decision can be asked for, and is not refused for having been asked for too often.
+  operator.deliver = deliver;
+  const made = await ask("reject");
+  assert.equal(made.state, "pending");
+  assert.equal((await service.getCampaign(id)).decisionRequests.filter((r) => r.action === "reject").length, 1);
+});
+
+test("4: a campaign still holds only so many requests", async () => {
+  const { service, evaluated } = makeService({ limits: { maxDecisionRequests: 4 } });
+  const id = await evaluated();
+  const record = await service.getCampaign(id);
+  const asked: string[] = [];
+  let refusedBy = "";
+  for (const draft of record.drafts) {
+    for (const action of ["approve", "reject"] as const) {
+      if (refusedBy !== "") continue;
+      await service
+        .requestDecision({ campaignId: id, subject: { kind: "draft", id: draft.id }, action, proposedRationale: "Proposed by the test.", revisionInstruction: null, requestedBy: "test" })
+        .then(() => asked.push(`${action} ${draft.id}`), (error: Error) => (refusedBy = error.message));
+    }
+  }
+  assert.equal(asked.length + record.decisionRequests.length, 4);
+  assert.match(refusedBy, /holds 4 decision requests; the limit is 4/);
 });
 
 test("6: a right to remove a lock that names no holder is honoured only until it is old", async () => {
@@ -558,4 +596,84 @@ test("7: only so many previews of a programme are kept; the oldest go, and a rel
   assert.ok(kept.includes("20260101T000000000Z-000000000000-released"));
   assert.ok(!existsSync(directories[0]!), "the oldest preview was removed");
   assert.ok(existsSync(directories[7]!), "a recent one was kept");
+});
+
+// ------------------------------------------------------------------------------------------
+// The delta review of these follow-ups (docs/review/2026-11-13-review-b4-1f159a2.md).
+
+test("b4-1, b4-2: every read of a lock file is safe against a named pipe put there, whenever it is put there", { timeout: 20_000 }, async (t) => {
+  const made = spawnSync("mkfifo", [join(scratch("probe2"), "p")]);
+  if (made.status !== 0) return t.skip("needs mkfifo");
+  // The holder's own check: a pipe put in place of a lock that is held. The holder finds it no
+  // longer has the lock and writes nothing; it does not wait on the pipe.
+  const dir = scratch("held-pipe");
+  const store = new FileCampaignStore(dir, { lockTimeoutMs: 400 });
+  const { service } = makeService({ store });
+  const campaign = await service.createCampaign((await import("./support.ts")).syntheticBrief());
+  const lock = join(dir, `${campaign.id}.json.lock`);
+  const before = (await store.get(campaign.id)).revision;
+  const started = Date.now();
+  await assert.rejects(
+    store.update(campaign.id, (record) => {
+      (async () => undefined)();
+      // Done from inside the update, while the lock is held.
+      spawnSync("rm", ["-f", lock]);
+      spawnSync("mkfifo", [lock]);
+      record.audit.push({ at: "2026-01-05T09:00:00.000Z", event: "test", detail: "must not be written" });
+    }),
+  );
+  assert.ok(Date.now() - started < 10_000, `returned after ${Date.now() - started} ms`);
+  spawnSync("rm", ["-f", lock]);
+  assert.equal((await store.get(campaign.id)).revision, before, "the displaced holder wrote nothing");
+
+  // A pipe and a file swapped back and forth at a lock's path while it is being read.
+  const racing = join(scratch("race"), "state.lock");
+  const swapper = spawn("sh", ["-c", `while :; do rm -f "$0"; mkfifo "$0"; rm -f "$0"; printf '1 0 - x\n' > "$0"; done`, racing], { stdio: "ignore" });
+  try {
+    const began = Date.now();
+    let calls = 0;
+    while (Date.now() - began < 1500) {
+      await clearDeadLock(racing, 60_000);
+      calls += 1;
+    }
+    assert.ok(calls > 20, `${calls} calls returned; none waited on the pipe`);
+  } finally {
+    swapper.kill("SIGKILL");
+  }
+});
+
+test("b4-4: however many answers a call has, it is never counted as more than the call may use", async () => {
+  const answer = (content: string, finish: string, usage: unknown) => () =>
+    new Response(JSON.stringify({ model: "mistral-large-4", choices: [{ finish_reason: finish, message: { content } }], usage }), { status: 200, headers: { "content-type": "application/json" } });
+  const absurd = { prompt_tokens: 1, completion_tokens: 1e12 };
+  const run = async (replies: Array<() => Response>) => {
+    const gateway = new MistralGateway({ fetch: (async () => replies.shift()!()) as typeof fetch, backoffMs: 1, apiKey: "placeholder" });
+    return gateway.generateJson(request).then((result) => result.usage.completionTokens, (error: ModelCallError) => error.cost.usage.completionTokens);
+  };
+  const good = '{"theme":"t","score":1}';
+  // The request's allowance is 1,000, so the call may use 3,000.
+  assert.equal(await run([answer("", "length", absurd), answer(good, "stop", absurd)]), 3000);
+  assert.equal(await run([answer("not json", "stop", absurd), answer(good, "stop", absurd)]), 3000);
+  assert.equal(await run([answer("not json", "stop", absurd), answer("not json", "stop", absurd)]), 3000);
+  // Truthful figures are counted as they are.
+  assert.equal(await run([answer("", "length", { prompt_tokens: 1, completion_tokens: 1000 }), answer(good, "stop", { prompt_tokens: 1, completion_tokens: 700 })]), 1700);
+});
+
+test("b4-5: the server keeps only as many previews as its limit says", async () => {
+  const harness = makeService({ limits: { maxPreviewExports: 2 } });
+  const exportRoot = scratch("server-previews");
+  const server = createKicServer({ service: harness.agentService, exportRoot, requestedBy: "test-agent", clock: harness.clock });
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test-client", version: "0.0.0" });
+  await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+  const id = await harness.evaluated();
+  const record = await harness.service.getCampaign(id);
+  await harness.decide(id, { kind: "draft", id: record.drafts[0]!.id }, "approve");
+  for (let i = 0; i < 5; i++) {
+    const result = (await client.callTool({ name: "kic_assemble_programme", arguments: { campaignId: id, allowPartial: true } })) as { isError?: boolean };
+    assert.equal(result.isError, undefined);
+  }
+  const programmes = readdirSync(exportRoot);
+  assert.equal(programmes.length, 1);
+  assert.equal(readdirSync(join(exportRoot, programmes[0]!)).length, 2);
 });

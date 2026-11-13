@@ -11,6 +11,7 @@ import { rankCreators } from "../../src/creators/ranking.ts";
 import { DEFAULT_CRITERIA } from "../../src/evaluation/criteria.ts";
 import { buildJevRequest } from "../../src/evaluation/jev.ts";
 import { analyseDraft } from "../../src/evaluation/signals.ts";
+import { termFinder } from "../../src/evaluation/terms.ts";
 import { DEFAULT_LIMITS } from "../../src/limits.ts";
 import { canonicalText } from "../../src/util/runtime.ts";
 import { clip } from "../../src/workflow/service.ts";
@@ -266,8 +267,10 @@ test("N2: what the rest of a draft contains does not change the rule for any par
 });
 
 test("F7 remainder: a blank that is not an ordinary space, and a private-use character, are refused", () => {
+  // Refused as characters a post may not use, and the word is found through them as well.
+  // The odd blank is a blank: it makes two words of one, and is refused as a character a post may not use.
   assert.deepEqual(rulesWith(["guarantee"], "We guar\u1680antee results."), ["suspicious-characters"]);
-  assert.deepEqual(rulesWith(["guarantee"], "We guar\uE000antee results."), ["suspicious-characters"]);
+  assert.deepEqual(rulesWith(["guarantee"], "We guar\uE000antee results."), ["must-avoid-term", "suspicious-characters"]);
 });
 
 test("N4: a term of three letters catches its inflections; one of two letters does not catch other words", () => {
@@ -321,7 +324,8 @@ test("N6: text is clipped between characters, never through one, and stays canon
     assert.equal(canonicalText(clipped), clipped, `pad ${pad}`);
     assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(clipped), `no half character, pad ${pad}`);
     assert.ok(!clipped.includes("\u200D..."), `no joiner left at the end, pad ${pad}`);
-    assert.deepEqual(rulesWith([], "", { claims: [{ text: clipped, needsEvidence: false, evidenceRef: null }] }), [], `pad ${pad}`);
+    // The clipped text is canonical, so it is not refused for that. (The joined emoji itself is not on the list a post may use.)
+    assert.ok(!rulesWith([], "", { claims: [{ text: clipped, needsEvidence: false, evidenceRef: null }] }).includes("unlisted-statistic"), `pad ${pad}`);
   }
 });
 
@@ -376,7 +380,7 @@ test("1: a character that is not a letter but is drawn as one is refused", () =>
   const fine = [
     "Caf\u00E9 \u2013 cr\u00E8me \u2014 \u201Cquoted\u201D, it\u2019s \u20AC5 \u2192 done \u2713 \u2022 next",
     "Bucure\u0219ti, Timi\u0219oara, Constan\u021Ba, Ph\u01A1, Th\u01B0, n\u01D0 h\u01CEo, STRA\u1E9EE.",
-    "Launch day \u{1F680} is here \u{1F469}\u200D\u{1F4BB} \u2764\uFE0F \u{1F1EC}\u{1F1E7} \u{1F44D}\u{1F3FD}",
+    "Launch day \u{1F680} is here \u2764\uFE0F \u{1F44D} \u2705 done! \u2192 next \u2714 ok",
   ];
   for (const text of fine) assert.deepEqual(rulesWith([], text).filter((rule) => rule === "suspicious-characters"), [], text);
 });
@@ -444,4 +448,95 @@ test("9: text that one pass of canonical form does not settle is clipped whole, 
   const started = Date.now();
   clip(`${"a\u200B\u0301".repeat(3000)}`, 400);
   assert.ok(Date.now() - started < 500);
+});
+
+// ------------------------------------------------------------------------------------------
+// The review of the third remediation (docs/review/2026-11-13-review-a4-1f159a2.md).
+
+test("N1: a word with a stand-in symbol is found whatever mark follows it", () => {
+  const cases: Array<[string, string]> = [["free", "Get it fr\u20ACe!"], ["hack", "A life h@ck!"], ["best", "The be$t!"], ["deal", "Great de@l!!"], ["scam", "No sc@m!"], ["scam", "sc@m!) and more"], ["free", "Fr\u20ACe!!"], ["free", "\u201Cfr\u20ACe\u201D, they said."], ["hack", "(h@ck)"]];
+  for (const [term, text] of cases) assert.deepEqual(rulesWith([term], text), ["must-avoid-term"], text);
+});
+
+test("N2: a ruled-out term is looked for in hashtags whatever its length", () => {
+  for (const [term, tag] of [["AI", "#AI"], ["ROI", "#ROI"], ["win", "#win"], ["AI", "#AIpowered"], ["AI", "#A_I"], ["AI", "#PoweredByAI"], ["ROI", "#Best_ROI"], ["scam", "#NotAScam"], ["AI", "#ai"]] as const) {
+    assert.deepEqual(rulesWith([term], "", { hashtags: [tag] }), ["must-avoid-term"], tag);
+  }
+  // A tag that only has the letters somewhere in the middle of another word is left alone.
+  assert.deepEqual(rulesWith(["AI"], "", { hashtags: ["#Maintenance", "#Operations"] }), []);
+});
+
+test("N3, N4, N5, N11, N12: only the emoji on the list are allowed, one at a time, in a word of their own", () => {
+  const refused = [
+    "Our \u{1F1E6}\u{1F1EE} tool.", // a pair of regional indicators: A I
+    "This is no \u{1F1F8}\u{1F1E8}\u{1F1E6}\u{1F1F2} at all.",
+    "\u{1F4AF}% of clients renewed.", // the hundred-points emoji
+    "Up \u{1F51F} times.", // the keycap ten
+    "We are the \u{1F51D} provider.", // TOP with an arrow
+    "Results \u{1F51C}.", // SOON with an arrow
+    "Our team \u{1FC00} grew.", // an unassigned code point in a range kept for emoji
+    "Good \u{1F44D}\u{1F3FD} work.", // a skin tone
+    "Good \u{1F469}\u200D\u{1F4BB} work.", // two emoji joined into one
+    "Step 1\uFE0F\u20E3 first.", // a keycap
+    "b-\u2B55\u2B55-st your reach.", // a circle for the letter o, with marks between
+    "A quick -\u271D-ix.",
+  ];
+  for (const text of refused) assert.ok(rulesWith([], text).includes("suspicious-characters"), text);
+  // A listed picture in the same word as letters, with or without marks between, is refused too.
+  for (const text of ["b-\u{1F680}-x", "A quick -\u2714-ix.", "sa\u2713e hours", "3\u{1F680}"]) assert.ok(rulesWith([], text).includes("suspicious-characters"), text);
+  for (const text of ["Done \u2705!", "(\u{1F680})", "\u2192 Next step", "Wins: \u{1F3C6}\u{1F3C6}, twice."]) assert.deepEqual(rulesWith([], text), [], text);
+});
+
+test("N6: stand-in symbols are read as letters wherever they are, alone or in a run", () => {
+  for (const [term, text] of [["free", "fr\u20AC\u20AC"], ["free", "fr\u00A3\u00A3"], ["win", "w!!n"], ["scam", "sc@m|"], ["scam", "\u00A7\u00A9@m"], ["easy", "\u20AC@$\u00A5"], ["sale", "$@\u00A3\u20AC"]] as const) {
+    assert.ok(rulesWith([term], text).includes("must-avoid-term"), text);
+  }
+});
+
+test("N7: letters set apart by dots or spaces are joined, look-alikes among them included", () => {
+  for (const [term, text] of [["ROI", "Better R. O. I."], ["AI", "Our A. I. tool"], ["AI", "Our A l platform"], ["AI", "Our A.l. platform"], ["ROI", "Better R O l"], ["AI", "Our A.I. tool"], ["scam", "Not a s c a m."]] as const) {
+    assert.deepEqual(rulesWith([term], text), ["must-avoid-term"], text);
+  }
+});
+
+test("N8: a ruled-out contraction, and a term that is not made of words, match as they are written", () => {
+  assert.deepEqual(rulesWith(["can't"], "We can't wait."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["can't"], "We can\u2019t wait."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["we'll"], "We'll see."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["cant"], "We can't wait."), []);
+  assert.deepEqual(rulesWith(["C++"], "Written in C++ last year."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["C++"], "Plan C works."), []);
+  assert.deepEqual(rulesWith(["$$$"], "Make $$$ fast."), ["must-avoid-term"]);
+  assert.deepEqual(rulesWith(["\u{1F680}"], "To the moon \u{1F680} soon."), ["must-avoid-term"]);
+});
+
+test("N9: the endings English writes are matched", () => {
+  for (const [term, text] of [["cure", "Curing it all."], ["hype", "Stop hyping it."], ["deny", "They denied it."], ["deny", "He denies it."], ["bus", "Two buses came."], ["guarantee", "Guaranteeing nothing."]] as const) {
+    assert.deepEqual(rulesWith([term], text), ["must-avoid-term"], text);
+  }
+  for (const [term, text] of [["cure", "The curator spoke."], ["bus", "A busy week."], ["deny", "A dense report."]] as const) assert.deepEqual(rulesWith([term], text), [], text);
+});
+
+test("N10: ordinary business prose is not refused for the short words it does not contain", () => {
+  const terms = ["AI", "ROI", "best", "free", "guarantee", "cheap", "win", "hack", "scam", "cure", "us", "it", "at", "so", "to", "be", "as", "an", "on"];
+  const honest = [
+    "Our B2B platform grew in Q3.",
+    "Download the PDF from example.com/reports.",
+    "R&D spent more with C++ tooling.",
+    "Teams used spreadsheets for years.",
+    "Smith et al. found the same.",
+    "Winter is coming; the wind turned.",
+    "The fund closed; the band played; a kind word.",
+    "Customers asked for a refund.",
+    "E-mail hello@example.org for details.",
+    "What a week! Onwards.",
+    "The curator and the acquirer agreed.",
+  ];
+  // Asked of the sentence alone: the draft the other tests build has a body of its own, with these words in it.
+  for (const text of honest) {
+    const found = termFinder(text);
+    assert.deepEqual(terms.filter((term) => found(term)), [], text);
+  }
+  // And the words are found where they are.
+  assert.deepEqual(terms.filter((term) => termFinder("It is at its best so far, to us.")(term)), ["best", "us", "it", "at", "so", "to"]);
 });

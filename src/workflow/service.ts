@@ -1112,11 +1112,17 @@ export class CampaignService {
 
     const request = await this.mutate(input.campaignId, (record) => {
       const contentHash = this.checkDecision(record, input.subject, input.action);
-      // Requests are kept for the record and never removed, so their number over a campaign's
-      // life is limited as well as the number waiting at once. Asking for a decision makes no
-      // model call and draws on no budget.
+      // Asking for a decision makes no model call and draws on no budget, so asking again and
+      // again must not make the record grow. A request that came to nothing (it expired, was
+      // never delivered, or was voided after wrong codes) is replaced by a new request for the
+      // same decision on the same subject, not kept beside it. An agent that asks again while
+      // the editor is away, or while the operator channel is down, therefore adds nothing.
+      const cameToNothing = (r: DecisionRequest) => r.state === "expired" || r.state === "voided" || (r.state === "pending" && Date.parse(r.expiresAt) < Date.parse(requestedAt));
+      const replaced = record.decisionRequests.filter((r) => cameToNothing(r) && r.action === input.action && r.subject.kind === input.subject.kind && r.subject.id === input.subject.id);
+      if (replaced.length > 0) record.decisionRequests = record.decisionRequests.filter((r) => !replaced.includes(r));
+      // What is left is bounded as well: a backstop, far above what a campaign can need.
       if (record.decisionRequests.length >= this.limits.maxDecisionRequests) {
-        throw new LimitExceededError("maxDecisionRequests", `This campaign has had ${record.decisionRequests.length} decision requests; the limit is ${this.limits.maxDecisionRequests}.`);
+        throw new LimitExceededError("maxDecisionRequests", `This campaign holds ${record.decisionRequests.length} decision requests; the limit is ${this.limits.maxDecisionRequests}.`);
       }
       const waiting = record.decisionRequests.filter((r) => r.state === "pending" && Date.parse(r.expiresAt) >= Date.parse(requestedAt)).length;
       if (waiting >= this.limits.maxPendingDecisions) {
@@ -1137,7 +1143,8 @@ export class CampaignService {
         state: "pending",
       };
       record.decisionRequests.push(created);
-      this.audit(record, "decision-requested", `${created.id}: ${input.action} ${input.subject.kind} ${input.subject.id}, requested by ${created.requestedBy}.`);
+      // One line in the audit trail for a decision asked for; none for asking for it again.
+      if (replaced.length === 0) this.audit(record, "decision-requested", `${created.id}: ${input.action} ${input.subject.kind} ${input.subject.id}, requested by ${created.requestedBy}.`);
       return created;
     });
 
@@ -1148,7 +1155,10 @@ export class CampaignService {
       await this.mutate(input.campaignId, (record) => {
         const stored = record.decisionRequests.find((r) => r.id === request.id);
         if (stored && stored.state === "pending") stored.state = "voided";
-        this.audit(record, "decision-undelivered", `${request.id}: the operator channel could not be reached; request voided.`);
+        // Said once while the channel stays down, not once for every attempt.
+        if (record.audit.at(-1)?.event !== "decision-undelivered") {
+          this.audit(record, "decision-undelivered", `${request.id}: the operator channel could not be reached; request voided.`);
+        }
       });
       throw new WorkflowError("operator-unreachable", "The decision request could not be delivered to the editor and was withdrawn.");
     }

@@ -231,8 +231,12 @@ export class MistralGateway implements ModelGateway {
       // non-negative number would not fit the record, and the answer paid for would be lost.
       cost.usage.promptTokens += reportedCount(completion.usage?.prompt_tokens, MOST_PROMPT_TOKENS) ?? 0;
       // An answer that does not say what it cost is charged at its whole allowance, never at nothing.
-      // No single answer is counted as more than the whole call may use, however much it reports.
-      const charged = reportedCount(completion.usage?.completion_tokens, MAX_TOKEN_FACTOR * request.maxTokens) ?? maxTokens;
+      // However much is reported, the whole call is never counted as more than it may use:
+      // what an answer reports is counted up to what is left of the call's allowance after the
+      // answers and failed requests before it. A truthful figure always fits: an answer cannot
+      // use more than the max_tokens it was sent with, and those add up to the allowance.
+      const room = Math.max(0, MAX_TOKEN_FACTOR * request.maxTokens - cost.usage.completionTokens);
+      const charged = Math.min(reportedCount(completion.usage?.completion_tokens, room) ?? maxTokens, Math.max(room, 0));
       cost.usage.completionTokens += charged;
       cost.usage.reasoningTokens += reportedCount(completion.usage?.completion_tokens_details?.reasoning_tokens, charged) ?? 0;
 

@@ -18,23 +18,21 @@ const post = (base: string, body: string, token = TOKEN): Promise<Response> =>
   fetch(`${base}/v1/chat/completions`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body });
 /**
  * Wait until a request that has just been answered has been settled on the spend account.
- * The shim settles after it has answered, so the test must wait; how long that takes depends
- * on the machine. A fixed wait failed once on a slow one. So this waits until the account has
- * been quiet for a while: no lock held, and the same totals on four readings in a row.
+ * The shim settles after it has answered, so the test must wait, and how long that takes
+ * depends on the machine: a fixed wait failed once on a slow one. Where the test knows what
+ * the account should come to, it waits for exactly that, and the assertion that follows says
+ * what it came to if it never did. Where it does not, it waits a while.
  */
-async function settled(file?: string): Promise<void> {
+async function settled(file?: string, expected?: { calls: number; tokens: number }): Promise<void> {
   const nap = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-  await nap(60);
-  if (file === undefined) return nap(90);
-  let last = "";
-  let quiet = 0;
-  for (let waited = 0; waited < 5000 && quiet < 4; waited += 30) {
-    const now = existsSync(`${file}.lock`) ? "locked" : JSON.stringify(await new FileSpendLedger(file).totals());
-    quiet = now === last && now !== "locked" ? quiet + 1 : 0;
-    last = now;
-    await nap(30);
+  if (file === undefined || expected === undefined) return nap(150);
+  for (let waited = 0; waited < 5000; waited += 20) {
+    const totals = await new FileSpendLedger(file).totals().catch(() => null);
+    if (totals !== null && totals.calls === expected.calls && totals.tokens === expected.tokens && !existsSync(`${file}.lock`)) return;
+    await nap(20);
   }
 }
+
 const withoutUsage = (): string => {
   const reply = JSON.parse(fixture("nonstream-plain.json")) as Record<string, unknown>;
   delete reply["usage"];
@@ -95,7 +93,7 @@ test("key injection: the total spent through the shim has a ceiling that survive
   try {
     for (let i = 0; i < 3; i += 1) {
       assert.equal((await post(shim.url, chatBody({ max_tokens: 2000 }))).status, 200);
-      await settled(file); // each is charged what the provider reported, so the next still fits
+      await settled(file, { calls: i + 1, tokens: (i + 1) * 229 }); // each is charged what the provider reported, so the next still fits
     }
     assert.deepEqual(await new FileSpendLedger(file).totals(), { campaigns: 1, calls: 3, tokens: 3 * 229 });
     const fourth = await post(shim.url, chatBody({ max_tokens: 2000 }));
@@ -121,15 +119,15 @@ test("key injection: an answer that does not say what it cost is charged at what
   const shim = await startShim(mock.url, { ...injection, spend: { file, maxRequests: 100, maxCompletionTokens: 2500 }, maxTokensPerRequest: 1000 });
   try {
     assert.equal((await post(shim.url, chatBody({ max_tokens: 1000 }))).status, 200);
-    await settled(file);
+    await settled(file, { calls: 1, tokens: 1000 });
     assert.equal((await new FileSpendLedger(file).totals()).tokens, 1000);
     mode = "refuse";
     assert.equal((await post(shim.url, chatBody({ max_tokens: 1000 }))).status, 422);
-    await settled(file);
+    await settled(file, { calls: 2, tokens: 1000 });
     assert.deepEqual(await new FileSpendLedger(file).totals(), { campaigns: 1, calls: 2, tokens: 1000 });
     mode = "silent";
     assert.equal((await post(shim.url, chatBody({ max_tokens: 1000 }))).status, 200);
-    await settled(file);
+    await settled(file, { calls: 3, tokens: 2000 });
     // 2000 charged of 2500: a request that may use 1000 no longer fits.
     assert.equal((await post(shim.url, chatBody({ max_tokens: 1000 }))).status, 429);
     assert.equal((await post(shim.url, chatBody({ max_tokens: 400 }))).status, 200);

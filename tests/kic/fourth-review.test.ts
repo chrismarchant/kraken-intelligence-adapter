@@ -349,7 +349,9 @@ test("an invisible character is kept only where it is part of an emoji", () => {
   for (const emoji of ["\u{1F469}\u200d\u{1F4BB}", "\u2764\ufe0f", "1\ufe0f\u20e3", "\u{1F44D}\u{1F3FD}", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}", "\u{1F3F3}\ufe0f\u200d\u{1F308}"]) {
     assert.equal(canonicalText(`Good ${emoji} work`), `Good ${emoji} work`);
     // A keycap holds a digit, which the figure rule reads as a number; that rule is not under test here.
-    if (!emoji.startsWith("1")) assert.deepEqual(rules(draft(`Good ${emoji} work.`)), []);
+    // Since the fourth scope review a post may use only the emoji on a fixed list, one at a
+    // time: no joined emoji, skin tones, keycaps or flags. Canonical form still leaves them be.
+    assert.deepEqual(rules(draft(`Good ${emoji} work.`)).filter((rule) => rule === "suspicious-characters"), emoji === "\u2764\ufe0f" ? [] : ["suspicious-characters"]);
   }
   // A run of joiners and selectors after an emoji can carry hidden data; it is not part of the emoji.
   const run = Array.from({ length: 64 }, (_, i) => (i % 3 === 0 ? VS16 : ZWJ)).join("");

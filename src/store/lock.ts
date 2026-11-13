@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { link, lstat, open, readFile, readdir, stat, unlink } from "node:fs/promises";
+import { constants, readFileSync, readdirSync } from "node:fs";
+import { link, open, readdir, stat, unlink } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 
 /**
@@ -121,17 +121,27 @@ async function createInPlace(path: string, content: string): Promise<boolean> {
   return true;
 }
 
-/** The text of a file; null if it is not there; UNREADABLE if it is there and cannot be read. */
+/**
+ * The text of a lock file; null if it is not there; UNREADABLE if something is there that is
+ * not an ordinary file this user can read. Every read of a lock or of a right goes through
+ * here. The file is opened without following a link and without waiting, and what was opened
+ * is then checked: a named pipe put there, even between one step and the next, cannot hold
+ * the caller, and a link, a directory or a device is not a lock of ours.
+ */
 async function readOrWhy(path: string): Promise<string | null | typeof UNREADABLE> {
-  // Looked at before it is opened. Only an ordinary file is read: opening a named pipe would
-  // wait for ever for a writer, and a link, a directory or a device is not a lock of ours.
-  const found = await lstat(path).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? null : UNREADABLE));
-  if (found === null) return null;
-  if (found === UNREADABLE || !found.isFile()) return UNREADABLE;
+  let handle;
   try {
-    return await readFile(path, "utf8");
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? null : UNREADABLE;
+  }
+  try {
+    if (!(await handle.stat()).isFile()) return UNREADABLE;
+    return await handle.readFile("utf8");
+  } catch {
+    return UNREADABLE;
+  } finally {
+    await handle.close().catch(() => undefined);
   }
 }
 const UNREADABLE: unique symbol = Symbol("unreadable");
@@ -168,7 +178,7 @@ export async function acquireOwnedLock(lockPath: string, options: { timeoutMs?: 
     await new Promise((resolve) => setTimeout(resolve, pause));
     pause = Math.min(pause * 2, 100);
   }
-  const held = async () => (await readFile(lockPath, "utf8").catch(() => "")) === mine;
+  const held = async () => (await readOrWhy(lockPath)) === mine;
   return {
     held,
     release: async () => {
@@ -273,8 +283,8 @@ export async function clearDeadLock(lockPath: string, ownerlessAfterMs: number):
   }
   if (mine === null) return false;
 
-  const now = await readFile(lockPath, "utf8").catch(() => null);
-  if (now !== null && now === content && (await generationOf(lockPath, now, owned)) === generation) {
+  const now = await readOrWhy(lockPath);
+  if (typeof now === "string" && now === content && (await generationOf(lockPath, now, owned)) === generation) {
     await unlink(lockPath).catch(() => undefined);
   }
   // The lock this right was for is gone for good. Clear the files that named it: the rights

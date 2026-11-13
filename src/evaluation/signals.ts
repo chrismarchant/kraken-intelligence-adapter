@@ -9,6 +9,7 @@ import type {
 import type { Limits } from "../limits.ts";
 import { canonicalText, settledCanonicalText, truncate } from "../util/runtime.ts";
 import { characterProblems, named } from "./characters.ts";
+import { hashtagFinder, termFinder } from "./terms.ts";
 
 const STOPWORDS = new Set(
   ("about above after again against also among because been before being between both could does doing during each from further " +
@@ -99,48 +100,6 @@ function keywords(phrases: readonly string[]): string[] {
 }
 
 /**
- * Whole-phrase match, case-insensitive, for mandatory constraints, which err towards
- * refusing. The words of the phrase may be joined, hyphenated or spaced ("AI-powered"
- * catches "AI powered" and "AIpowered"), and common inflections of the last word match
- * ("guarantee" catches "guaranteed"). A longer, different word does not match.
- */
-function containsPhrase(haystack: string, phrase: string): boolean {
-  // The term is folded the way the text is (accents off, look-alike letters to plain ones), and
-  // its words are whatever letters and digits it has: "na\u00EFve" is one word.
-  const parts = fold(phrase).toLowerCase().match(/[\p{L}\p{N}]+/gu);
-  if (!parts) return false;
-  const pattern = parts.join("[\\s\\-_./\u2010-\u2015]*");
-  return new RegExp(`(?<![\\p{L}\\p{N}])${pattern}${inflections(parts[parts.length - 1] as string)}(?![\\p{L}\\p{N}])`, "iu").test(haystack);
-}
-
-/**
- * The endings under which the last word of a ruled-out term still matches. English spelling
- * decides them, and the aim is to catch the word's own inflections without catching other words:
- *
- * - One or two letters ("AI", "US"): the plural only. With more, "US" would catch "used".
- * - Three letters ending consonant, vowel, consonant ("ban", "win", "fun"): the plural, and
- *   "-ed" and "-ing" with the last letter doubled, as English writes them ("banned"). Without
- *   the doubling they are other words ("fund" is not "fun"; "wind" is not "win").
- * - Any other three letters ("fix", "tax", "buy", "fee"): "-s", "-es", "-ed", "-ing".
- * - Four letters or more: the same, with or without a doubled last consonant ("scammed",
- *   "marketed"), and a bare "-d" after a final "e" ("guaranteed").
- */
-function inflections(last: string): string {
-  const length = [...last].length;
-  if (length <= 2) return "s?";
-  const final = last.slice(-1);
-  const doubles = /[bcdfgklmnprstvz]/.test(final);
-  if (length === 3) return /[^aeiou][aeiou][bcdfgklmnprstvz]$/.test(last) ? `(?:s|${final}ed|${final}ing)?` : "(?:s|es|ed|ing)?";
-  const doubled = doubles ? `${final}?` : "";
-  return `(?:s|es|${final === "e" ? "d|" : ""}${doubled}ed|${doubled}ing)?`;
-}
-
-/** Letters and digits only, folded and lower case. Used where words are run together, as in hashtags. */
-function squash(text: string): string {
-  return fold(text).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-}
-
-/**
  * Digits that are part of an everyday term and state no figure: "B2B", "Q3", "24/7", an
  * identifier such as "COVID-19" or "ISO-9001", and a year named as a date ("in 2026").
  * These are removed before figures are looked for. The list is deliberately short.
@@ -171,126 +130,6 @@ function numbersIn(text: string, options: { everydayTerms: boolean } = { everyda
   }
   const found = scanned.match(NUMBER) ?? [];
   return [...new Set(found.map((n) => n.replace(/,/g, "").replace(/\.$/, "")))];
-}
-
-/** Letters that are easily mistaken for plain Latin ones, mapped to the letter they resemble. */
-const CONFUSABLE: Record<string, string> = {
-  "\u0131": "i", "\u0261": "g", "\u0251": "a", "\u0269": "i", "\u026A": "i", "\u028F": "y", "\u0299": "b", "\u1D00": "a", "\u1D04": "c",
-  "\u1D05": "d", "\u1D07": "e", "\u1D0A": "j", "\u1D0B": "k", "\u1D0D": "m", "\u1D0F": "o", "\u1D18": "p", "\u1D1B": "t", "\u1D1C": "u",
-  "\u1D20": "v", "\u1D21": "w", "\u1D22": "z", "\u0142": "l", "\u00F8": "o", "\u0111": "d", "\u0127": "h", "\u017F": "s", "\u01C0": "l",
-  // Greek capitals and small letters that pass for Latin ones.
-  "\u0391": "A", "\u0392": "B", "\u0395": "E", "\u0396": "Z", "\u0397": "H", "\u0399": "I", "\u039A": "K", "\u039C": "M", "\u039D": "N",
-  "\u039F": "O", "\u03A1": "P", "\u03A4": "T", "\u03A5": "Y", "\u03A7": "X", "\u03B1": "a", "\u03B2": "b", "\u03B3": "y", "\u03B5": "e",
-  "\u03B7": "n", "\u03B9": "i", "\u03BA": "k", "\u03BC": "u", "\u03BD": "v", "\u03BF": "o", "\u03C1": "p", "\u03C4": "t", "\u03C5": "u",
-  "\u03C7": "x", "\u03C9": "w", "\u03F2": "c", "\u03F9": "C", "\u03F3": "j",
-  // Cyrillic capitals and small letters that pass for Latin ones.
-  "\u0410": "A", "\u0412": "B", "\u0415": "E", "\u041A": "K", "\u041C": "M", "\u041D": "H", "\u041E": "O", "\u0420": "P", "\u0421": "C",
-  "\u0422": "T", "\u0423": "Y", "\u0425": "X", "\u0405": "S", "\u0406": "I", "\u0408": "J", "\u0430": "a", "\u0432": "b", "\u0435": "e",
-  "\u043A": "k", "\u043C": "m", "\u043D": "h", "\u043E": "o", "\u0440": "p", "\u0441": "c", "\u0442": "t", "\u0443": "y", "\u0445": "x",
-  "\u0455": "s", "\u0456": "i", "\u0458": "j", "\u0501": "d", "\u04BB": "h", "\u051B": "q", "\u051D": "w", "\u0433": "r", "\u043F": "n",
-  "\u044C": "b",
-  // Letters of European alphabets that are allowed in a post and resemble, or stand for, plain ones.
-  "\u00E6": "ae", "\u00C6": "AE", "\u00F0": "d", "\u00D0": "D", "\u00D8": "O", "\u00FE": "th", "\u00DE": "Th", "\u00DF": "ss",
-  "\u0110": "D", "\u0126": "H", "\u0138": "k", "\u0141": "L", "\u014B": "n", "\u014A": "N", "\u0153": "oe", "\u0152": "OE",
-  "\u0167": "t", "\u0166": "T", "\u1E9E": "SS",
-};
-/**
- * The same letters as a reader who does not know them may see them: the sharp s as a capital
- * B, thorn as p, eth as o. A term is looked for under both readings.
- */
-const AS_SEEN: Record<string, string> = { "\u00DF": "B", "\u1E9E": "B", "\u00FE": "p", "\u00DE": "P", "\u00F0": "o" };
-const CONFUSABLE_LETTER = new RegExp(`[${Object.keys(CONFUSABLE).join("")}]`, "gu");
-
-/**
- * Accents off and look-alike letters to the plain ones they resemble. Applied to a ruled-out
- * term and to the text it is looked for in, so that "ΑΙ" in Greek capitals is found as "AI".
- */
-function fold(text: string, asSeen = false): string {
-  return text
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .replace(CONFUSABLE_LETTER, (c) => (asSeen ? AS_SEEN[c] : undefined) ?? CONFUSABLE[c] ?? c);
-}
-
-/**
- * The forms of a text that a ruled-out term is looked for in. Besides the text itself: with
- * accents off and look-alike letters read as plain ones; with the marks, digits and symbols
- * that can stand in for a letter read as that letter; with a lower-case L beside a capital
- * read as a capital I, and a capital I after small letters read as a lower-case L, since in
- * the type a post is set in they are drawn alike; with dots removed from dotted initials
- * ("A.I." becomes "AI"); with anything slipped inside a word removed; and with letters that
- * were spaced out joined up.
- */
-function matchForms(text: string): string[] {
-  const forms = new Set<string>();
-  const sources = new Set<string>([text]);
-  for (const read of symbolsAsLetters(text)) sources.add(read);
-  for (const source of [...sources]) {
-    sources.add(source.replace(/(?<=\p{Lu})l|l(?=\p{Lu})/gu, "I"));
-    sources.add(source.replace(/(?<=\p{Ll}I*)I/gu, "l"));
-  }
-  for (const source of sources) {
-    for (const folded of new Set([fold(source), fold(source, true)])) {
-      const undotted = folded.replace(/\b(?:[A-Za-z]\.){2,}/g, (m) => m.replace(/\./g, ""));
-      // Anything slipped between two letters that is not itself a letter, a digit or a space:
-      // hyphens and dashes of every kind, emphasis marks, punctuation, symbols, emoji. The
-      // apostrophe of a common contraction is left where it is: "we'll" is not "well". Only
-      // the contractions listed are spared; an apostrophe put anywhere else in a word, before
-      // an ending included ("guarantee'd"), is removed like any other mark.
-      const kept = undotted.replace(CONTRACTION, (whole) => whole.replace(/['\u2019]/, KEPT_APOSTROPHE));
-      const unbroken = kept.replace(/(?<=[\p{L}\p{N}])[^\p{L}\p{N}\s\uE000]+(?=[\p{L}\p{N}])/gu, "").replaceAll(KEPT_APOSTROPHE, "'");
-      // Single letters set apart by spaces or dots: "A I", "R. O. I.", "s c a m".
-      const joined = unbroken.replace(/\b(?:[A-Za-z][ .])+[A-Za-z]\b/g, (m) => m.replace(/[ .]/g, ""));
-      for (const form of [source, folded, undotted, unbroken, joined]) forms.add(form);
-    }
-  }
-  return [...forms];
-}
-
-/** Stands in for an apostrophe that is to be kept. A private-use character: a draft may not contain one. */
-const KEPT_APOSTROPHE = "\uE000";
-
-/**
- * The contractions whose apostrophe is kept. A closed list of whole words: with the apostrophe
- * removed, several would become other words ("we'll", "I'll", "we're", "can't", "it's").
- */
-const CONTRACTION = new RegExp(
-  "(?<![\\p{L}\\p{N}])(?:" +
-    "(?:i|you|he|she|it|we|they|that|there|who|what)['\u2019]ll" +
-    "|(?:you|we|they|who)['\u2019]re" +
-    "|(?:i|you|we|they|who|would|could|should)['\u2019]ve" +
-    "|(?:i|you|he|she|it|we|they|who)['\u2019]d" +
-    "|i['\u2019]m" +
-    "|(?:it|he|she|that|there|here|what|who|where|how|let)['\u2019]s" +
-    "|(?:ca|wo|do|does|did|is|are|was|were|have|has|had|would|could|should|must)n['\u2019]t" +
-    ")(?![\\p{L}\\p{N}])",
-  "giu",
-);
-
-/**
- * What each mark, digit and symbol a draft may contain is read as when it stands against a
- * letter. Every single character allowed by characters.ts that is drawn like a letter is
- * here. An upright stroke and the digit one are read once as "i" and once as "l". Brackets
- * are not read as "c": they stand against words too often in honest text ("(at" is not "cat").
- * Two letters drawn to look like one ("rn" for "m", "vv" for "w") are not read either: they
- * are ordinary letters, and the words they are part of are ordinary words.
- */
-const SYMBOL_READING: Record<string, string> = {
-  "@": "a", $: "s", "!": "i", "+": "t", "0": "o", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b",
-  "\u00A2": "c", "\u20AC": "e", "\u00A3": "l", "\u00A5": "y", "\u00D7": "x", "\u00B0": "o", "\u2022": "o", "\u25CF": "o", "\u00A1": "i",
-  "\u2020": "t", "\u2021": "t", "\u00A7": "s", "\u00A9": "c", "\u00AE": "r", "\u2717": "x", "\u2718": "x",
-};
-const READ_AS_LETTER = /(?<=\p{L})[@$!+|0134578\u00A2\u20AC\u00A3\u00A5\u00D7\u00B0\u2022\u25CF\u00A1\u2020\u2021\u00A7\u00A9\u00AE\u2717\u2718]|[@$!|0134578\u00A2\u20AC\u00A3\u00A5\u00D7\u00B0\u2022\u25CF\u00A1\u2020\u2021\u00A7\u00A9\u00AE\u2717\u2718](?=\p{L})/gu;
-
-/**
- * The text with marks, digits and symbols read as the letters they can stand in for, wherever
- * one stands against a letter: inside a word ("gu@rantee"), at its start ("$cam") or at its
- * end ("A|"). A plus sign is read only after a letter. These readings are added to the forms
- * a term is looked for in; they take nothing away.
- */
-function symbolsAsLetters(text: string): string[] {
-  const read = (stroke: string) => text.replace(READ_AS_LETTER, (c) => (c === "|" || c === "1" ? stroke : (SYMBOL_READING[c] ?? c)));
-  return [read("i"), read("l")].filter((form) => form !== text);
 }
 
 function hasNumber(text: string, number: string): boolean {
@@ -332,8 +171,9 @@ export function analyseDraft(
   // Brand fit: required points covered, stated don'ts and hype vocabulary absent.
   const required = brief.constraints.mustInclude;
   const covered = required.filter((p) => keywords([p]).some((k) => bodyWords.has(k)));
-  const dontHits = brief.tone.dont.filter((p) => containsPhrase(body, p));
-  const hypeHits = HYPE_TERMS.filter((p) => containsPhrase(body, p));
+  const inBodyText = termFinder(body);
+  const dontHits = brief.tone.dont.filter((p) => inBodyText(p));
+  const hypeHits = HYPE_TERMS.filter((p) => inBodyText(p));
   const coverage = required.length === 0 ? 0.5 : covered.length / required.length;
   const brandFit = clamp(0.5 + 0.5 * coverage - 0.3 * dontHits.length - 0.15 * hypeHits.length);
   signals.push({
@@ -453,13 +293,10 @@ export function analyseDraft(
   if (length > limits.linkedinMaxChars) {
     failures.push({ rule: "over-length", detail: `${length} characters with hashtags; the limit is ${limits.linkedinMaxChars}` });
   }
-  const squashedTags = hashtags.flatMap((tag) => matchForms(tag).map(squash));
-  const bodyForms = matchForms(body);
+  // A ruled-out term is looked for in the text of the post and in each hashtag, whatever its length.
+  const inHashtags = hashtagFinder(hashtags);
   for (const term of brief.constraints.mustAvoid) {
-    const squashedTerm = squash(term);
-    // Hashtags run words together, so a ruled-out term is looked for inside each one.
-    const inHashtag = squashedTerm.length >= 4 && squashedTags.some((tag) => tag.includes(squashedTerm));
-    if (bodyForms.some((form) => containsPhrase(form, term)) || inHashtag) {
+    if (inBodyText(term) || inHashtags(term)) {
       failures.push({ rule: "must-avoid-term", detail: `Contains "${term}", which the brief rules out` });
     }
   }
@@ -477,11 +314,11 @@ export function analyseDraft(
     const shown = problems.outside.slice(0, 8).map(named).join(", ");
     failures.push({
       rule: "suspicious-characters",
-      detail: `Contains ${problems.outside.length} kind(s) of character a post may not use (${shown}${problems.outside.length > 8 ? ", ..." : ""}): letters outside the ordinary Latin alphabet, or symbols that can pass for letters`,
+      detail: `Contains ${problems.outside.length} kind(s) of character a post may not use (${shown}${problems.outside.length > 8 ? ", ..." : ""}): only the Latin alphabet, the digits 0 to 9, everyday marks and a fixed list of emoji are allowed`,
     });
   }
-  if (problems.attachedEmoji > 0) {
-    failures.push({ rule: "suspicious-characters", detail: `${problems.attachedEmoji} emoji are written against a word; put a space between an emoji and a word` });
+  if (problems.attachedPictures > 0) {
+    failures.push({ rule: "suspicious-characters", detail: `${problems.attachedPictures} emoji or picture symbols are written in the same word as letters or digits; set them apart with a space` });
   }
 
   // What is kept of each observation is cut to the length the contract allows. Eligibility

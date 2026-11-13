@@ -141,13 +141,13 @@ export function normalizeSseEvent(event: string, opts: NormalizeOptions = {}): s
   for (let i = 0; i < lines.length; i++) {
     if ((lines[i] as string).startsWith("data:")) dataLines.push(i);
   }
-  if (dataLines.length === 0) {
-    // No data: a comment, or the fields that go with data (event, id, retry). Anything else is
-    // not an event at all, a JSON answer sent under the wrong label for one, and cannot be
-    // normalised.
-    const known = lines.every((line) => line === "" || line.startsWith(":") || /^(?:event|id|retry|data)(?::|$)/.test(line));
-    return known ? event : DROPPED_EVENT;
-  }
+  // Besides data, an event may hold comments and the fields that go with data (event, id,
+  // retry). Any other line is not part of an event: it may be a JSON answer sent under the
+  // wrong label, or text put beside empty data. It cannot be normalised, so the event is not
+  // passed on, whether or not it also has data.
+  const known = lines.every((line) => line === "" || line.startsWith(":") || /^(?:event|id|retry|data)(?::|$)/.test(line));
+  if (!known) return DROPPED_EVENT;
+  if (dataLines.length === 0) return event;
   const payload = dataLines
     .map((i) => {
       const v = (lines[i] as string).slice(5);
