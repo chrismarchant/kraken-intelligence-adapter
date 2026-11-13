@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Pinned by commit SHA; tag shown for humans. SHAs resolved with `git ls-remote` on 2026-11-13.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:harness
+      - run: node harness/scripts/secret-scan.mjs
+      - run: node harness/scripts/aeh.mjs check-records
+
+      - name: Resolve diff base for the gate check
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -eu
+          EMPTY_TREE=$(git hash-object -t tree /dev/null)
+          BASE=""
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE=$(git merge-base "origin/$PR_BASE_REF" HEAD 2>/dev/null || true)
+          elif [ -n "${PUSH_BEFORE:-}" ] && ! echo "$PUSH_BEFORE" | grep -qE '^0+$' \
+               && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+            BASE="$PUSH_BEFORE"
+          fi
+          if [ -z "$BASE" ]; then
+            # First push of a branch, force-push, or unknown base: check the whole tree.
+            BASE="$EMPTY_TREE"
+            echo "No usable base commit; checking every path against the gate map."
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Gate check (changed paths vs gate map)
+        run: node harness/scripts/aeh.mjs check-gates --base "${{ steps.base.outputs.base }}" --head HEAD
+
+      # Informational only. Reviews are recorded after a commit exists, so this cannot be a
+      # required check until merge time (see docs/harness/AEH.md). It must never be relied on yet.
+      - name: Commit-bound review evidence (informational, non-blocking)
+        continue-on-error: true
+        run: node harness/scripts/aeh.mjs check-reviews --commit "$(git rev-parse HEAD)"

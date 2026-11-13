@@ -1,0 +1,11 @@
+{
+  "records": [
+    "CLAUDE.md",
+    "harness/state/GATE_STATE.md",
+    "harness/state/CHECKPOINTS.md",
+    "docs/decisions/OWNER_DECISIONS.md",
+    "harness/state/tasks.json",
+    "harness/config/gates.json",
+    "LICENSES/README.md"
+  ]
+}

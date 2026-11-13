@@ -1,0 +1,40 @@
+{
+  "alwaysAllowed": ["docs/**", "*.md", "LICENSES/**", ".gitignore"],
+  "gates": [
+    {
+      "id": "KIC-00",
+      "title": "Foundation and feasibility",
+      "status": "presented",
+      "paths": [],
+      "reviewRequired": false
+    },
+    {
+      "id": "KIC-01",
+      "title": "Runtime proof",
+      "status": "authorised",
+      "paths": ["src/**", "tests/**", "fixtures/**", "tenant-package/**", "skills/**", "package.json", "package-lock.json", "tsconfig.json"],
+      "reviewRequired": true
+    },
+    {
+      "id": "AEH",
+      "title": "Autonomous Engineering Harness",
+      "status": "authorised",
+      "paths": ["harness/**", ".github/**", ".claude/**", "docs/harness/**"],
+      "reviewRequired": false
+    },
+    {
+      "id": "KIC-05",
+      "title": "Template deployment proof",
+      "status": "blocked",
+      "paths": ["deploy/**", "infra/**", "Dockerfile", "docker-compose*.yml"],
+      "reviewRequired": true
+    },
+    {
+      "id": "KIC-06",
+      "title": "Kraken integration",
+      "status": "deferred",
+      "paths": ["src/adapters/kraken/**"],
+      "reviewRequired": true
+    }
+  ]
+}

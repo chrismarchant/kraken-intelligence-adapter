@@ -1,0 +1,118 @@
+{
+  "tasks": [
+    {
+      "id": "KIC-01-C1",
+      "title": "Boot full OpenBot on a free Intelligence project",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "blocked",
+      "stop": {
+        "level": "local",
+        "reason": "No Intelligence project key in the environment; pgvector unavailable (no Docker daemon, package not in repositories, source build refused). Owner decision OD-7.",
+        "since": "2026-11-13"
+      },
+      "evidence": []
+    },
+    {
+      "id": "KIC-01-C2",
+      "title": "Mistral normalising shim (streaming + tools)",
+      "gate": "KIC-01",
+      "owner": "agent",
+      "deps": [],
+      "status": "in_progress",
+      "evidence": []
+    },
+    {
+      "id": "KIC-01-C2b",
+      "title": "Shim verified inside running OpenBot",
+      "gate": "KIC-01",
+      "owner": "orchestrator",
+      "deps": ["KIC-01-C1", "KIC-01-C2"],
+      "status": "blocked",
+      "evidence": []
+    },
+    {
+      "id": "KIC-01-C3",
+      "title": "Written licence confirmation from CopilotKit",
+      "gate": "KIC-01",
+      "owner": "human-owner",
+      "deps": [],
+      "status": "blocked",
+      "stop": {
+        "level": "local",
+        "reason": "Owner action OD-8.",
+        "since": "2026-11-13"
+      },
+      "evidence": []
+    },
+    {
+      "id": "KIC-B1",
+      "title": "KIC contracts and schemas",
+      "gate": "KIC-01",
+      "owner": "agent",
+      "deps": [],
+      "status": "in_progress",
+      "evidence": []
+    },
+    {
+      "id": "KIC-B2",
+      "title": "KIC MCP server with mocked JEV evaluator",
+      "gate": "KIC-01",
+      "owner": "agent",
+      "deps": ["KIC-B1"],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "KIC-C1",
+      "title": "Synthetic campaign proof via API/CLI",
+      "gate": "KIC-01",
+      "owner": "agent",
+      "deps": ["KIC-B2"],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "KIC-C4",
+      "title": "Human editorial approval enforced in code, with tests",
+      "gate": "KIC-01",
+      "owner": "agent",
+      "deps": ["KIC-B2"],
+      "status": "todo",
+      "evidence": []
+    },
+    {
+      "id": "AEH-1",
+      "title": "Minimum harness: CI, task ledger, stops, review binding, restart",
+      "gate": "AEH",
+      "owner": "agent",
+      "deps": [],
+      "status": "in_progress",
+      "evidence": []
+    },
+    {
+      "id": "AEH-2",
+      "title": "Reuse assessment of the existing aeh repository",
+      "gate": "AEH",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "blocked",
+      "stop": {
+        "level": "local",
+        "reason": "Access to the private aeh repository refused in session. Owner decision OD-2.",
+        "since": "2026-11-13"
+      },
+      "evidence": []
+    },
+    {
+      "id": "REV-1",
+      "title": "Independent commit-bound review of the session's implementation",
+      "gate": "KIC-01",
+      "owner": "reviewer",
+      "deps": ["KIC-B2", "KIC-01-C2"],
+      "status": "todo",
+      "evidence": []
+    }
+  ]
+}
