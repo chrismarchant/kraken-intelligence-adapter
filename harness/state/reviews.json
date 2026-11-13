@@ -1212,6 +1212,104 @@
       ],
       "reportPath": "docs/review/2026-11-13-scope-review-a-2537386.md",
       "at": "2026-11-13T13:52:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-scope-b-2537386",
+      "gate": "KIC-01",
+      "commit": "2537386bf807ebc62f8e89839d1b9dbda2e6769e",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-12",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/mcp/**",
+        "src/gateway/**",
+        "src/store/**",
+        "src/workflow/spend.ts",
+        "budget path in src/workflow/service.ts",
+        "tests for those",
+        "claims (k)-(p)"
+      ],
+      "skipped": [
+        {
+          "path": "approval and signing logic in src/workflow/service.ts; src/shim/**",
+          "reason": "out of scope; covered by other reviews"
+        },
+        {
+          "path": "an unforced reproduction of the lock takeover race; the real provider",
+          "reason": "not covered by the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "F1",
+          "severity": "medium",
+          "summary": "kic_evaluate_drafts accepts repeated post numbers and stores an evaluation for each, without a cap",
+          "status": "open"
+        },
+        {
+          "id": "F2",
+          "severity": "medium",
+          "summary": "Taking over a dead lock can displace a new live lock; an update is lost",
+          "status": "open"
+        },
+        {
+          "id": "F3",
+          "severity": "medium",
+          "summary": "The same displacement in the spend account's lock loses a reservation",
+          "status": "open"
+        },
+        {
+          "id": "F4",
+          "severity": "medium",
+          "summary": "A lock held by a zombie process is treated as alive and blocks for as long as the zombie exists",
+          "status": "open"
+        },
+        {
+          "id": "F5",
+          "severity": "medium",
+          "summary": "The MCP HTTP transport does not bound connections, requests in flight or header and request time",
+          "status": "open"
+        },
+        {
+          "id": "F6",
+          "severity": "low",
+          "summary": "The gateway's stream reader is quadratic and buffers without bound",
+          "status": "open"
+        },
+        {
+          "id": "F7",
+          "severity": "low",
+          "summary": "Provider usage values are not validated; a malformed value discards a paid-for answer",
+          "status": "open"
+        },
+        {
+          "id": "F8",
+          "severity": "low",
+          "summary": "An abort during retry backoff is not seen until the sleep ends",
+          "status": "open"
+        },
+        {
+          "id": "F9",
+          "severity": "info",
+          "summary": "Malformed id reported as internal error; absolute paths in three messages; symlinked record read; crash leftovers not cleaned",
+          "status": "open"
+        },
+        {
+          "id": "F10",
+          "severity": "info",
+          "summary": "The crashed-writer test cannot catch the takeover race; several paths have no test",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-scope-review-b-2537386.md",
+      "at": "2026-11-13T14:05:00Z"
     }
   ]
 }
