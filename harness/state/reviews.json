@@ -1810,6 +1810,135 @@
       ],
       "reportPath": "docs/review/2026-11-13-review-b4-1f159a2.md",
       "at": "2026-11-13T15:50:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-a4-1f159a2",
+      "gate": "KIC-01",
+      "commit": "1f159a20109bb0759c54fdc262abd95aa2800294",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-17",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "src/evaluation/**",
+        "src/contracts/**",
+        "src/creators/**",
+        "src/shim/normalize.ts",
+        "src/shim/server.ts (normalisation paths)",
+        "clip, truncate, settledCanonicalText",
+        "tests for those",
+        "claims (e)-(j)"
+      ],
+      "skipped": [
+        {
+          "path": "first 100 lines of src/shim/normalize.ts; stream failures over HTTP; creator ranking and redaction (unchanged)",
+          "reason": "not covered by the reviewer"
+        },
+        {
+          "path": "src/store/**, src/mcp/**, src/gateway/**",
+          "reason": "the other reviewer's scope"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "high",
+          "summary": "Regression: a word with a stand-in symbol followed by an exclamation mark passes",
+          "status": "open"
+        },
+        {
+          "id": "N2",
+          "severity": "high",
+          "summary": "A ruled-out term of fewer than four letters is never looked for in a hashtag",
+          "status": "open"
+        },
+        {
+          "id": "N3",
+          "severity": "high",
+          "summary": "Pairs of regional indicators are accepted and read as nothing",
+          "status": "open"
+        },
+        {
+          "id": "N4",
+          "severity": "high",
+          "summary": "Figures drawn as emoji are not seen as figures",
+          "status": "open"
+        },
+        {
+          "id": "N5",
+          "severity": "medium",
+          "summary": "Emoji drawn as words are accepted",
+          "status": "open"
+        },
+        {
+          "id": "N6",
+          "severity": "medium",
+          "summary": "Only a symbol touching a letter is read as one; runs of symbols pass",
+          "status": "open"
+        },
+        {
+          "id": "N7",
+          "severity": "medium",
+          "summary": "Dotted and spaced initials with separators or look-alikes are not joined",
+          "status": "open"
+        },
+        {
+          "id": "N8",
+          "severity": "medium",
+          "summary": "A ruled-out contraction never matches; a term with no letter is ignored; C++ reduces to c",
+          "status": "open"
+        },
+        {
+          "id": "N9",
+          "severity": "medium",
+          "summary": "Endings missed (curing, denied, buses) and over-matched (scared)",
+          "status": "open"
+        },
+        {
+          "id": "N10",
+          "severity": "low",
+          "summary": "Honest text refused under short ruled-out words through symbol and digit readings",
+          "status": "open"
+        },
+        {
+          "id": "N11",
+          "severity": "low",
+          "summary": "An emoji with a mark between it and letters gets past the stand-apart rule",
+          "status": "open"
+        },
+        {
+          "id": "N12",
+          "severity": "low",
+          "summary": "Regression: 1,205 unassigned code points are accepted",
+          "status": "open"
+        },
+        {
+          "id": "N13",
+          "severity": "low",
+          "summary": "Ticks are not read as v",
+          "status": "open"
+        },
+        {
+          "id": "N14",
+          "severity": "info",
+          "summary": "Unknown field names end the stream; non-field lines pass in an event with empty data",
+          "status": "open"
+        },
+        {
+          "id": "N15",
+          "severity": "info",
+          "summary": "truncate with a limit under four can cut a character in half",
+          "status": "open"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-review-a4-1f159a2.md",
+      "at": "2026-11-13T16:00:00Z"
     }
   ]
 }
