@@ -2224,6 +2224,75 @@
       ],
       "reportPath": "docs/review/2026-11-13-regression-review-7f1978a.md",
       "at": "2026-11-13T17:15:00Z"
+    },
+    {
+      "id": "rev-2026-11-13-agent-regression-184f687",
+      "gate": "KIC-01",
+      "commit": "184f687f18a9158516c2b3927b2ec95fad7b2aa8",
+      "reviewer": {
+        "kind": "agent",
+        "id": "independent-review-agent-23",
+        "model": "opus tier"
+      },
+      "author": {
+        "id": "orchestrator-session"
+      },
+      "independent": true,
+      "scope": [
+        "git diff e30451c 184f687 -- src tests",
+        "regression-only delta review against e30451c; the completeness of the evaluator's rules against disguised text was out of scope"
+      ],
+      "skipped": [
+        {
+          "path": "everything unchanged since e30451c",
+          "reason": "delta review; relies on the reviews of e30451c"
+        },
+        {
+          "path": "the operator tool run with a key",
+          "reason": "forbidden to the reviewer"
+        }
+      ],
+      "verdict": "changes-requested",
+      "findings": [
+        {
+          "id": "1",
+          "severity": "medium",
+          "summary": "A part of a hyphenated or slashed word with stand-in symbols at both its edges is read by no reading: drafts refused at e30451c are eligible",
+          "status": "open"
+        },
+        {
+          "id": "2",
+          "severity": "medium",
+          "summary": "A digit set apart among upright strokes is treated as a plain number",
+          "status": "open"
+        },
+        {
+          "id": "3",
+          "severity": "low",
+          "summary": "A run of capitals in a hashtag can span two words: a few honest tags are refused",
+          "status": "open"
+        },
+        {
+          "id": "4",
+          "severity": "info",
+          "summary": "Ordinary shapes evaluate a constant factor slower; pathological shapes far faster; linear",
+          "status": "accepted"
+        },
+        {
+          "id": "5",
+          "severity": "info",
+          "summary": "A replaced request's details are carried for one replacement only",
+          "status": "open"
+        },
+        {
+          "id": "6",
+          "severity": "info",
+          "summary": "The requester's text in the audit line is bounded and safe",
+          "status": "accepted"
+        }
+      ],
+      "reportPath": "docs/review/2026-11-13-regression-review-184f687.md",
+      "at": "2026-11-13T17:40:00Z"
     }
   ]
 }
