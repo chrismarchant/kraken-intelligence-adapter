@@ -198,3 +198,13 @@ test("8: what the stream format allows and holds nothing is passed on: comments,
   // Data that is neither empty nor JSON still ends the stream: it cannot be checked.
   await assert.rejects(run(["event: ping\ndata: ping\n\n", answer]), /could not be read/);
 });
+
+test("a5-F15: an event with a line that is neither data, a comment nor a field that goes with data is not passed on, data or no data", async () => {
+  const stray = `data:\n  "reasoning_content": "${THOUGHT}"\n\n`;
+  await assert.rejects(run([stray]), /could not be read/);
+  await assert.rejects(run([`data: ${chunk("ok")}\nfoo: bar\n\n`]), /could not be read/);
+  assert.equal(normalizeSseEvent(`data: [DONE]\n{"reasoning":"${THOUGHT}"}`), DROPPED_EVENT);
+  // The fields that go with data are passed on with it.
+  const fine = await run([`event: message\nid: 3\nretry: 100\ndata: ${chunk("ok")}\n\n`]);
+  assert.ok(fine.includes("event: message") && fine.includes("id: 3") && fine.includes('"content":"ok"'));
+});

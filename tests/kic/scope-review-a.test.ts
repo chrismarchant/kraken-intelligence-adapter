@@ -540,3 +540,61 @@ test("N10: ordinary business prose is not refused for the short words it does no
   // And the words are found where they are.
   assert.deepEqual(terms.filter((term) => termFinder("It is at its best so far, to us.")(term)), ["best", "us", "it", "at", "so", "to"]);
 });
+
+// ------------------------------------------------------------------------------------------
+// The review of the fourth remediation (docs/review/2026-11-13-review-a5-e30451c.md): the
+// regressions and defects it found in the code written for that round. What it found beyond
+// those is recorded, not fixed here: see the gate ledger.
+
+test("a5-F1: a stand-in symbol at the edge of a word is read, whatever punctuation closes the word", () => {
+  const cases: Array<[string, string]> = [
+    ["free", "Get it fr\u20AC\u20AC!"], ["free", "fr\u00A3\u00A3!"], ["free", "(fr\u20AC\u20AC!)"], ["guarantee", "We guarant\u20AC\u20AC!"], ["scam", "$c@m!"], ["best", "The be$\u2020!"],
+    ["AI", "Our A|!"], ["AI", "Our @I!"], ["cure", "A cur\u20AC!"], ["cure", "A \u00A9ur\u20AC!"], ["easy", "\u20AC@$\u00A5!"], ["state of the art", "st@te of the @rt!"], ["free", "\u201Cfr\u20AC\u20AC!\u201D"], ["scam", "$c@m?!"],
+  ];
+  for (const [term, text] of cases) assert.deepEqual(rulesWith([term], text), ["must-avoid-term"], text);
+  // And a mark that is the word's last letter is still read as one.
+  assert.deepEqual(rulesWith(["hi"], "Oh, h!"), ["must-avoid-term"]);
+});
+
+test("a5-F2: a short ruled-out term is found inside a hashtag whose words are run together", () => {
+  for (const [term, tag] of [["AI", "#MyAITool"], ["AI", "#myAItool"], ["AI", "#theAIway"], ["ROI", "#BestROIever"], ["ROI", "#HighROIdeals"], ["AI", "#AI4Good"], ["win", "#BigWin2026"]] as const) {
+    assert.ok(rulesWith([term], "", { hashtags: [tag] }).includes("must-avoid-term"), tag);
+  }
+  assert.deepEqual(rulesWith(["AI"], "", { hashtags: ["#Maintenance", "#Operations", "#Reporting"] }), []);
+});
+
+test("a5-F3: a ruled-out contraction is found however its apostrophe is written, joined by a hyphen, or with a stand-in letter", () => {
+  for (const text of ["You can\u2018t lose.", "You can`t lose.", "You can\u2032t lose.", "A can't-lose offer.", "You c@n't lose.", "You can\u2019t lose."]) {
+    assert.deepEqual(rulesWith(["can't lose"], text), ["must-avoid-term"], text);
+  }
+  assert.deepEqual(rulesWith(["cant"], "We can\u2018t wait."), []);
+});
+
+test("a5-F7: a three-letter word takes \"-es\" only after a hissing sound", () => {
+  const others: Array<[string, string]> = [["win", "The wines were good."], ["not", "Release notes."], ["fin", "Fines were paid."], ["car", "Who cares?"], ["con", "Traffic cones."], ["war", "Software wares."], ["rat", "Rates rose."], ["wag", "Wages rose."], ["hat", "He hates delays."]];
+  for (const [term, text] of others) assert.deepEqual(rulesWith([term], text), [], text);
+  for (const [term, text] of [["bus", "Two buses came."], ["fix", "It fixes everything."], ["gas", "Two gases mix."], ["win", "Two wins."]] as const) assert.deepEqual(rulesWith([term], text), ["must-avoid-term"], text);
+});
+
+test("a5-F9: a draft made to be slow to read is read quickly", () => {
+  const brief = syntheticBrief();
+  brief.constraints.mustAvoid = Array.from({ length: 40 }, (_, i) => `term${i} ${"word ".repeat(70)}`.trim());
+  const shapes = ["I ".repeat(4000), `a${"I".repeat(7999)}`, "I".repeat(8000), "l I ".repeat(2000), "a!@$|1 ".repeat(1100), "a ".repeat(4000), "A.I. ".repeat(1600)];
+  for (const body of shapes) {
+    const candidate = { ...draft("slow", ""), body: body.trim().slice(0, 8000) };
+    const started = Date.now();
+    analyseDraft(brief, slot, candidate, { ...DEFAULT_LIMITS, linkedinMaxChars: 100_000 });
+    assert.ok(Date.now() - started < 1500, `${JSON.stringify(body.slice(0, 12))}: ${Date.now() - started} ms`);
+  }
+});
+
+test("a5-F13: a plain number is a number, not a word", () => {
+  const terms = ["lol", "ass", "lose", "best", "sale", "so", "to", "it", "ab", "qa"];
+  for (const text of ["Room 101 is free.", "455 customers renewed.", "We counted 1053 and 1,053.", "Order 8357 and 5413.", "Join 500+ teams, or 5000.", "Some 7000 people.", "On iOS 17 now.", "A 48-hour sprint.", "Rated 4.8/5 by 50\u201360 people."]) {
+    const found = termFinder(text);
+    assert.deepEqual(terms.filter((term) => found(term)), [], text);
+  }
+  // A digit written into a word is still read as the letter it stands for.
+  assert.ok(termFinder("A total 5cam.")("scam"));
+  assert.ok(termFinder("Our A1 tool.")("AI"));
+});
