@@ -58,6 +58,17 @@ const { positionals, values } = parseArgs({
   },
 });
 
+/**
+ * Every value in a document, one per line, with its place in the document: "plan.slots[2].theme: ...".
+ * Text is printed on one line with anything a terminal would act on written out.
+ */
+function everyValue(value: unknown, path = ""): string[] {
+  if (value === undefined) return [];
+  if (value === null || typeof value !== "object") return [`${path}: ${displaySafe(String(value))}`];
+  if (Array.isArray(value)) return value.length === 0 ? [`${path}: (none)`] : value.flatMap((item, index) => everyValue(item, `${path}[${index + 1}]`));
+  return Object.entries(value).flatMap(([key, item]) => everyValue(item, path ? `${path}.${displaySafe(key)}` : displaySafe(key)));
+}
+
 /** One line of stored text, safe to print. */
 const one = (text: string) => displaySafe(text);
 /** Stored text of several lines, safe to print, each line behind a margin. */
@@ -164,7 +175,11 @@ async function main(): Promise<void> {
           if (post.approvedDraft.hashtags.length) console.log(many(post.approvedDraft.hashtags.join(" ")));
         }
         console.log(`\n${preview.provisionalCommands.length} provisional command(s), all NON-EXECUTABLE.`);
-        console.log(`Release digest: ${digest}`);
+        // Nothing is released that was not put in front of the editor: every value in the
+        // package, by its place in it. The digest below covers exactly this.
+        console.log("\nEVERYTHING IN THIS PACKAGE (the release digest covers all of it, and nothing else is released):");
+        for (const line of everyValue({ ...preview, assembledAt: undefined, release: undefined })) console.log(`  ${line}`);
+        console.log(`\nRelease digest: ${digest}`);
         console.log(`\nTo release: release --campaign ${one(record.id)}${values.partial ? " --partial" : ""} --digest ${digest} --id <you> --name "<your name>" --reason "<why>"`);
         return;
       }
@@ -187,7 +202,7 @@ async function main(): Promise<void> {
       console.log(`  package sha256 ${exported.packageSha256}; signed with key ${released.release?.signature?.keyId ?? "none"}`);
     } else {
       const notices = await operator.pending();
-      for (const name of operator.skipped) console.error(`Ignored an unreadable file in the operator channel: ${name}`);
+      for (const name of operator.skipped) console.error(`Ignored an unreadable file in the operator channel: ${one(name)}`);
       const find = () => {
         const notice = notices.find((n) => n.requestId === values.request);
         if (!notice) throw new Error(`No waiting decision with id "${values.request ?? ""}".`);

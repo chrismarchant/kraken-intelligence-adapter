@@ -48,6 +48,11 @@ export interface AssembleOptions {
 export function assembleProgramme(record: CampaignRecord, options: AssembleOptions): ProgrammePackage {
   const plan = record.plan;
   if (!plan) throw new WorkflowError("no-plan", "There is no planned programme to assemble.");
+  // The plan must still be the size the brief asked for: a post added or removed after planning is not a plan anyone made.
+  const expected = record.brief.cadence.postsPerWeek * record.brief.cadence.weeks;
+  if (plan.slots.length !== expected || plan.slots.some((s, index) => s.slot !== index + 1)) {
+    throw new WorkflowError("inconsistent-record", `The plan has ${plan.slots.length} posts; the brief's cadence gives ${expected}, numbered 1 to ${expected}.`);
+  }
   const narrative = selectedNarrativeOf(record, options.verifier);
   if (!narrative || narrative.id !== plan.narrativeId) {
     throw new WorkflowError("narrative-not-approved", "The programme's narrative has no valid selection by an editor.");

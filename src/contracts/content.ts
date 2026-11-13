@@ -44,7 +44,11 @@ export const ProgrammePlan = z.strictObject({
   coreNarrative: LongText,
   supportingThemes: z.array(ShortText).min(1).max(8),
   intendedAudience: LongText,
-  slots: z.array(ProgrammeSlot).min(1),
+  // Posts are numbered 1 to n, each number once: a number names one post, here and in every decision.
+  slots: z
+    .array(ProgrammeSlot)
+    .min(1)
+    .refine((slots) => slots.every((s, index) => s.slot === index + 1), "posts must be numbered 1 to n in order, each number once"),
   generation: GenerationMeta,
 });
 export type ProgrammePlan = z.infer<typeof ProgrammePlan>;
