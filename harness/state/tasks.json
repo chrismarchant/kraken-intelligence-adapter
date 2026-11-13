@@ -154,16 +154,13 @@
       ],
       "status": "blocked",
       "evidence": [
-        "harness/state/reviews.json (four entries)",
-        "docs/review/2026-11-13-independent-agent-983487d.md",
-        "docs/review/2026-11-13-mistral-large-4-983487d.md",
-        "docs/review/2026-11-13-confirmation-review-aad2196.md",
-        "docs/review/2026-11-13-focused-re-review-075b358.md",
-        "remediation commits aad2196, 075b358, 187f029"
+        "harness/state/reviews.json (six entries, none approving)",
+        "docs/review/ (five agent reviews, one Mistral review)",
+        "remediation commits aad2196, 075b358, 187f029, 765ae20, 8e4696c, dfa7458"
       ],
       "stop": {
         "level": "gate",
-        "reason": "Three review rounds returned changes-requested (983487d, aad2196, 075b358). The fixes in 187f029 are tested but not independently reviewed. A further round is owner decision OD-11.",
+        "reason": "Five review rounds returned changes-requested (983487d, aad2196, 075b358, 187f029, 765ae20). The fixes in 8e4696c and dfa7458 are tested but not independently reviewed. A further round, preferably by a reviewer outside these sessions, is owner decision OD-11.",
         "since": "2026-11-13"
       }
     },

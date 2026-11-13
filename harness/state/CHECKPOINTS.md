@@ -2,6 +2,31 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-13 (mediation KIC-ARCH-MED-01 presented; five review rounds on KIC-01)
+
+```
+WORKSTREAM_ID: ORCH
+BRANCH: claude/adoring-edison-4wlees (no base branch exists; no pull request possible)
+CURRENT_GATE: none accepted. KIC-01 evidence presented. Mediation KIC-ARCH-MED-01 presented for owner review.
+COMPLETED:
+  KIC-01, since the last checkpoint: global-stop hook installed and verified in nested live sessions (AEH-3);
+     batch drafting (KIC-D9); fourth review of 187f029 and fifth of 765ae20, both changes-requested,
+     all findings fixed and tested (765ae20, 8e4696c, dfa7458). Final code commit 8e4696c/dfa7458 is NOT reviewed.
+     Operator side of the live run NOT repeated: the permission layer refused an agent session the operator key.
+  Mediation: directive recorded; five read-only source audits (OpenBot f8af37a, OpenDuet, OpenDots, OpenMuse,
+     Channels 0.12.0); D1-D7 written; independent review of the package recorded in docs/review/.
+     Nothing upstream was built or run. Nothing was imported. tenant-package/ and src/ untouched by the mediation.
+OPEN: OD-1..OD-19. C1, C3. Review requirement for KIC-01 not met (gate stop on REV-1).
+NEXT_ACTION: wait for the owner. Do NOT implement anything from the mediation: it is a proposal.
+  Permitted without a decision (D5): corrections to the documents; a read-only audit of OpenTag;
+  drafting the licence questions for CopilotKit; proposals in the instance template.
+  Most unblocking owner actions: OD-8/OD-15 (licence and edition), OD-1 with OD-7 (key and an environment
+  with Docker), OD-11 (review by someone outside these sessions).
+  To resume: read docs/harness/RESTART.md; run `npm ci && npm run check`; `node harness/scripts/aeh.mjs status`.
+REFERENCES: docs/architecture/mediation/KIC-ARCH-MED-01/README.md, docs/spec/directives/KIC-ARCH-MED-01-2026-11-13.md,
+  docs/gates/KIC-01-EVIDENCE.md, docs/review/, docs/decisions/OWNER_DECISIONS.md
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (autonomous session: KIC companion built, three review rounds)
 
 ```

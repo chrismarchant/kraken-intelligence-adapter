@@ -14,11 +14,15 @@ No gate has been accepted by the Human Owner. Evidence is presented; acceptance 
 
 Machine-readable gate map: `harness/config/gates.json`. Task ledger: `harness/state/tasks.json` (`node harness/scripts/aeh.mjs status`).
 
+## Architecture mediation KIC-ARCH-MED-01 (2026-11-13)
+
+Investigation and documents only, as the directive authorised. **Presented for owner review; nothing accepted, nothing implemented.** Package: `docs/architecture/mediation/KIC-ARCH-MED-01/` (D1–D7). Recommendation: OpenBot unmodified at a pinned release as the workspace; the KIC MCP server as the one boundary; OpenDuet (fork), OpenDots (standalone) and OpenMuse excluded as runtimes; skins as display only; channels later and narrowly; business actions with Kraken. Upstream sources were read, not run. Open decisions OD-12 to OD-19. Four points where the directive and the records differ are recorded in the package README and are not resolved.
+
 ## Conditions on the foundation decision (OD-1)
 
 | Condition | State |
 |---|---|
-| C1 Full OpenBot boots on a licensed Intelligence project | **Blocked.** No Intelligence project key; no pgvector or Docker daemon in the session environment. OD-7. |
+| C1 Full OpenBot boots on a licensed Intelligence project | **Blocked.** No Intelligence project key; no Docker daemon and no Postgres with the `vector` extension in the session environment. OD-7. |
 | C2 Mistral Large 4 through a shim, streaming, with tools | Demonstrated with OpenBot's model client and with the CopilotKit agent class. **Not demonstrated inside OpenBot.** |
 | C3 Licence confirmation from CopilotKit | **Open.** OD-8. |
 | C4 Human editorial approval enforced in code | Demonstrated in tests. Five independent reviews each found a new defect; all are fixed and tested; the last fixes are unreviewed. |
