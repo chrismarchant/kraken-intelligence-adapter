@@ -5,7 +5,7 @@ No gate has been accepted by the Human Owner. Evidence is presented; acceptance 
 | Gate | Status | Evidence |
 |---|---|---|
 | KIC-00 Foundation and feasibility | **Report presented. Awaiting owner approval.** | `docs/gates/KIC-00-REPORT.md` |
-| KIC-01 Runtime proof | **BLOCKED / NOT READY** at code commit `c83b0cb` (disposition of 2026-11-13 under the owner's final review closure instruction; see "Disposition of KIC-01"). **Not accepted.** Three reasons: the evaluator's rules against disguised text have no approving review (OD-21); 72 lines changed after the last approving verdict in three areas have no approving verdict bound to them; the runtime proof, C1 to C3, was never run. The approval path, the store, the gateway, spend control and the MCP tools are approved by independent review with those qualifications. C4 demonstrated in tests and independently reviewed. A gate stop is on KIC-01; no remediation without a new owner instruction. Implementation had been authorised for the 2026-11-13 session only (workstreams A–D). | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
+| KIC-01 Runtime proof | **BLOCKED / NOT READY** at code commit `c83b0cb` (disposition of 2026-11-13 under the owner's final review closure instruction; see "Disposition of KIC-01"). **Not accepted.** Three reasons: the evaluator's rules against disguised text have no approving review (OD-21); 72 lines changed after the last approving verdict in three areas have no approving verdict bound to them; the runtime proof, C1 to C3, was never run. The approval path, the store, the gateway, spend control and the MCP tools are approved by independent review with those qualifications. C4 demonstrated in tests and independently reviewed. A gate stop is on KIC-01; no remediation without a new owner instruction. Implementation had been authorised for the 2026-11-13 session only (workstreams A–D). **Reconciled on 2026-11-14 at `4dceeb0`: the second of the three reasons has since been met by review R2 (approved with findings, for the 72-line delta only), and the first now rests on review R1 (changes requested; V1 to V9 open). The disposition is unchanged. See "Current state at `4dceeb0`".** | `docs/gates/KIC-01-ACCEPTANCE-PACKAGE.md`, `docs/gates/KIC-01-EVIDENCE.md`, `docs/gates/KIC-01-ASSESSMENT.md`, `docs/spec/directives/KIC-01-SESSION-AUTHORISATION-2026-11-13.md`, `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` |
 | KIC-02 Model and skills integration | Not authorised as a gate. Parts were built under the session authorisation: gateway, skills, bounded execution. | `docs/gates/KIC-01-EVIDENCE.md` |
 | KIC-03 Comparative intelligence | Not authorised as a gate. Built under the session authorisation with the deterministic mock evaluator. | same |
 | KIC-04 Commercial campaign preparation | Not authorised as a gate. Demonstrated through API and command-line tests only. **No user interface.** | same |
@@ -13,6 +13,38 @@ No gate has been accepted by the Human Owner. Evidence is presented; acceptance 
 | KIC-06 Kraken integration | Deferred by directive; needs separate authorisation. | — |
 
 Machine-readable gate map: `harness/config/gates.json`. Task ledger: `harness/state/tasks.json` (`node harness/scripts/aeh.mjs status`).
+
+## Current state at `4dceeb0` (records reconciliation of 2026-11-14)
+
+Made under the owner authorisation KIC-HARNESS-REPAIR-01 of 2026-11-14, which covers harness infrastructure, model-routing verification and records reconciliation only. No product code has changed since `c83b0cb`. **Nothing in this section is acceptance of a gate.** The sections below this one are the record as it stood on 2026-11-13 and are kept as history; where one of them disagrees with this section, this section is current.
+
+| Item | Current state |
+|---|---|
+| Disposition of KIC-01 | **BLOCKED / NOT READY. Unchanged.** The gate stop is in force. Only the owner clears it |
+| R2 | Review `rev-2026-11-13-agent-r2-delta-c83b0cb` (reviewer 25), bound to `c83b0cb`, recorded in commit `2e86e1c`. Verdict **approve-with-followups** (approved with findings), for `git diff e30451c c83b0cb -- src/workflow src/gateway src/limits.ts` (72 lines) **only**. Report: `docs/review/2026-11-13-r2-delta-review-c83b0cb.md` |
+| R2's findings | Six, none blocking by the reviewer's rating: 1 (low) one decision can be locked out while a request for it waits; 2 (info) the audit line for a replaced request can describe it wrongly; 3 (info) test `r22-6` depends on timing; 4 (info) the expiry used for replacement comes from the agent process's clock; 5 (low) an MCP caller can fill all 25 waiting places; 6 (info) the operator channel is bounded per stretch of time, not over a campaign's life. Open follow-ups; the owner has not ruled on them |
+| R1 | Review `rev-2026-11-13-agent-r1-evaluator-contract-c83b0cb` (reviewer 26), bound to `c83b0cb`, recorded in commit `4dceeb0`. Verdict **changes-requested**, against the **proposed** contract `docs/spec/EVALUATOR-ACCEPTANCE-CONTRACT.md` (proposed in `f01734c` under OD-21; not accepted by the owner). Report: `docs/review/2026-11-13-r1-evaluator-contract-review-c83b0cb.md` |
+| Review check | On 2026-11-14 `aeh check-reviews --commit c83b0cbd0134eb224552b73e52a43b7111cde721 --gate KIC-01` **fails**: "review rev-2026-11-13-agent-r1-evaluator-contract-c83b0cb: verdict is changes-requested". The statement under "Disposition of KIC-01" that it prints ok was true when written, before R1 was recorded, and is superseded |
+| REV-1 stop | In force and untouched. Its recorded reason is **out of date in one respect**: it says the 72 lines changed after the last approving verdict have none bound to them, and R2 has since supplied one. What holds the task now is R1: the evaluator has a changes-requested review against the proposed contract, V1 to V9 are open, and the contract is not accepted. The stop and its reason in `harness/state/tasks.json` and `STOP_LOG.jsonl` were not edited; restating the reason is left to an owner instruction |
+| The three reasons for the disposition, as they now stand | R1 (the evaluator): open, now with a changes-requested review. R2 (the 72 lines): reviewed and approved with findings; the owner has not ruled. R3 (the runtime proof, C1 to C3): unchanged and open |
+| Proposals awaiting the owner | The OD-21 policy record and the evaluator acceptance contract (`f01734c`); the KIC-01A / KIC-01B gate split (`bc0b8c3`, `docs/gates/KIC-01-GATE-SPLIT-PROPOSAL.md`); the risk and internationalisation register (`docs/security/RISK-AND-INTERNATIONALISATION-REGISTER.md`). None is accepted |
+| Harness | Model-routing controls were added under KIC-HARNESS-REPAIR-01: `docs/harness/MODEL-ROUTING.md`. Not product; no gate is affected. The routing audit of the previous session is recorded, as reported and as verified, in `docs/harness/ROUTING-AUDIT-2026-11-13.md` |
+
+### Violations V1 to V9 of review R1: all outstanding
+
+| # | Contract clause | Severity as the reviewer gave it | Remediation named by the reviewer |
+|---|---|---|---|
+| V1 | EC-4.4 | medium; **blocking** | Code |
+| V2 | P8(a) | low | Code, or contract wording |
+| V3 | P3 | medium; **blocking until the contract wording is fixed** | Contract |
+| V4 | EC-5.1, 5.2, 5.3 | medium; **blocking**, "because this is the owner's behaviour 4" | Code strings |
+| V5 | EC-2.4, second sentence | low | Code, or limit the sentence to the four control points |
+| V6 | EC-2 "if and only if"; EC-3 "only these" | low; a defect of the contract | Contract |
+| V7 | EC-7.3 | low; not blocking | Keep only the absolute bound, or cap a repetition in the code |
+| V8 | EC-2.2; section 3 | low | Code |
+| V9 | Statements of fact in the contract | low | Contract |
+
+No remediation has been undertaken and none is authorised. V1 and V4 are changes to code and are blocked by the gate stop. The findings themselves are in the report; this table is an index to it.
 
 ## Owner direction of 2026-11-13 (after the mediation)
 
@@ -149,7 +181,7 @@ Remediated in `e30451c517bae16982ad75599d3f62cc4534ff13`: every character a draf
 | R2 | 72 lines outside the evaluator changed after the last review with an approving verdict (`e30451c`): `requestDecision` (53), the gateway's charge for a failed request (13), a comment (6). Reviewers 22 and 23 examined them and stated that the approvals stand, but the verdict each recorded is changes-requested, for the evaluator | One delta review of `git diff e30451c c83b0cb -- src/workflow src/gateway src/limits.ts` with its own verdict; or an owner ruling that the recorded statements suffice |
 | R3 | The runtime proof was never run: C1 not met, C2 not met as defined, C3 not met | An Intelligence key, an environment, an identity provider, the licence answer and a way to attach the MCP server (OD-7, OD-8, OD-15, OD-20) |
 
-`aeh check-reviews --commit c83b0cb… --gate KIC-01` prints **ok**, because an approving review is now bound to that commit and no blocking one is. **That is the ledger's rule and nothing more**: the check does not measure coverage and does not carry the open findings of `e30451c` forward. The gate stop on KIC-01 is what makes the harness refuse work under the gate's paths.
+**Superseded on 2026-11-14: the check now fails, because review R1 (changes requested) is bound to the commit; see "Current state at `4dceeb0`". As recorded on 2026-11-13:** `aeh check-reviews --commit c83b0cb… --gate KIC-01` prints **ok**, because an approving review is now bound to that commit and no blocking one is. **That is the ledger's rule and nothing more**: the check does not measure coverage and does not carry the open findings of `e30451c` forward. The gate stop on KIC-01 is what makes the harness refuse work under the gate's paths.
 
 ### Evidence against `c83b0cb`
 

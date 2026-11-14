@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { formatDuration } from './duration.mjs';
+
+test('formats whole units, largest first, omitting zero units', () => {
+  assert.equal(formatDuration(0), '0s');
+  assert.equal(formatDuration(999), '0s');
+  assert.equal(formatDuration(1000), '1s');
+  assert.equal(formatDuration(61000), '1m 1s');
+  assert.equal(formatDuration(3600000), '1h');
+  assert.equal(formatDuration(3723000), '1h 2m 3s');
+  assert.equal(formatDuration(90061000), '1d 1h 1m 1s');
+  assert.equal(formatDuration(86400000 * 3 + 5000), '3d 5s');
+});
+
+test('rejects what is not a non-negative finite number', () => {
+  for (const bad of [-1, NaN, Infinity, '1000', null, undefined, {}]) {
+    assert.throws(() => formatDuration(bad), TypeError);
+  }
+});
