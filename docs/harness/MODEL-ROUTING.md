@@ -107,5 +107,6 @@ Not proven live: the secondary routes. `zai-glm-5-3` and `deepseek-v4-1-flash-10
 ## 7. Known rough edges
 
 - An "allow" in the ledger is the hook's decision, not proof that an agent ran: the tool or the session's permission classifier can still refuse the launch. `agent-start` is the proof.
+- The platform runs agents of its own that stop without a launch or a start passing through the hook; one did so after the first handback and its stop was written to the tracked ledger, which left the work tree dirty for the stop hook. Since then a stop for an agent the harness never saw start is noted only under `harness/state/runtime/` (git-ignored). A launch, start or stop the harness does govern is still a tracked record, so a session that launches a sub-agent after its last commit has one more line to commit.
 - The orchestrator wrote these controls itself. No delegation route existed until they did, and the proof budget was three calls. From here on, changes to product code are expected to come through the runner.
 - `CLAUDE.md` does not mention this policy: it is outside the paths this authorisation covers (OD-23). A new session meets the policy in `aeh status`, in `docs/harness/RESTART.md`, and in the hook's refusals.

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { write, aeh } from './helpers.mjs';
+import { write, aeh, sh } from './helpers.mjs';
 import { mkRoutingRepo, hook, launch, ledger, POLICY } from './routing-helpers.mjs';
 
 const transcript = (root, model) => {
@@ -151,10 +151,25 @@ test('a sub-agent the provider served with a model nobody allowed is reported', 
 
 test('SubagentStop without a readable transcript says telemetry is not available', () => {
   const root = mkRoutingRepo();
+  launch(root, { subagent_type: 'general-purpose', model: 'haiku' });
+  hook(root, { hook_event_name: 'SubagentStart', agent_id: 'a1', agent_type: 'general-purpose' });
   hook(root, { hook_event_name: 'SubagentStop', agent_id: 'a1', agent_transcript_path: '/nonexistent/t.jsonl' });
   const stop = ledger(root).find((e) => e.kind === 'agent-stop');
   assert.equal(stop.telemetry, null);
   assert.equal(stop.telemetryNote, 'not available');
+});
+
+test('a stop for an agent this harness never saw start writes nothing to a tracked file', () => {
+  const root = mkRoutingRepo();
+  for (const extra of [{ agent_id: 'platform-internal' }, { agent_id: 'x', agent_type: 'summary', agent_transcript_path: transcript(root, 'claude-fable-5-2') }, {}]) {
+    const r = hook(root, { hook_event_name: 'SubagentStop', ...extra });
+    assert.deepEqual([r.code, r.out], [0, '']);
+  }
+  fs.rmSync(path.join(root, 'transcript.jsonl'));
+  assert.equal(ledger(root).length, 0);
+  assert.equal(sh(root, 'git', ['status', '--porcelain']), '', 'the work tree stays clean');
+  const notes = fs.readFileSync(path.join(root, 'harness/state/runtime/notes.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(notes.map((n) => n.kind), ['unmatched-agent-stop', 'unmatched-agent-stop', 'unmatched-agent-stop']);
 });
 
 test('PostToolUse records the resolved model and tokens, and reports a different family', () => {

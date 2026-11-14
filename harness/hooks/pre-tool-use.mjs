@@ -128,6 +128,14 @@ async function routing() {
 
   if (event === 'SubagentStop') {
     R.markStopped(root, session, input.agent_id);
+    // The platform also runs agents of its own (summaries and the like) that stop without ever
+    // passing a launch or a start through this hook. They are none of the ledger's business, and
+    // a write to a tracked file after a turn has ended leaves the tree dirty for the stop hook.
+    // They are noted under harness/state/runtime, which git ignores.
+    if (!input.agent_id || !R.readLedger(root).some((e) => e.kind === 'agent-start' && e.agentId === input.agent_id)) {
+      try { R.noteRuntime(root, { kind: 'unmatched-agent-stop', agentId: input.agent_id || null, agentType: input.agent_type || null }); } catch { /* a note, nothing more */ }
+      return;
+    }
     const telemetry = R.transcriptUsage(input.agent_transcript_path);
     let mismatch = null;
     if (telemetry) {

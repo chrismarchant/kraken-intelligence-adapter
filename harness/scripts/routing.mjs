@@ -35,6 +35,11 @@ export function appendLedger(root, entry) {
   fs.appendFileSync(p, JSON.stringify(line) + '\n');
   return line;
 }
+// Notes that must not dirty the work tree: kept under harness/state/runtime, which git ignores.
+export function noteRuntime(root, entry) {
+  fs.mkdirSync(RP.runtime(root), { recursive: true });
+  fs.appendFileSync(path.join(RP.runtime(root), 'notes.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n');
+}
 export function readLedger(root) {
   const p = RP.ledger(root);
   if (!fs.existsSync(p)) return [];

@@ -20,6 +20,7 @@ export function mkRoutingRepo({ policy = POLICY, agents = {}, gates = [gate('G1'
   for (const [name, model] of Object.entries(agents)) {
     write(root, `.claude/agents/${name}.md`, `---\nname: ${name}\ndescription: test agent\n${model === null ? '' : `model: ${model}\n`}tools: Read\n---\n\nBody.\n`);
   }
+  write(root, 'harness/state/runtime/.gitignore', '*\n!.gitignore\n');
   if (gitInit) { sh(root, 'git', ['add', '-A']); sh(root, 'git', ['commit', '-q', '-m', 'base']); }
   return root;
 }
