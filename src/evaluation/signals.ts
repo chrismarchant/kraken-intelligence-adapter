@@ -9,6 +9,7 @@ import type {
 import type { Limits } from "../limits.ts";
 import { canonicalText, settledCanonicalText, truncate } from "../util/runtime.ts";
 import { characterProblems, named } from "./characters.ts";
+import { quoted } from "./quote.ts";
 import { hashtagFinder, termFinder } from "./terms.ts";
 
 const STOPWORDS = new Set(
@@ -122,14 +123,23 @@ const NOT_A_FIGURE = [
 const YEAR_SPAN = /\b((?:from|between|during|since)\s+)((?:19|20)\d{2})(\s*(?:-|\u2013|to|and)\s*)((?:19|20)\d{2})\b(?=\s*(?:[.,;:!?)]|$|\n)|\s+(?:and|or|we|the|it|this|that|our|when|was|were|is|has|had|will|there)\b)/gi;
 
 /** The numbers written in digits in a text, without clock times and everyday terms, as plain digit strings. */
-function numbersIn(text: string, options: { everydayTerms: boolean } = { everydayTerms: true }): string[] {
+function numbersAsWritten(text: string, options: { everydayTerms: boolean } = { everydayTerms: true }): Map<string, string> {
   let scanned = text.replace(CLOCK_TIME, " ");
   if (options.everydayTerms) {
     scanned = scanned.replace(YEAR_SPAN, (whole, _lead, first: string, _join, second: string) => (Number(second) > Number(first) ? " " : whole));
     for (const pattern of NOT_A_FIGURE) scanned = scanned.replace(pattern, " ");
   }
   const found = scanned.match(NUMBER) ?? [];
-  return [...new Set(found.map((n) => n.replace(/,/g, "").replace(/\.$/, "")))];
+  const written = new Map<string, string>();
+  for (const raw of found) {
+    const plain = raw.replace(/,/g, "").replace(/\.$/, "");
+    if (!written.has(plain)) written.set(plain, raw);
+  }
+  return written;
+}
+
+function numbersIn(text: string, options: { everydayTerms: boolean } = { everydayTerms: true }): string[] {
+  return [...numbersAsWritten(text, options).keys()];
 }
 
 function hasNumber(text: string, number: string): boolean {
@@ -206,11 +216,11 @@ export function analyseDraft(
   const supported = checkable.filter((c) => c.evidenceRef !== null && references.has(c.evidenceRef));
   for (const claim of checkable) {
     if (claim.evidenceRef === null) {
-      failures.push({ rule: "unsupported-claim", detail: `No reference cited for: "${claim.text.slice(0, 200)}"` });
+      failures.push({ rule: "unsupported-claim", detail: `No reference cited for: ${quoted(claim.text, 200)}` });
     } else if (!references.has(claim.evidenceRef)) {
       failures.push({
         rule: "unknown-evidence-reference",
-        detail: `Reference "${claim.evidenceRef}" is not in the brief (claim: "${claim.text.slice(0, 160)}")`,
+        detail: `Reference ${quoted(claim.evidenceRef, 80)} is not in the brief (claim: ${quoted(claim.text, 160)})`,
       });
     }
   }
@@ -220,6 +230,9 @@ export function analyseDraft(
   const published = `${body}\n${hashtags.join(" ")}`;
   // Everyday terms ("B2B", "in 2026") are not figures in running text. Inside a hashtag every digit counts.
   const figures = [...new Set([...numbersIn(body), ...numbersIn(hashtags.join(" "), { everydayTerms: false })])];
+  // How each figure is first written in the published text: the hashtags, overridden by the body.
+  const written = new Map<string, string>(numbersAsWritten(hashtags.join(" "), { everydayTerms: false }));
+  for (const [plain, raw] of numbersAsWritten(body)) written.set(plain, raw);
   const citing = draft.claims.filter((c) => c.evidenceRef !== null && references.has(c.evidenceRef));
   const unlisted = figures.filter(
     (figure) => !citing.some((c) => hasNumber(canonicalText(c.text), figure) && hasNumber(references.get(c.evidenceRef as string) as string, figure)),
@@ -227,21 +240,27 @@ export function analyseDraft(
   for (const figure of unlisted) {
     failures.push({
       rule: "unlisted-statistic",
-      detail: `The figure "${figure}" is not backed by a claim that cites a brief reference containing it`,
+      detail: `The figure ${quoted(written.get(figure) ?? figure, 40)} is not backed by a claim that cites a brief reference containing it`,
     });
   }
   const otherNumerals = [...new Set(published.match(OTHER_NUMERAL) ?? [])];
   for (const numeral of otherNumerals) {
     failures.push({
       rule: "unlisted-statistic",
-      detail: `The figure "${numeral.slice(0, 40)}" is not written in the digits 0 to 9; state figures in digits exactly as the cited reference does`,
+      detail: `The figure ${quoted(numeral, 40)} is not written in the digits 0 to 9; state figures in digits exactly as the cited reference does`,
     });
   }
-  const spelled = [...new Set((published.match(SPELLED_QUANTITY) ?? []).map((m) => m.trim().toLowerCase()))];
+  const spelledForms = new Map<string, string>();
+  for (const match of published.match(SPELLED_QUANTITY) ?? []) {
+    const writtenForm = match.trim();
+    const key = writtenForm.toLowerCase();
+    if (!spelledForms.has(key)) spelledForms.set(key, writtenForm);
+  }
+  const spelled = [...spelledForms.values()];
   for (const quantity of spelled) {
     failures.push({
       rule: "unlisted-statistic",
-      detail: `The quantity "${quantity}" is written in words; state figures in digits exactly as the cited reference does`,
+      detail: `The quantity ${quoted(quantity, 80)} is written in words; state figures in digits exactly as the cited reference does`,
     });
   }
   const ungrounded = unlisted.length + spelled.length + otherNumerals.length;
@@ -252,10 +271,10 @@ export function analyseDraft(
       `${supported.length} of ${checkable.length} checkable claims cite a brief reference; ` +
       `${figures.length + spelled.length + otherNumerals.length} figures in the post, ${ungrounded} not backed by a cited reference`,
     evidence: [
-      ...supported.map((c) => `${c.evidenceRef}: ${c.text.slice(0, 120)}`),
-      ...unlisted.map((f) => `unsupported figure: ${f}`),
-      ...spelled.map((q) => `figure in words: ${q}`),
-      ...otherNumerals.map((n) => `figure in other numerals: ${n.slice(0, 40)}`),
+      ...supported.map((c) => `${c.evidenceRef}: ${quoted(c.text, 120)}`),
+      ...unlisted.map((f) => `unsupported figure: ${quoted(written.get(f) ?? f, 40)}`),
+      ...spelled.map((q) => `figure in words: ${quoted(q, 80)}`),
+      ...otherNumerals.map((n) => `figure in other numerals: ${quoted(n, 40)}`),
     ].slice(0, 12),
   });
 
@@ -269,7 +288,7 @@ export function analyseDraft(
   signals.push({
     criterion: "hook",
     observation: `Opening line is ${firstLine.length} characters; specific: ${specific}; addresses the reader: ${addressesReader}`,
-    evidence: firstLine ? [firstLine.slice(0, 200)] : [],
+    evidence: firstLine ? [quoted(firstLine, 160)] : [],
   });
 
   // Call to action.
@@ -284,7 +303,7 @@ export function analyseDraft(
   signals.push({
     criterion: "call_to_action",
     observation: `Call to action in the post: ${inBody}; at the close: ${atClose}; matches the plan for the slot: ${matchesPlan}`,
-    evidence: cta ? [cta.slice(0, 200)] : [],
+    evidence: cta ? [quoted(cta, 160)] : [],
   });
 
   // Mandatory constraints that do not depend on any score.

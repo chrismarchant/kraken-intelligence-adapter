@@ -65,6 +65,17 @@ const VARIATION = "\uFE0F";
 export const isAllowedLetter = (character: string): boolean => LETTER.test(character);
 export const isPicture = (character: string): boolean => PICTURE.has(character);
 
+/** Whether a draft may contain this character, given the character before it. The same rule characterProblems applies. */
+export function allowedInDraft(character: string, previous?: string): boolean {
+  if (character === " " || character === "\n" || character === "\t") return true;
+  if (LETTER.test(character)) return true;
+  if (/[0-9]/.test(character)) return true;
+  if (PICTURE.has(character)) return true;
+  if (character === VARIATION && previous !== undefined && PICTURE.has(previous)) return true;
+  if (KEYBOARD_MARK.test(character)) return true;
+  return TYPOGRAPHIC.has(character);
+}
+
 export interface CharacterProblems {
   /** Characters a draft may not contain, each once, in order of first appearance. */
   outside: string[];
