@@ -20,3 +20,4 @@
 {"at":"2026-11-14T20:03:55.040Z","kind":"agent-result","toolUseId":"toolu_01C65vLotTENwdrDHwx4MGAA","agentId":"a5fc82531c59fab0c","status":"async_launched","requestedModel":"haiku","resolvedModel":"claude-haiku-5-5"}
 {"at":"2026-11-14T20:03:55.041Z","kind":"agent-start","agentId":"a5fc82531c59fab0c","agentType":"continuity-guardian"}
 {"at":"2026-11-14T20:04:58.406Z","kind":"agent-stop","agentId":"a5fc82531c59fab0c","agentType":"continuity-guardian","telemetry":{"providerModels":["claude-haiku-5-5"],"turns":9,"usage":{"input":18,"output":12817,"cacheWrite":50761,"cacheRead":254691}}}
+{"at":"2026-11-20T00:36:10.716Z","kind":"escalation","model":"opus","uses":2,"ownerReference":"docs/spec/directives/KIC-01-V4-V1-REMEDIATION-AUTHORISATION-2026-11-20.md, answer 3","reason":"One independent review of the V4 and V1 remediation and one re-review if it requests changes","by":"orchestrator, on the owner's answer"}

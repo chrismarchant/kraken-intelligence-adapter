@@ -16,7 +16,7 @@
     {
       "id": "KIC-01",
       "title": "Runtime proof",
-      "status": "blocked",
+      "status": "authorised",
       "paths": [
         "src/**",
         "tests/**",
@@ -27,12 +27,7 @@
         "package-lock.json",
         "tsconfig.json"
       ],
-      "reviewRequired": true,
-      "stop": {
-        "reason": "BLOCKED / NOT READY at code commit c83b0cb; presented to the owner for a decision on 2026-11-13. Reasons R1 to R3 in GATE_STATE.md, Disposition of KIC-01. Clearing this stop is the owner's.",
-        "since": "2026-11-13",
-        "previousStatus": "authorised"
-      }
+      "reviewRequired": true
     },
     {
       "id": "AEH",

@@ -323,6 +323,28 @@
         "Records reconciliation: harness/state/GATE_STATE.md, Current state at 4dceeb0; verified read-only by the continuity-guardian (haiku), no discrepancy",
         "Open for the owner: OD-22, OD-23, OD-24"
       ]
+    },
+    {
+      "id": "KIC-R1-V4",
+      "title": "R1 V4: say what screening is and is not in every evaluation, the operator display and the skills catalogue (EC-5.1 to 5.3)",
+      "gate": "KIC-01",
+      "owner": "delegate: mistral-large-4-0, through harness/scripts/delegate.mjs",
+      "deps": [],
+      "status": "todo",
+      "evidence": [
+        "Authorised: docs/spec/directives/KIC-01-V4-V1-REMEDIATION-AUTHORISATION-2026-11-20.md"
+      ]
+    },
+    {
+      "id": "KIC-R1-V1",
+      "title": "R1 V1: findings quote the draft exactly, cut by whole characters, and name characters outside the allowed list by code point (EC-4.4)",
+      "gate": "KIC-01",
+      "owner": "delegate: mistral-large-4-0, through harness/scripts/delegate.mjs",
+      "deps": [],
+      "status": "todo",
+      "evidence": [
+        "Authorised: docs/spec/directives/KIC-01-V4-V1-REMEDIATION-AUTHORISATION-2026-11-20.md"
+      ]
     }
   ]
 }
