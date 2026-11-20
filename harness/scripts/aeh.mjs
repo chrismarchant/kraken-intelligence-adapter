@@ -8,6 +8,7 @@ import {
   globalStop, analyse, loadTasks, loadGates, logStop, GATE_OK,
 } from './lib.mjs';
 import { scanLine } from './secret-scan.mjs';
+import { loadPolicy, readLedger, appendLedger, summarise, checkCommits, reviewRounds, family, RP } from './routing.mjs';
 
 const { positional, flags } = parseArgs(process.argv.slice(2));
 const root = rootOf(flags);
@@ -59,7 +60,24 @@ function cmdStatus() {
     'Gates:', ...gdoc.gates.map((g) => `  ${g.id.padEnd(8)} ${g.status}${g.reviewRequired ? ' (review required)' : ''}${g.stop ? ` [stop: ${g.stop.reason}]` : ''}`),
     `Tasks: ${Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ')}`,
     'Stops:', ...(stops.length ? stops.map((s) => `  ${s.task} (${s.level}): ${s.reason}`) : ['  none']),
+    ...routingStatusLines(),
   ]);
+}
+
+// One paragraph of model policy in `status`, so a new session meets it before it launches anything.
+function routingStatusLines() {
+  if (!fs.existsSync(RP.policy(root))) return [];
+  try {
+    const p = loadPolicy(root);
+    const v = summarise(readLedger(root)).violations;
+    return [
+      'Model routing (docs/harness/MODEL-ROUTING.md):',
+      `  sub-agents: name a model on every launch; allowed ${p.subagents.allowed.join(', ')}; ${p.subagents.escalation.join(', ')} only with an owner escalation; at most ${p.subagents.maxConcurrent} at once`,
+      `  coding: node harness/scripts/delegate.mjs, primary ${p.delegation.primary}; secondary ${p.delegation.secondary.join(', ')} with --reason; ${p.delegation.maxRetries} retries a task`,
+      `  reviews: ${p.reviews.maxRoundsPerArea} rounds an area without an owner escalation`,
+      `  recorded violations: ${v.filter((x) => !x.refused).length} occurred, ${v.filter((x) => x.refused).length} refused (aeh routing report)`,
+    ];
+  } catch (e) { return [`Model routing: POLICY UNREADABLE (${e.message}); sub-agent launches are denied by the hook`]; }
 }
 
 function computeNext() {
@@ -377,8 +395,10 @@ function cmdReviewAdd() {
       scope: String(flags.scope || '').split(',').filter(Boolean),
       skipped: list(flags.skipped).map((s) => { const [p, ...r] = String(s).split(':'); return { path: p, reason: r.join(':') }; }),
       verdict: flags.verdict, findings, reportPath: flags.report,
+      ...(str(flags.area) ? { area: str(flags.area) } : {}),
     };
   }
+  if (str(flags['owner-escalation'])) entry.ownerEscalation = str(flags['owner-escalation']);
   entry.at = entry.at || now();
   if (typeof entry.commit === 'string') entry.commit = entry.commit.toLowerCase();
   if (!FULL_SHA.test(entry.commit || '')) return fail('commit must be a full 40-character lowercase hex SHA');
@@ -387,9 +407,77 @@ function cmdReviewAdd() {
   if (!fs.existsSync(path.join(root, entry.reportPath))) return fail(`report file does not exist: ${entry.reportPath}`);
   const doc = fs.existsSync(P.reviews(root)) ? readJson(P.reviews(root)) : { reviews: [] };
   if (doc.reviews.some((r) => r.id === entry.id)) return fail(`review id ${entry.id} already exists`);
+  // Review rounds are bounded per gate and area once a model policy exists. An extra round needs
+  // an owner escalation reference: a recorded attestation, like the reference that clears a global stop.
+  if (fs.existsSync(RP.policy(root))) {
+    const max = loadPolicy(root).reviews.maxRoundsPerArea;
+    if (!str(entry.area)) return fail('a review entry needs an area (--area <slug>, or "area" in the entry): rounds are counted per gate and area');
+    const rounds = reviewRounds(doc.reviews, entry.gate, entry.area);
+    if (rounds >= max && !str(entry.ownerEscalation)) {
+      return fail(`gate ${entry.gate}, area ${entry.area} already has ${rounds} review round(s); the limit is ${max} (one review and one re-review). A further round needs --owner-escalation <where the owner authorised it>.`);
+    }
+  }
   doc.reviews.push(entry);
   writeJson(P.reviews(root), doc);
   emit({ ok: true, id: entry.id }, [`review ${entry.id} recorded for ${entry.commit} (verdict ${entry.verdict}); append-only, commit this file`]);
+}
+
+// Rounds left for an area, to be asked BEFORE a review is commissioned.
+function cmdReviewRounds() {
+  const gate = str(flags.gate), area = str(flags.area);
+  if (!gate || !area) return fail('usage: review rounds --gate <id> --area <slug>');
+  const max = loadPolicy(root).reviews.maxRoundsPerArea;
+  const doc = fs.existsSync(P.reviews(root)) ? readJson(P.reviews(root)) : { reviews: [] };
+  const used = reviewRounds(doc.reviews, gate, area);
+  const left = Math.max(0, max - used);
+  if (!left) exit = 1;
+  emit({ ok: left > 0, gate, area, used, max, left }, [`review rounds for ${gate} / ${area}: ${used} used of ${max}${left ? '' : ' - a further round needs an owner escalation reference'}`]);
+}
+
+// ---------------------------------------------------------------- model routing
+function cmdRouting(sub) {
+  const policy = loadPolicy(root);
+  const ledger = readLedger(root);
+  if (sub === 'report') {
+    const s = summarise(ledger);
+    const rows = (m) => Object.entries(m).map(([k, t]) => `  ${k}: ${t.calls} call(s), prompt ${t.promptTokens}, output ${t.outputTokens}${t.reasoningTokens ? ` (reasoning ${t.reasoningTokens})` : ''}`);
+    return emit({ ok: true, ...s }, [
+      'Usage by provider-reported model:', ...(rows(s.byModel).length ? rows(s.byModel) : ['  none recorded']),
+      'Delegation by task:', ...(rows(s.byTask).length ? rows(s.byTask) : ['  none recorded']),
+      `Sub-agent launches: ${s.agents.launchesAllowed} allowed, ${s.agents.launchesDenied} denied`,
+      'Violations:', ...(s.violations.length ? s.violations.map((v) => `  ${v.at || '?'} ${v.rule} [${v.refused ? 'refused' : 'OCCURRED'}] ${v.detail}`) : ['  none']),
+    ]);
+  }
+  if (sub === 'check') {
+    if (guardStop()) return;
+    const problems = [];
+    const occurred = summarise(ledger).violations.filter((v) => !v.refused);
+    const since = str(flags.since);
+    for (const v of occurred) if (!since || !v.at || v.at >= since) problems.push(`${v.rule}: ${v.detail}`);
+    let checked = 0;
+    if (str(flags.base)) {
+      const c = checkCommits(root, policy, ledger, str(flags.base), str(flags.head) || 'HEAD');
+      checked = c.checked;
+      problems.push(...c.problems);
+    }
+    if (problems.length) {
+      exit = 1;
+      return emit({ ok: false, problems, commitsChecked: checked }, ['FAIL: model-routing check', ...problems.map((p) => `  ${p}`)]);
+    }
+    return emit({ ok: true, commitsChecked: checked }, [`routing check: ok (${checked} commit(s) checked${str(flags.base) ? '' : '; pass --base <ref> to check commits'})`]);
+  }
+  if (sub === 'escalate') {
+    const model = family(str(flags.model) || '');
+    const ref = str(flags['owner-reference']);
+    const reason = str(flags.reason);
+    if (!policy.subagents.escalation.includes(model)) return fail(`--model must be one of: ${policy.subagents.escalation.join(', ')}`);
+    // A recorded attestation, NOT authentication: the script cannot verify who typed this.
+    if (!ref || !reason) return fail('--owner-reference <where the owner authorised it> and --reason are required');
+    const uses = Number.parseInt(flags.uses, 10) || 1;
+    const e = appendLedger(root, { kind: 'escalation', model, uses, ownerReference: ref, reason, by: str(flags.by) || process.env.USER || 'unknown' });
+    return emit({ ok: true, ...e }, [`escalation recorded: ${uses} launch(es) of ${model}`]);
+  }
+  fail('usage: routing <report|check [--base ref] [--since iso-time]|escalate --model m --owner-reference ref --reason "..." [--uses n]>');
 }
 
 // ---------------------------------------------------------------- readiness
@@ -466,11 +554,12 @@ try {
     case 'check-gates': cmdCheckGates(); break;
     case 'check-records': cmdCheckRecords(); break;
     case 'check-reviews': cmdCheckReviews(); break;
-    case 'review': if (sub === 'add') cmdReviewAdd(); else fail('usage: review add ...'); break;
+    case 'review': if (sub === 'add') cmdReviewAdd(); else if (sub === 'rounds') cmdReviewRounds(); else fail('usage: review add ... | review rounds --gate <id> --area <slug>'); break;
+    case 'routing': cmdRouting(sub); break;
     case 'readiness': cmdReadiness(); break;
     case 'checkpoint': cmdCheckpoint(); break;
     default:
-      console.error('usage: aeh <status|next|stop|clear|check-gates|check-records|check-reviews|review add|readiness|checkpoint> [--root dir] [--json]');
+      console.error('usage: aeh <status|next|stop|clear|check-gates|check-records|check-reviews|review add|review rounds|routing report|routing check|routing escalate|readiness|checkpoint> [--root dir] [--json]');
       exit = 64;
   }
 } catch (e) {

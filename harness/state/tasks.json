@@ -168,7 +168,11 @@
         "Commit presented: c83b0cbd0134eb224552b73e52a43b7111cde721; CI run 58 (43475174844) success; npm run check: 289 product, 83 harness tests; secret scan clean",
         "Regression review of the term matching at c83b0cb against e30451c (agent 24): approve-with-followups, for that question only; docs/review/2026-11-13-regression-review-c83b0cb.md; docs/gates/evidence/review-24-c83b0cb/",
         "aeh check-reviews --commit c83b0cbd0134eb224552b73e52a43b7111cde721 --gate KIC-01: ok by the ledger's rule; coverage is NOT complete (GATE_STATE, Disposition of KIC-01, R1 and R2)",
-        "Disposition 2026-11-13 under the owner's final review closure instruction: KIC-01 BLOCKED / NOT READY. No remediation without a new owner instruction"
+        "Disposition 2026-11-13 under the owner's final review closure instruction: KIC-01 BLOCKED / NOT READY. No remediation without a new owner instruction",
+        "2026-11-13 (commit 2e86e1c): R2, delta review of the 72 lines at c83b0cb (agent 25): approve-with-followups, for the delta only; docs/review/2026-11-13-r2-delta-review-c83b0cb.md",
+        "2026-11-13 (commit 4dceeb0): R1, review of the evaluator at c83b0cb against the proposed contract (agent 26): changes-requested; V1 to V9 open; docs/review/2026-11-13-r1-evaluator-contract-review-c83b0cb.md",
+        "2026-11-14: aeh check-reviews --commit c83b0cbd0134eb224552b73e52a43b7111cde721 --gate KIC-01 FAILS (R1's verdict is changes-requested). The earlier entry saying ok is superseded",
+        "2026-11-14 (records reconciliation under KIC-HARNESS-REPAIR-01): the stop reason below is out of date in one respect (R2 now covers the 72 lines); the stop was not edited or cleared; GATE_STATE.md, Current state at 4dceeb0"
       ],
       "stop": {
         "level": "local",
@@ -302,6 +306,44 @@
         "tests/kic/bounds.test.ts (24-post programme in batches; shrinking batch; refusal with no room)",
         "tests/kic/mcp.test.ts (slotsWithoutDrafts)",
         "Not run live at 24 posts"
+      ]
+    },
+    {
+      "id": "AEH-ROUTING-1",
+      "title": "Model-routing controls, Mistral execution proof and records reconciliation (owner authorisation KIC-HARNESS-REPAIR-01)",
+      "gate": "AEH",
+      "owner": "orchestrator",
+      "deps": [],
+      "status": "done",
+      "evidence": [
+        "docs/harness/MODEL-ROUTING.md (policy, what backs each rule, router assessment, proof, platform limits)",
+        "harness/config/model-policy.json; harness/scripts/routing.mjs; harness/scripts/delegate.mjs; harness/hooks/pre-tool-use.mjs; .claude/settings.json",
+        "harness/tests/routing-hook.test.mjs, routing-delegate.test.mjs, routing-records.test.mjs: 38 new tests; npm run check on 2026-11-14: 289 product, 121 harness, exit 0",
+        "Proof: receipts dlg-20261114195847-1fdaf7 (P1) and dlg-20261114195902-51694d (P3) in harness/state/model-usage.jsonl; docs/harness/evidence/KIC-HARNESS-REPAIR-01/; 2 calls, 500 output tokens of the 3 calls and 15,000 authorised",
+        "Records reconciliation: harness/state/GATE_STATE.md, Current state at 4dceeb0; verified read-only by the continuity-guardian (haiku), no discrepancy",
+        "Open for the owner: OD-22, OD-23, OD-24"
+      ]
+    },
+    {
+      "id": "KIC-R1-V4",
+      "title": "R1 V4: say what screening is and is not in every evaluation, the operator display and the skills catalogue (EC-5.1 to 5.3)",
+      "gate": "KIC-01",
+      "owner": "delegate: mistral-large-4-0, through harness/scripts/delegate.mjs",
+      "deps": [],
+      "status": "todo",
+      "evidence": [
+        "Authorised: docs/spec/directives/KIC-01-V4-V1-REMEDIATION-AUTHORISATION-2026-11-20.md"
+      ]
+    },
+    {
+      "id": "KIC-R1-V1",
+      "title": "R1 V1: findings quote the draft exactly, cut by whole characters, and name characters outside the allowed list by code point (EC-4.4)",
+      "gate": "KIC-01",
+      "owner": "delegate: mistral-large-4-0, through harness/scripts/delegate.mjs",
+      "deps": [],
+      "status": "todo",
+      "evidence": [
+        "Authorised: docs/spec/directives/KIC-01-V4-V1-REMEDIATION-AUTHORISATION-2026-11-20.md"
       ]
     }
   ]

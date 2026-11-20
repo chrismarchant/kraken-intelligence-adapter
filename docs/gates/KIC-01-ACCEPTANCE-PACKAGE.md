@@ -1,5 +1,7 @@
 # KIC-01 — acceptance package
 
+> **Addendum, 2026-11-14 (records reconciliation; the package is otherwise unchanged and is still the fourth version).** After this package was issued, two reviews bound to `c83b0cb` were recorded. R2 (`rev-2026-11-13-agent-r2-delta-c83b0cb`, recorded in `2e86e1c`) approved the 72-line delta with findings, for that delta only. R1 (`rev-2026-11-13-agent-r1-evaluator-contract-c83b0cb`, recorded in `4dceeb0`) requested changes to the evaluator against the proposed acceptance contract; its violations V1 to V9 are open. The gate status is unchanged: BLOCKED / NOT READY. Statements below that the 72 lines have no approving verdict, and that the review check passes, describe the state on 2026-11-13; the current state is in `harness/state/GATE_STATE.md`, "Current state at `4dceeb0`".
+
 Prepared on 2026-11-13 for the Human Owner, under `docs/spec/directives/KIC-01-GATE-CLOSURE-INSTRUCTION-2026-11-13.md` and `docs/spec/directives/KIC-01-FINAL-REVIEW-CLOSURE-INSTRUCTION-2026-11-13.md`.
 
 **Fourth version. Code assessed: `c83b0cbd0134eb224552b73e52a43b7111cde721`. Gate status: BLOCKED / NOT READY. The gate is not accepted; accepting it, in whole or in part, is the owner's decision, and silence is not acceptance.** Nothing was merged, deployed or provisioned. OpenBot was not started. No licence question was sent to anyone. No real signing key exists. No remediation was undertaken after `c83b0cb`, and none will be without a new owner instruction.

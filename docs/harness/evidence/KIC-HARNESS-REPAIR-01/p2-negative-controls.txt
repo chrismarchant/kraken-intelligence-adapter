@@ -1,0 +1,15 @@
+# P2 negative controls on the command line, network unreachable (proxy pointed at a closed port)
+delegate.mjs --ping --task P2-opus --budget KIC-HARNESS-REPAIR-01-PROOF --model claude-opus-5-5
+  exit=3 outcome=model-not-permitted networkCall=false reason=model "claude-opus-5-5" is not a permitted delegate (primary mistral-large-4-0; secondary zai-glm-5-3, deepseek-v4-1-flash-1017)
+delegate.mjs --ping --task P2-fable --budget KIC-HARNESS-REPAIR-01-PROOF --model claude-fable-5-2
+  exit=3 outcome=model-not-permitted networkCall=false reason=model "claude-fable-5-2" is not a permitted delegate (primary mistral-large-4-0; secondary zai-glm-5-3, deepseek-v4-1-flash-1017)
+delegate.mjs --ping --task P2-unlisted --budget KIC-HARNESS-REPAIR-01-PROOF --model codestral-latest
+  exit=3 outcome=model-not-permitted networkCall=false reason=model "codestral-latest" is not a permitted delegate (primary mistral-large-4-0; secondary zai-glm-5-3, deepseek-v4-1-flash-1017)
+delegate.mjs --ping --task P2-fallback --budget KIC-HARNESS-REPAIR-01-PROOF --model mistral-large-4-0 --fallback-model claude-opus-5-5
+  exit=2 outcome=refused networkCall=false reason=unknown option(s): --fallback-model. The runner has one route and no fallback.
+delegate.mjs --ping --task P2-endpoint --budget KIC-HARNESS-REPAIR-01-PROOF --model mistral-large-4-0 --endpoint https://api.anthropic.com/v1/messages
+  exit=2 outcome=refused networkCall=false reason=unknown option(s): --endpoint. The runner has one route and no fallback.
+delegate.mjs --ping --task P2-secondary-no-reason --budget KIC-HARNESS-REPAIR-01-PROOF --model zai-glm-5-3
+  exit=2 outcome=refused networkCall=false reason="zai-glm-5-3" is a secondary route: say why the primary is not used with --reason "..."
+delegate.mjs --ping --task P2-no-budget --model mistral-large-4-0
+  exit=2 outcome=refused networkCall=false reason=--budget must name a budget defined in harness/config/model-policy.json (got none)

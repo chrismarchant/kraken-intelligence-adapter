@@ -1,0 +1,29 @@
+diff --git a/harness/proof/duration.mjs b/harness/proof/duration.mjs
+new file mode 100644
+index 0000000..e20583b
+--- /dev/null
++++ b/harness/proof/duration.mjs
+@@ -0,0 +1,23 @@
++export function formatDuration(ms) {
++  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) {
++    throw new TypeError('ms must be a non-negative finite number');
++  }
++
++  const totalSeconds = Math.floor(ms / 1000);
++  if (totalSeconds === 0) {
++    return '0s';
++  }
++
++  const days = Math.floor(totalSeconds / 86400);
++  const hours = Math.floor((totalSeconds % 86400) / 3600);
++  const minutes = Math.floor((totalSeconds % 3600) / 60);
++  const seconds = totalSeconds % 60;
++
++  const parts = [];
++  if (days > 0) parts.push(`${days}d`);
++  if (hours > 0) parts.push(`${hours}h`);
++  if (minutes > 0) parts.push(`${minutes}m`);
++  if (seconds > 0) parts.push(`${seconds}s`);
++
++  return parts.join(' ');
++}

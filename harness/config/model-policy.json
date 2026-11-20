@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "authority": "Owner authorisation KIC-HARNESS-REPAIR-01 (2026-11-14)",
+  "orchestrator": {
+    "model": "claude-fable-5-2",
+    "role": "orchestration, architecture, coordination, final synthesis"
+  },
+  "subagents": {
+    "launchTools": [
+      "Agent",
+      "Task"
+    ],
+    "allowed": [
+      "haiku"
+    ],
+    "escalation": [
+      "opus"
+    ],
+    "deniedAgentTypes": [
+      "fork"
+    ],
+    "deniedTools": [
+      "Workflow",
+      "mcp__claude-code-remote__create_session"
+    ],
+    "maxConcurrent": 2,
+    "leaseMinutes": 30
+  },
+  "delegation": {
+    "endpoint": "https://api.mistral.ai/v1/chat/completions",
+    "primary": "mistral-large-4-0",
+    "secondary": [
+      "zai-glm-5-3",
+      "deepseek-v4-1-flash-1017"
+    ],
+    "maxRetries": 2,
+    "defaultMaxTokens": 6000,
+    "requiredForPaths": [
+      "src/**",
+      "tests/**",
+      "fixtures/**",
+      "tenant-package/**",
+      "skills/**"
+    ]
+  },
+  "reviews": {
+    "maxRoundsPerArea": 2
+  },
+  "budgets": {
+    "KIC-HARNESS-REPAIR-01-PROOF": {
+      "maxCalls": 3,
+      "maxOutputTokens": 15000,
+      "ownerReference": "Owner authorisation KIC-HARNESS-REPAIR-01, Phase 3"
+    },
+    "KIC-01-R1-V4-V1": {
+      "maxCalls": 20,
+      "maxOutputTokens": 120000,
+      "ownerReference": "docs/spec/directives/KIC-01-V4-V1-REMEDIATION-AUTHORISATION-2026-11-20.md, answer 2"
+    }
+  }
+}

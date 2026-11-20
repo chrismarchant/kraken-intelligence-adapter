@@ -18,7 +18,8 @@ const stopped = () => {
 
 test('no stop file: every tool is allowed (silent, exit 0)', () => {
   const root = mkRepo({});
-  for (const tool_name of ['Write', 'Edit', 'Bash', 'Agent', 'mcp__x__y', 'Read', 'WhateverNew']) {
+  // Sub-agent launches are governed by the model policy as well: see routing-hook.test.mjs.
+  for (const tool_name of ['Write', 'Edit', 'Bash', 'mcp__x__y', 'Read', 'WhateverNew']) {
     const r = run({ tool_name }, root);
     assert.equal(r.code, 0);
     assert.equal(r.out, '');
@@ -80,5 +81,8 @@ test('the repository wires the hook for every tool in .claude/settings.json', as
   assert.equal(wired.length, 1);
   // Nothing in the project settings may pre-approve tools or weaken permissions.
   assert.deepEqual(Object.keys(settings), ['hooks']);
-  assert.deepEqual(Object.keys(settings.hooks), ['PreToolUse']);
+  // The bookkeeping events of the model-routing policy run the same script and nothing else.
+  assert.deepEqual(Object.keys(settings.hooks), ['PreToolUse', 'PostToolUse', 'SubagentStart', 'SubagentStop']);
+  const commands = Object.values(settings.hooks).flat().flatMap((e) => e.hooks ?? []);
+  assert.ok(commands.every((h) => h.type === 'command' && h.command === 'node "${CLAUDE_PROJECT_DIR}/harness/hooks/pre-tool-use.mjs"'));
 });

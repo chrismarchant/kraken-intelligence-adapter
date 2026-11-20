@@ -2,6 +2,27 @@
 
 Newest first. Never contains credentials.
 
+## Orchestrator checkpoint — 2026-11-14 (ORCH: harness repair KIC-HARNESS-REPAIR-01)
+
+```
+WORKSTREAM_ID: ORCH: harness repair KIC-HARNESS-REPAIR-01
+BRANCH: claude/kic-recovery-harness-repair-w488wb
+CURRENT_GATE: KIC-01 BLOCKED / NOT READY at code commit c83b0cbd0134eb224552b73e52a43b7111cde721, unchanged. NOT accepted. Gate stop on KIC-01 and local stop on REV-1 in force and unedited. No product code changed. This session worked only under harness/**, .claude/**, docs/harness/** and on records, under the owner authorisation KIC-HARNESS-REPAIR-01 of 2026-11-14.
+COMPLETED: Router chrismarchant/mistral-code-router inspected read-only at b778108: no licence, tells the session to fall back to its own model, reports the requested model not the provider's; not adopted, nothing copied (docs/harness/MODEL-ROUTING.md section 4; OD-22).
+  Model-routing controls: harness/config/model-policy.json, harness/scripts/routing.mjs, harness/scripts/delegate.mjs, hook extended, .claude/settings.json (PostToolUse, SubagentStart, SubagentStop), aeh routing report|check|escalate, aeh review rounds, review add bounded per gate and area. 38 new harness tests.
+  Proof: P1 identity and P3 bounded engineering through the runner on mistral-large-4-0, provider-reported model matched; P2 negative controls offline. 2 calls, 500 output tokens of 3 calls and 15,000 authorised. Evidence: docs/harness/evidence/KIC-HARNESS-REPAIR-01/, harness/state/model-usage.jsonl.
+  Records reconciled to 4dceeb0: GATE_STATE.md (Current state at 4dceeb0: R2 approved with findings, R1 changes requested, V1 to V9 open, review check fails, REV-1 reason out of date in one respect), REV-1 evidence, acceptance package addendum, routing audit record. Verified read-only by continuity-guardian (haiku): no discrepancy.
+  Verification on 2026-11-14: npm run check exit 0 (289 product, 121 harness); secret scan clean; check-records ok; product diff against c83b0cb empty.
+OPEN: Owner decisions OD-22 (router licence and changes), OD-23 (CLAUDE.md line and CI step for the routing check), OD-24 (restating the REV-1 stop reason). All earlier open decisions stand, OD-21 among them.
+  The Haiku records route was not available in this session: the pinned records-clerk type is new and loads only at session start, and the session permission classifier refused a general-purpose Haiku launch for records edits. The orchestrator made the records edits; a pinned Haiku agent verified them.
+  The orchestrator wrote the harness controls itself (bootstrap). Its own token use is not available to the session.
+  Secondary delegate routes (zai-glm-5-3, deepseek-v4-1-flash-1017) are configured and not proven live. The routing check is not in CI.
+NEXT_ACTION: WAIT FOR THE OWNER. Do not change src/, tests/, fixtures/, tenant-package/; do not remediate V1 to V9; do not clear or restate a stop; do not start KIC-02, merge or deploy.
+  On an owner instruction for bounded KIC remediation: define a budget in harness/config/model-policy.json, delegate through node harness/scripts/delegate.mjs with mistral-large-4-0, commit with a Delegation-Receipt trailer, one review and one re-review per area (aeh review rounds first).
+  Start of next session: aeh status (ends with the model policy), docs/harness/MODEL-ROUTING.md, aeh routing report.
+REFERENCES: docs/harness/MODEL-ROUTING.md, docs/harness/ROUTING-AUDIT-2026-11-13.md, harness/state/GATE_STATE.md (Current state at 4dceeb0), harness/state/model-usage.jsonl, docs/decisions/OWNER_DECISIONS.md (OD-22 to OD-24), docs/harness/RESTART.md
+```
+
 ## Orchestrator checkpoint — 2026-11-13 (ORCH)
 
 ```

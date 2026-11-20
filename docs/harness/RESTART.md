@@ -22,6 +22,8 @@ node harness/scripts/aeh.mjs next
 npm run test:harness
 ```
 
+`status` ends with the model-routing policy: name a model on every sub-agent launch (Haiku, or a pinned agent type), send coding work through `node harness/scripts/delegate.mjs`, and read `docs/harness/MODEL-ROUTING.md` before the first launch or delegation. `node harness/scripts/aeh.mjs routing report` shows usage and violations so far.
+
 ## 3. Global stop first
 
 If `harness/state/GLOBAL_STOP` exists, stop. Report its reason (it holds reason, time, who). Do not delete it, edit it or work around it. Only the Human Owner clears it: `node harness/scripts/aeh.mjs clear --level global --by <name> --owner-reference <where the owner authorised it> --reason "..."`. Read-only work is still allowed.
