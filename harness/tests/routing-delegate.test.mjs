@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { write, HARNESS } from './helpers.mjs';
 import { mkRoutingRepo, ledger, sse, POLICY } from './routing-helpers.mjs';
-import { delegate, parseFiles } from '../scripts/delegate.mjs';
+import { delegate, parseFiles, parseAnswer, parseStructured, applyEdits } from '../scripts/delegate.mjs';
 
 const block = (p, c) => `=== FILE: ${p} ===\n${c}\n=== END FILE ===\n`;
 function setup() {
@@ -117,6 +117,17 @@ test('a cut-off answer or one without file blocks changes nothing', async () => 
   assert.equal(fs.existsSync(path.join(root, 'lib')), false);
 });
 
+test('a delegate that answers with a tool call is refused: it has no tools, and the request says so', async () => {
+  const root = setup();
+  const body = `data: ${JSON.stringify({ id: 'c', model: 'mistral-large-4-0', choices: [{ delta: { tool_calls: [{ function: { name: 'write_file', arguments: '{}' } }] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 10, completion_tokens: 9, total_tokens: 19 } })}\n\ndata: [DONE]\n\n`;
+  const f = fake(() => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+  const r = await run(root, f);
+  assert.deepEqual([r.exitCode, r.receipt.outcome, r.receipt.attemptedToolCalls], [6, 'tool-call-refused', ['write_file']]);
+  assert.equal(f.calls[0].body.tool_choice, 'none');
+  assert.match(f.calls[0].body.messages[0].content, /Never call a function/);
+  assert.equal(fs.existsSync(path.join(root, 'lib')), false);
+});
+
 test('paths: outside --allow, escaping the tree, or owned by a blocked gate are refused and nothing is written', async () => {
   const root = setup();
   const cases = [
@@ -209,6 +220,92 @@ test('--ping verifies identity and usage without a work tree', async () => {
 test('parseFiles reads only well-formed blocks', () => {
   assert.deepEqual(parseFiles(block('a/b.mjs', 'x\ny') + 'NOTES: n').map((f) => [f.path, f.content]), [['a/b.mjs', 'x\ny\n']]);
   assert.equal(parseFiles('=== FILE: a ===\nno end').length, 0);
+});
+
+const edit = (p, ...pairs) => `=== EDIT: ${p} ===\n${pairs.map(([a, b]) => `<<<<<<< SEARCH\n${a}\n=======\n${b}\n>>>>>>> REPLACE`).join('\n')}\n=== END EDIT ===\n`;
+
+test('an EDIT block replaces exact text that occurs once, and leaves the rest of the file byte for byte', async () => {
+  const root = setup();
+  const before = 'const a = 1;\nconsole.log("old line");\nconst b = 2;\nconsole.log("other");\n';
+  write(root, 'lib/big.mjs', before);
+  const out = path.join(root, 'out');
+  const r = await run(root, fake(() => sse({ text: edit('lib/big.mjs', ['console.log("old line");', 'console.log("new line");'], ['const b = 2;', 'const b = 3;\nconst c = 4;']) + block('lib/new.mjs', 'export {};') })), { out });
+  assert.equal(r.exitCode, 0);
+  assert.equal(fs.readFileSync(path.join(root, 'lib/big.mjs'), 'utf8'), 'const a = 1;\nconsole.log("new line");\nconst b = 3;\nconst c = 4;\nconsole.log("other");\n');
+  assert.deepEqual(r.receipt.files.sort(), ['lib/big.mjs', 'lib/new.mjs']);
+  assert.deepEqual(r.receipt.editedInPlace, ['lib/big.mjs']);
+  assert.match(fs.readFileSync(path.join(out, `${r.receipt.id}.answer.txt`), 'utf8'), /=== EDIT: lib\/big.mjs ===/);
+});
+
+test('an EDIT whose SEARCH is missing, occurs twice, targets no file, or leaves the allowed paths refuses the whole answer', async () => {
+  const root = setup();
+  write(root, 'lib/big.mjs', 'x = 1;\ny = 2;\nx = 1;\n');
+  const good = block('lib/ok.mjs', 'export {};');
+  const cases = [
+    [edit('lib/big.mjs', ['z = 9;', 'z = 0;']), 'edit-refused', /occurs 0 times/],
+    [edit('lib/big.mjs', ['x = 1;', 'x = 5;']), 'edit-refused', /occurs 2 times/],
+    [edit('lib/absent.mjs', ['a', 'b']), 'edit-refused', /not in the work tree/],
+    [edit('src/a.ts', ['a', 'b']), 'path-refused', /outside --allow/],
+    ['=== EDIT: lib/big.mjs ===\n<<<<<<< SEARCH\ny = 2;\n=======\ny = 3;\n=== END EDIT ===\n', 'path-refused', /not closed/],
+    [edit('lib/big.mjs', ['y = 2;', 'y = 3;']) + block('lib/big.mjs', 'whole'), 'path-refused', /more than one block/],
+    ['=== FILE: lib/open.mjs ===\nexport {};\n', 'path-refused', /block not closed/],
+  ];
+  let i = 0;
+  for (const [text, outcome, why] of cases) {
+    const r = await run(root, fake(() => sse({ text: good + text })), { task: `ED${i++}` });
+    assert.deepEqual([r.exitCode, r.receipt.outcome], [6, outcome], text.slice(0, 40));
+    assert.match(r.receipt.problems.join(' '), why);
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'lib/big.mjs'), 'utf8'), 'x = 1;\ny = 2;\nx = 1;\n');
+  assert.equal(fs.existsSync(path.join(root, 'lib/ok.mjs')), false);
+});
+
+test('marker lines are read through what models put round them; a fence round the content is dropped', () => {
+  const a = parseAnswer('Here you go:\n**=== FILE: `lib/a.mjs` ===**\n```js\nexport const a = 1;\n```\n=== END FILE ===\n\n=== FILE: lib/b.mjs ===\nb\n=== END OF FILE ===\n== EDIT: lib/c.mjs ==\n<<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE\n== END EDIT ==\nNOTES: done');
+  assert.deepEqual(a.problems, []);
+  assert.deepEqual(a.files.map((f) => [f.path, f.content]), [['lib/a.mjs', 'export const a = 1;\n'], ['lib/b.mjs', 'b\n']]);
+  assert.deepEqual(a.edits, [{ path: 'lib/c.mjs', hunks: [{ search: 'old', replace: 'new' }] }]);
+  assert.deepEqual(applyEdits('a\nold\nb', a.edits[0].hunks), { text: 'a\nnew\nb', problems: [] });
+  assert.equal(applyEdits('$1 old $&', [{ search: 'old', replace: '$& $1' }]).text, '$1 $& $1 $&');
+});
+
+test('the reply is asked for and read as structured output: files and exact replacements, with quotes and newlines intact', async () => {
+  const root = setup();
+  write(root, 'lib/big.mjs', 'import { a } from "./a.mjs";\nconsole.log("old \\"quoted\\" line\\n");\nexport const b = 2;\n');
+  const answer = JSON.stringify({
+    files: [{ path: 'lib/new.mjs', content: 'export const s = "a \\"b\\" c\\n";' }],
+    edits: [{ path: 'lib/big.mjs', replacements: [{ search: 'console.log("old \\"quoted\\" line\\n");', replace: 'console.log("new line\\n");\nconsole.log(`second`);' }] }],
+    notes: 'done',
+  });
+  const f = fake(() => sse({ text: answer }));
+  const r = await run(root, f);
+  assert.equal(r.exitCode, 0);
+  assert.equal(fs.readFileSync(path.join(root, 'lib/new.mjs'), 'utf8'), 'export const s = "a \\"b\\" c\\n";\n');
+  assert.equal(fs.readFileSync(path.join(root, 'lib/big.mjs'), 'utf8'), 'import { a } from "./a.mjs";\nconsole.log("new line\\n");\nconsole.log(`second`);\nexport const b = 2;\n');
+  const rf = f.calls[0].body.response_format;
+  assert.deepEqual([rf.type, rf.json_schema.strict, rf.json_schema.schema.required], ['json_schema', true, ['files', 'edits', 'notes']]);
+  assert.match(f.calls[0].body.messages[0].content, /one JSON object/);
+});
+
+test('a structured reply that is malformed, repeats a path or misses its search refuses the whole answer', async () => {
+  const root = setup();
+  write(root, 'lib/big.mjs', 'x = 1;\n');
+  const cases = [
+    [{ files: [{ path: 'lib/a.mjs', content: 'a' }, { path: 'lib/a.mjs', content: 'b' }], edits: [], notes: '' }, 'path-refused', /named more than once/],
+    [{ files: [{ path: 'lib/a.mjs' }], edits: [], notes: '' }, 'path-refused', /lacks a string path or content/],
+    [{ files: [{ path: 'lib/ok.mjs', content: 'ok' }], edits: [{ path: 'lib/big.mjs', replacements: [{ search: 'y = 2;', replace: 'z' }] }], notes: '' }, 'edit-refused', /occurs 0 times/],
+    [{ files: [{ path: 'lib/ok.mjs', content: 'ok' }], edits: [{ path: 'lib/big.mjs', replacements: [] }], notes: '' }, 'path-refused', /no replacement/],
+    [{ files: [], edits: [], notes: 'nothing to do' }, 'no-files', null],
+  ];
+  let i = 0;
+  for (const [doc, outcome, why] of cases) {
+    const r = await run(root, fake(() => sse({ text: JSON.stringify(doc) })), { task: `JS${i++}` });
+    assert.deepEqual([r.exitCode, r.receipt.outcome], [6, outcome], JSON.stringify(doc).slice(0, 60));
+    if (why) assert.match(r.receipt.problems.join(' '), why);
+  }
+  assert.equal(fs.existsSync(path.join(root, 'lib/ok.mjs')), false);
+  assert.equal(parseStructured('=== FILE: a ===\nx\n=== END FILE ==='), null);
+  assert.equal(parseStructured('"just a string"'), null);
 });
 
 test('the command line never reaches the network for a refused model (exit 3)', () => {
